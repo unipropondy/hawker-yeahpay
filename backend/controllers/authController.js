@@ -77,15 +77,41 @@ const login = async (req, res) => {
         await pool.request()
             .query('UPDATE Licenses SET IsActive = 0 WHERE ExpiryDate < GETDATE()');
         
-        // ✅ Get user WITH license info - NOW INCLUDES OwnerId
+        // ✅ Get user with license info - FIXED: No UserId in Licenses!
         const result = await pool.request()
             .input('username', sql.NVarChar, username)
             .query(`
-                SELECT u.Id, u.Username, u.PasswordHash, u.Role, u.FullName, u.Email, u.IsActive,
-                       u.OwnerId, u.ShopName,
-                       l.ExpiryDate, l.LicenseKey, l.IsActive as LicenseActive
+                SELECT 
+                    u.Id, 
+                    u.Username, 
+                    u.PasswordHash, 
+                    u.Role, 
+                    u.FullName, 
+                    u.Email, 
+                    u.IsActive,
+                    u.OwnerId,
+                    u.OutletId,
+                    u.ShopName,
+                    
+                    -- License info comes via Outlet, not directly
+                    CASE 
+                        WHEN u.Role = 'owner' THEN NULL
+                        ELSE l.ExpiryDate
+                    END as ExpiryDate,
+                    
+                    CASE 
+                        WHEN u.Role = 'owner' THEN NULL
+                        ELSE l.LicenseKey
+                    END as LicenseKey,
+                    
+                    CASE 
+                        WHEN u.Role = 'owner' THEN 1  -- Owners don't need license
+                        ELSE l.IsActive
+                    END as LicenseActive
+                    
                 FROM Users u
-                LEFT JOIN Licenses l ON u.Id = l.UserId
+                LEFT JOIN Outlets o ON u.OutletId = o.Id
+                LEFT JOIN Licenses l ON o.Id = l.OutletId
                 WHERE u.Username = @username
             `);
 
@@ -104,14 +130,18 @@ const login = async (req, res) => {
 
         // ✅ Check if user is active
         if (!user.IsActive) {
-            return res.status(401).json({ error: 'Invalid username or password' });
+            return res.status(401).json({ error: 'Account deactivated' });
         }
 
-        // ✅ Check if license expired (skip for admin)
-        if (user.Role !== 'admin' && user.ExpiryDate && new Date(user.ExpiryDate) < new Date()) {
-            return res.status(401).json({ 
-                error: 'Invalid username or password'
-            });
+        // ✅ Check license for staff only
+        if (user.Role === 'staff') {
+            if (user.ExpiryDate && new Date(user.ExpiryDate) < new Date()) {
+                return res.status(403).json({ 
+                    error: 'License expired',
+                    code: 'LICENSE_EXPIRED',
+                    message: 'Your license has expired. Please contact admin.'
+                });
+            }
         }
 
         // Update last login
@@ -119,19 +149,91 @@ const login = async (req, res) => {
             .input('userId', sql.Int, user.Id)
             .query('UPDATE Users SET LastLoginDate = GETDATE() WHERE Id = @userId');
 
-        // Create token with owner info
+        // ========== OWNER LOGIN - Return outlets ==========
+        if (user.Role === 'owner') {
+            // Get all outlets for this owner
+            const outlets = await pool.request()
+                .input('ownerId', sql.Int, user.Id)
+                .query(`
+                    SELECT 
+                        o.Id,
+                        o.OutletName as name,
+                        o.Address,
+                        o.Phone,
+                        s.Username as staffUsername,
+                        l.LicenseKey,
+                        l.ExpiryDate,
+                        CASE WHEN l.ExpiryDate < GETDATE() THEN 0 ELSE 1 END as LicenseActive
+                    FROM Outlets o
+                    LEFT JOIN Users s ON o.StaffId = s.Id
+                    LEFT JOIN Licenses l ON o.Id = l.OutletId
+                    WHERE o.OwnerId = @ownerId AND o.IsActive = 1
+                    ORDER BY o.OutletName
+                `);
+
+            const token = jwt.sign(
+                { id: user.Id, username: user.Username, role: user.Role },
+                JWT_SECRET,
+                { expiresIn: '24h' }
+            );
+
+            console.log(`✅ Owner login: ${user.Username} with ${outlets.recordset.length} outlets`);
+
+            return res.json({
+                token,
+                user: {
+                    id: user.Id,
+                    username: user.Username,
+                    role: user.Role,
+                    fullName: user.FullName,
+                    email: user.Email,
+                    shopName: user.ShopName
+                },
+                outlets: outlets.recordset,
+                requiresOutlet: true
+            });
+        }
+
+        // ========== STAFF LOGIN - Direct to outlet ==========
+        if (user.Role === 'staff') {
+            const token = jwt.sign(
+                { 
+                    id: user.Id, 
+                    username: user.Username, 
+                    role: user.Role,
+                    outletId: user.OutletId,
+                    ownerId: user.OwnerId
+                },
+                JWT_SECRET,
+                { expiresIn: '24h' }
+            );
+
+            console.log(`✅ Staff login: ${user.Username} for outlet ${user.OutletId}`);
+
+            return res.json({
+                token,
+                user: {
+                    id: user.Id,
+                    username: user.Username,
+                    role: user.Role,
+                    fullName: user.FullName,
+                    email: user.Email,
+                    shopName: user.ShopName,
+                    outletId: user.OutletId,
+                    ownerId: user.OwnerId
+                },
+                requiresOutlet: false
+            });
+        }
+
+        // ========== ADMIN LOGIN ==========
         const token = jwt.sign(
-            { 
-                id: user.Id, 
-                username: user.Username, 
-                role: user.Role,
-                ownerId: user.OwnerId || user.Id  // For staff, this links to owner
-            },
+            { id: user.Id, username: user.Username, role: user.Role },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        console.log(`✅ Login successful: ${user.Username} (${user.Role})`);
+        console.log(`✅ Admin login: ${user.Username}`);
 
         res.json({
             token,
@@ -140,13 +242,12 @@ const login = async (req, res) => {
                 username: user.Username,
                 role: user.Role,
                 fullName: user.FullName,
-                email: user.Email,
-                shopName: user.ShopName,
-                ownerId: user.OwnerId || user.Id
+                email: user.Email
             }
         });
+
     } catch (err) {
-        console.error('Login error:', err);
+        console.error('❌ Login error:', err);
         res.status(500).json({ error: 'Login failed' });
     }
 };
@@ -160,9 +261,21 @@ const getProfile = async (req, res) => {
         const result = await pool.request()
             .input('userId', sql.Int, userId)
             .query(`
-                SELECT Id, Username, Role, FullName, Email, CreatedDate, LastLoginDate
-                FROM Users 
-                WHERE Id = @userId
+                SELECT 
+                    u.Id, 
+                    u.Username, 
+                    u.Role, 
+                    u.FullName, 
+                    u.Email, 
+                    u.CreatedDate, 
+                    u.LastLoginDate,
+                    u.OwnerId,
+                    u.OutletId,
+                    u.ShopName,
+                    o.OutletName
+                FROM Users u
+                LEFT JOIN Outlets o ON u.OutletId = o.Id
+                WHERE u.Id = @userId
             `);
 
         if (result.recordset.length === 0) {
@@ -175,6 +288,65 @@ const getProfile = async (req, res) => {
         res.status(500).json({ error: 'Failed to get profile' });
     }
 };
+const getLicenseStatus = async (req, res) => {
+    try {
+        const pool = getPool();
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        
+        if (userRole === 'admin') {
+            return res.json({
+                LicenseKey: 'ADMIN',
+                ExpiryDate: null,
+                MinutesRemaining: 999999,
+                IsActive: true,
+                ShopName: 'Admin',
+                message: 'Admin account - no license'
+            });
+        }
+        
+        if (userRole === 'owner') {
+            return res.json({
+                LicenseKey: 'OWNER',
+                ExpiryDate: null,
+                MinutesRemaining: 999999,
+                IsActive: true,
+                ShopName: req.user.username,
+                message: 'Owner account - no license'
+            });
+        }
+        
+        // Staff: Get license from outlet
+        const result = await pool.request()
+            .input('userId', sql.Int, userId)
+            .query(`
+                SELECT 
+                    l.LicenseKey,
+                    l.ExpiryDate,
+                    DATEDIFF(minute, GETDATE(), l.ExpiryDate) as MinutesRemaining,
+                    l.IsActive,
+                    o.OutletName as ShopName
+                FROM Users u
+                JOIN Outlets o ON u.OutletId = o.Id
+                JOIN Licenses l ON o.Id = l.OutletId
+                WHERE u.Id = @userId
+            `);
+        
+        if (result.recordset.length === 0) {
+            return res.status(404).json({ error: 'License not found' });
+        }
+        
+        res.json(result.recordset[0]);
+        
+    } catch (err) {
+        console.error('❌ License status error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ============================================
+// REGISTER (DISABLED for multi-outlet)
+// ============================================
 
 // Change password
 const changePassword = async (req, res) => {
@@ -184,7 +356,6 @@ const changePassword = async (req, res) => {
 
         const pool = getPool();
 
-        // Get current password hash
         const result = await pool.request()
             .input('userId', sql.Int, userId)
             .query('SELECT PasswordHash FROM Users WHERE Id = @userId');
@@ -195,18 +366,15 @@ const changePassword = async (req, res) => {
 
         const user = result.recordset[0];
 
-        // Verify current password
         const isMatch = await bcrypt.compare(currentPassword, user.PasswordHash);
         
         if (!isMatch) {
             return res.status(401).json({ error: 'Current password is incorrect' });
         }
 
-        // Hash new password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-        // Update password
         await pool.request()
             .input('userId', sql.Int, userId)
             .input('passwordHash', sql.NVarChar, hashedPassword)
@@ -222,6 +390,7 @@ const changePassword = async (req, res) => {
 module.exports = {
     register,
     login,
-    getProfile,
-    changePassword
+     getProfile,
+    changePassword,
+    getLicenseStatus
 };

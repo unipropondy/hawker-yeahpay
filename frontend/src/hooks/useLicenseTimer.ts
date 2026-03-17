@@ -1,6 +1,8 @@
 // hooks/useLicenseTimer.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import API from '../api';
+import { Alert } from 'react-native';
+import { useAuth } from '../context/AuthContext';
 
 interface TimeLeft {
   days: number;
@@ -24,6 +26,8 @@ export const useLicenseTimer = () => {
   
   const expiryRef = useRef<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const { logout } = useAuth();
+  const loggedOutRef = useRef(false);
 
   const calculateTimeLeft = useCallback(() => {
     if (!expiryRef.current) {
@@ -32,32 +36,54 @@ export const useLicenseTimer = () => {
     }
 
     try {
-      // ✅ DIRECT DATE CONSTRUCTION - NO STRING PARSING!
       const expiryStr = expiryRef.current;
       
-      // Extract numbers directly
+      // Parse date
       const year = parseInt(expiryStr.substring(0, 4));
-      const month = parseInt(expiryStr.substring(5, 7)) - 1; // JS months are 0-based
+      const month = parseInt(expiryStr.substring(5, 7)) - 1;
       const day = parseInt(expiryStr.substring(8, 10));
       const hours = parseInt(expiryStr.substring(11, 13));
       const minutes = parseInt(expiryStr.substring(14, 16));
       
-      // Create date directly with numbers
       const expiryDate = new Date(year, month, day, hours, minutes, 0);
       const now = new Date();
       
       const diffMs = expiryDate.getTime() - now.getTime();
       const diffMins = Math.floor(diffMs / (1000 * 60));
+      const diffSecs = Math.floor(diffMs / 1000);
 
-      console.log('⏱️ DEBUG:', {
-        original: expiryStr,
-        year, month: month+1, day, hours, minutes,
-        expiryDate: expiryDate.toString(),
+      console.log('⏱️ License:', {
+        expiry: expiryDate.toString(),
         now: now.toString(),
-        diffMins
+        diffMins,
+        diffSecs,
+        expired: diffMins <= 0
       });
 
-      if (diffMins < 0 || isNaN(diffMins)) {
+      // 🚨 EXACT 0 MINUTE LOGOUT
+      if (diffMins <= 0 && !loggedOutRef.current) {
+        console.log('🚨 LICENSE EXPIRED! Logging out now...');
+        loggedOutRef.current = true;
+        
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        
+        Alert.alert(
+          'License Expired',
+          'Your license has expired. Please contact your administrator.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await logout();
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+        
         setTimeLeft({ 
           days: 0, 
           hours: 0, 
@@ -69,6 +95,7 @@ export const useLicenseTimer = () => {
         return;
       }
       
+      // Calculate time left only if not expired
       let text = '';
       let statusClass = '';
       
@@ -92,23 +119,19 @@ export const useLicenseTimer = () => {
       const minsLeft = diffMins % 60;
       const secsLeft = Math.floor((diffMs % (1000 * 60)) / 1000);
 
-      const newTimeLeft = { 
+      setTimeLeft({ 
         days, 
         hours: hoursLeft, 
         minutes: minsLeft, 
         seconds: secsLeft,
         text,
         class: statusClass
-      };
-      
-      console.log('✅ TimeLeft:', newTimeLeft);
-      setTimeLeft(newTimeLeft);
+      });
       
     } catch (error) {
       console.log('❌ Timer error:', error);
-      setTimeLeft(prev => ({ ...prev, text: 'Error' }));
     }
-  }, []);
+  }, [logout]);
 
   const loadLicense = useCallback(async () => {
     try {
@@ -117,15 +140,46 @@ export const useLicenseTimer = () => {
       const expiryDate = response.data?.ExpiryDate;
       
       if (expiryDate) {
-        console.log('📦 Raw IST from DB:', expiryDate);
+        console.log('📦 License expiry:', expiryDate);
         expiryRef.current = expiryDate;
         setLicenseInfo(response.data);
+        
+        // Check if already expired on load
+        const year = parseInt(expiryDate.substring(0, 4));
+        const month = parseInt(expiryDate.substring(5, 7)) - 1;
+        const day = parseInt(expiryDate.substring(8, 10));
+        const hours = parseInt(expiryDate.substring(11, 13));
+        const minutes = parseInt(expiryDate.substring(14, 16));
+        
+        const expiry = new Date(year, month, day, hours, minutes, 0);
+        const now = new Date();
+        
+        if (expiry <= now && !loggedOutRef.current) {
+          console.log('🚨 License already expired!');
+          loggedOutRef.current = true;
+          
+          Alert.alert(
+            'License Expired',
+            'Your license has expired. Please contact your administrator.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await logout();
+                }
+              }
+            ],
+            { cancelable: false }
+          );
+          return;
+        }
+        
         calculateTimeLeft();
       }
     } catch (error) {
       console.log('❌ License load error:', error);
     }
-  }, [calculateTimeLeft]);
+  }, [calculateTimeLeft, logout]);
 
   useEffect(() => {
     loadLicense();

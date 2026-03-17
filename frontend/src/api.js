@@ -14,7 +14,7 @@ export const setNavigationCallback = (callback) => {
 
 const getBaseURL = () => {
   if (__DEV__) {
-    return 'http://192.168.0.169:5000/api';
+    return 'http://192.168.0.102:5000/api';
   } else {
     // Production URL
     return 'https://hawkerfinalv-production.up.railway.app/api';
@@ -49,6 +49,7 @@ const API = axios.create({
     'Connection': 'keep-alive'  // Add keep-alive
   }
 });
+
 API.interceptors.response.use(
   response => response,
   async error => {
@@ -62,6 +63,44 @@ API.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+export const setSelectedOutlet = (outletId) => {
+    AsyncStorage.setItem('selectedOutletId', outletId.toString());
+};
+
+// In API interceptor
+// In API interceptor - UPDATE THIS SECTION
+API.interceptors.request.use(async (config) => {
+    const token = await AsyncStorage.getItem('token');
+    const user = await AsyncStorage.getItem('user');
+    const userData = user ? JSON.parse(user) : null;
+    const selectedOutletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    // ✅ Add outlet header for ALL requests (GET, POST, PUT, DELETE)
+    if (selectedOutletId) {
+        config.headers['X-Outlet-Id'] = selectedOutletId;
+        
+        // ✅ For GET requests, add to query params
+        if (config.method?.toLowerCase() === 'get') {
+            config.params = { ...config.params, outletId: selectedOutletId };
+        }
+        
+        console.log(`📍 Outlet ID: ${selectedOutletId} added to ${config.method?.toUpperCase()} ${config.url}`);
+    }
+    
+    // Fallback for staff (if selectedOutletId not available)
+    if (userData?.role === 'staff' && userData.outletId && !selectedOutletId) {
+        config.headers['X-Outlet-Id'] = userData.outletId;
+        if (config.method?.toLowerCase() === 'get') {
+            config.params = { ...config.params, outletId: userData.outletId };
+        }
+    }
+    
+    return config;
+});
 // Add token to every request
 API.interceptors.request.use(
   async (config) => {
@@ -188,9 +227,36 @@ export const uploadAPI = axios.create({
 uploadAPI.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('token');
+    const selectedOutletId = await AsyncStorage.getItem('selectedOutletId');
+    const user = await AsyncStorage.getItem('user');
+    const userData = user ? JSON.parse(user) : null;
+    
+    console.log('📤 UPLOAD Request:', {
+      url: config.url,
+      method: config.method,
+      hasToken: !!token,
+      outletId: selectedOutletId || userData?.outletId
+    });
+    
+    // Add token
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // ✅ CRITICAL: Add outlet header for uploads!
+    if (selectedOutletId) {
+      config.headers['X-Outlet-Id'] = selectedOutletId;
+      console.log(`📍 UPLOAD with Outlet ID from storage: ${selectedOutletId}`);
+    } 
+    // Fallback for staff
+    else if (userData?.role === 'staff' && userData.outletId) {
+      config.headers['X-Outlet-Id'] = userData.outletId;
+      console.log(`📍 UPLOAD with Staff Outlet ID: ${userData.outletId}`);
+    }
+    
+    // Add timestamp for tracking
+    config.metadata = { startTime: Date.now() };
+    
     return config;
   },
   (error) => {
@@ -198,10 +264,24 @@ uploadAPI.interceptors.request.use(
   }
 );
 
+// Update response interceptor
 uploadAPI.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const duration = Date.now() - (response.config?.metadata?.startTime || 0);
+    console.log(`✅ UPLOAD Response: ${response.config.url} (${duration}ms)`);
+    return response;
+  },
   async (error) => {
-    // ✅ Same forceLogout handling for uploads
+    const duration = Date.now() - (error.config?.metadata?.startTime || 0);
+    console.log(`❌ UPLOAD Error after ${duration}ms:`, error.message);
+    console.log('🔴 UPLOAD Error Details:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      headers: error.config?.headers
+    });
+
+    // ✅ Handle force logout
     if (error.response?.data?.forceLogout) {
       Alert.alert(
         'Account Blocked',
@@ -212,6 +292,7 @@ uploadAPI.interceptors.response.use(
             onPress: async () => {
               await AsyncStorage.removeItem('token');
               await AsyncStorage.removeItem('user');
+              await AsyncStorage.removeItem('selectedOutletId');
               if (navigateToLogin) navigateToLogin();
             }
           }
@@ -221,17 +302,37 @@ uploadAPI.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // ✅ Handle 400 - OUTLET_REQUIRED specifically
+    if (error.response?.status === 400 && error.response?.data?.error === 'OUTLET_REQUIRED') {
+      console.log('⚠️ Outlet required for upload - checking storage...');
+      
+      // Try to get outlet again
+      const outletId = await AsyncStorage.getItem('selectedOutletId');
+      if (outletId) {
+        console.log('📍 Found outlet in storage:', outletId);
+        // You could retry here if needed
+      }
+    }
+
+    // Handle other errors
     let userMessage = 'Upload failed. Please try again.';
     
     if (!error.response) {
       userMessage = 'Network error. Check your connection.';
     } else {
       switch (error.response.status) {
+        case 400:
+          userMessage = error.response.data?.message || 'Invalid request. Please check your input.';
+          break;
         case 401:
           userMessage = 'Session expired. Please login again.';
           await AsyncStorage.removeItem('token');
           await AsyncStorage.removeItem('user');
+          await AsyncStorage.removeItem('selectedOutletId');
           if (navigateToLogin) navigateToLogin();
+          break;
+        case 403:
+          userMessage = error.response.data?.message || 'Permission denied.';
           break;
         case 413:
           userMessage = 'File too large. Max 5MB allowed.';

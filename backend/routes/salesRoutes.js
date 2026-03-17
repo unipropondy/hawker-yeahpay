@@ -1,7 +1,7 @@
 // backend/routes/salesRoutes.js
 const express = require('express');
 const router = express.Router();
-const { getPool, sql } = require('../config/db');  // ✅ Add for middleware
+const { getPool, sql } = require('../config/db');
 const {
     createSale,
     getSales,
@@ -12,45 +12,81 @@ const {
 const { authenticateToken } = require('../middleware/auth');
 
 // ============================================
-// MIDDLEWARE - Get effective user ID (owner for staff)
+// MIDDLEWARE - Get effective OUTLET ID
 // ============================================
-const getEffectiveUserId = async (req, res, next) => {
+const getEffectiveOutletId = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
+        let outletId = null;
         
-        // If user is staff, get their owner's ID
+        console.log(`🔍 Getting outlet for ${userRole} ${userId}`);
+        
+        // For staff: get their outlet ID from Users table
         if (userRole === 'staff') {
             const pool = getPool();
             const result = await pool.request()
                 .input('userId', sql.Int, userId)
-                .query('SELECT OwnerId FROM Users WHERE Id = @userId');
+                .query('SELECT OutletId FROM Users WHERE Id = @userId');
             
-            if (result.recordset.length > 0 && result.recordset[0].OwnerId) {
-                req.effectiveUserId = result.recordset[0].OwnerId;
-                console.log(`👤 Staff ${userId} using owner ${req.effectiveUserId} for sales`);
+            if (result.recordset.length > 0 && result.recordset[0].OutletId) {
+                outletId = result.recordset[0].OutletId;
+                console.log(`👤 Staff ${userId} using outlet ${outletId}`);
             } else {
-                req.effectiveUserId = userId; // Fallback
+                return res.status(403).json({ error: 'Staff not assigned to any outlet' });
             }
-        } else {
-            // Owner or admin uses their own ID
-            req.effectiveUserId = userId;
         }
         
-        // ✅ FIX: Only set _effectiveUserId if req.body exists (POST requests)
-        if (req.body && typeof req.body === 'object') {
-            req.body._effectiveUserId = req.effectiveUserId;
+        // For owner: get outlet from header or query
+        else if (userRole === 'owner') {
+            outletId = req.headers['x-outlet-id'] || req.query.outletId;
+            
+            if (!outletId) {
+                return res.status(400).json({ 
+                    error: 'OUTLET_REQUIRED',
+                    message: 'Please select an outlet'
+                });
+            }
+            
+            // Verify outlet belongs to this owner
+            const pool = getPool();
+            const result = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .input('ownerId', sql.Int, userId)
+                .query('SELECT Id FROM Outlets WHERE Id = @outletId AND OwnerId = @ownerId');
+            
+            if (result.recordset.length === 0) {
+                return res.status(403).json({ error: 'Access denied to this outlet' });
+            }
+            
+            outletId = parseInt(outletId);
+            console.log(`👑 Owner ${userId} using outlet ${outletId}`);
         }
         
-        // Also attach to req for controllers to use directly
-        req.userEffectiveId = req.effectiveUserId;
+        // Admin - can access any outlet (must specify)
+        else if (userRole === 'admin') {
+            outletId = req.query.outletId;
+            if (!outletId) {
+                return res.status(400).json({ error: 'Outlet ID required for admin' });
+            }
+            outletId = parseInt(outletId);
+        }
         
+        // ✅ Set outletId in request
+        req.outletId = outletId;
+        
+        // Also set in query and body for controllers
+        req.query.outletId = outletId;
+        if (req.body) {
+            req.body.outletId = outletId;
+        }
+        
+        console.log(`✅ Outlet ID set: ${req.outletId}`);
         next();
+        
     } catch (err) {
-        console.error('❌ Error in getEffectiveUserId:', err);
-        req.effectiveUserId = req.user.id;
-        req.userEffectiveId = req.user.id;
-        next();
+        console.error('❌ Error in getEffectiveOutletId:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
@@ -58,28 +94,28 @@ const getEffectiveUserId = async (req, res, next) => {
 // APPLY MIDDLEWARE TO ALL ROUTES
 // ============================================
 router.use(authenticateToken);      // First authenticate
-router.use(getEffectiveUserId);      // Then get effective user ID
+router.use(getEffectiveOutletId);   // Then get effective outlet ID
 
 // ============================================
-// SALES ROUTES
+// SALES ROUTES (unchanged - controllers handle logic)
 // ============================================
 
-// ✅ POST /api/sales - Create new sale (staff creates under owner)
+// POST /api/sales - Create new sale
 router.post('/', createSale);
 
-// ✅ GET /api/sales?filter=today - Get sales (staff sees owner's sales)
+// GET /api/sales?filter=today - Get sales
 router.get('/', getSales);
 
-// ✅ GET /api/sales/summary?filter=today - Get sales summary
+// GET /api/sales/summary?filter=today - Get sales summary
 router.get('/summary', getSalesSummary);
 
-// ✅ GET /api/sales/summarys - Optional duplicate
+// GET /api/sales/summarys - Optional duplicate
 router.get('/summarys', getSalesSummary);
 
-// ✅ GET /api/sales/by-category?filter=today - Category analysis
+// GET /api/sales/by-category?filter=today - Category analysis
 router.get('/by-category', getSalesByCategory);
 
-// ✅ GET /api/sales/category/Appetiser?filter=today - Items in category
+// GET /api/sales/category/:category?filter=today - Items in category
 router.get('/category/:category', getCategoryItems);
 
 module.exports = router;

@@ -37,7 +37,10 @@ export const CurrencyProvider = ({ children }: { children: React.ReactNode }) =>
   const loadedRef = useRef(false);
   const loadingRef = useRef(false);
   const currentUserIdRef = useRef<string | number | null>(null);
-
+const currencyLoadingRef = useRef(false);
+const currencyLoadedRef = useRef(false);
+const pendingRefreshRef = useRef<NodeJS.Timeout | null>(null);
+const loadedOutletsRef = useRef<Set<string>>(new Set());
   // Load from AsyncStorage on mount
   useEffect(() => {
     loadSavedCurrency();
@@ -90,85 +93,82 @@ export const CurrencyProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
-  const loadCurrencyFromSettings = async (retryCount = 0) => {
-    if (!user?.id) {
-      console.log('⚠️ No user ID, using defaults');
-      return;
-    }
+ const loadCurrencyFromSettings = async (retryCount = 0, outletId?: string) => {
+  const targetId = outletId || await AsyncStorage.getItem('selectedOutletId');
+  
+  if (!targetId) {
+    console.log('⚠️ No outlet ID available, using defaults');
+    return;
+  }
 
-    // ✅ CRITICAL: Skip if already loaded
-    if (loadedRef.current) {
-      console.log('⏭️ Currency already loaded, skipping...');
-      return;
-    }
+  // ✅ Check if THIS SPECIFIC outlet is already loaded
+  if (loadedOutletsRef.current.has(targetId) && !retryCount) {
+    console.log(`⏭️ Currency already loaded for outlet ${targetId}, skipping`);
+    return;
+  }
 
-    // ✅ Skip if already loading
-    if (loadingRef.current) {
-      console.log('⏳ Currency already loading, skipping...');
-      return;
-    }
+  if (loadingRef.current) {
+    console.log('⏳ Currency already loading, skipping...');
+    return;
+  }
 
-    loadingRef.current = true;
-    console.log(`🔄 Loading currency for user ${user.id}...`);
+  loadingRef.current = true;
+  console.log(`🔄 Loading currency for outlet ${targetId}...`);
+  
+  try {
+    const response = await API.get(`/company-settings/${targetId}?outletId=${targetId}`, {
+      timeout: 10000
+    });
+    
+    if (response.data.success) {
+      const settings = response.data.settings;
+      const newCode = settings.Currency || settings.currency || 'SGD';
+      const newSymbol = settings.CurrencySymbol || settings.currencySymbol || '$';
+      
+      console.log(`✅ Loaded currency: ${newCode} (${newSymbol}) for outlet ${targetId}`);
+      
+      setCurrencyCode(newCode);
+      setCurrencySymbol(newSymbol);
+      
+      // ✅ Mark THIS outlet as loaded
+      loadedOutletsRef.current.add(targetId);
+      
+      await AsyncStorage.setItem(`currencyCode_${targetId}`, newCode);
+      await AsyncStorage.setItem(`currencySymbol_${targetId}`, newSymbol);
+    }
+  } catch (error: any) {
+    console.log(`❌ Currency load error for outlet ${targetId}:`, error.message);
+    
+    if (error.code === 'ECONNABORTED' || error.message === 'Network Error') {
+      if (retryCount < 3) {
+        console.log(`🔄 Retrying... attempt ${retryCount + 1}/3`);
+        setTimeout(() => {
+          loadingRef.current = false;
+          loadCurrencyFromSettings(retryCount + 1, targetId);
+        }, 2000 * (retryCount + 1));
+        return;
+      }
+    }
     
     try {
-      // Increase timeout to 10 seconds
-      const response = await API.get(`/company-settings/${user.id}`, {
-        timeout: 10000 // 10 seconds
-      });
+      const savedCode = await AsyncStorage.getItem(`currencyCode_${targetId}`);
+      const savedSymbol = await AsyncStorage.getItem(`currencySymbol_${targetId}`);
       
-      if (response.data.success) {
-        const settings = response.data.settings;
-        const newCode = settings.Currency || settings.currency || 'SGD';
-        const newSymbol = settings.CurrencySymbol || settings.currencySymbol || '$';
-        
-        console.log(`✅ Loaded currency: ${newCode} (${newSymbol})`);
-        
-        setCurrencyCode(newCode);
-        setCurrencySymbol(newSymbol);
-        
-        // ✅ Mark as loaded
-        loadedRef.current = true;
-        
-        await AsyncStorage.setItem(`currencyCode_${user.id}`, newCode);
-        await AsyncStorage.setItem(`currencySymbol_${user.id}`, newSymbol);
+      if (savedCode && savedSymbol) {
+        setCurrencyCode(savedCode);
+        setCurrencySymbol(savedSymbol);
+        console.log(`✅ Using saved currency for outlet ${targetId} from storage`);
+        loadedOutletsRef.current.add(targetId);
+      } else {
+        console.log('⚠️ Using default currency');
       }
-    } catch (error: any) {
-      console.log('❌ Currency load error');
-      
-      // Retry logic for network errors
-      if (error.code === 'ECONNABORTED' || error.message === 'Network Error') {
-        if (retryCount < 3) {
-          console.log(`🔄 Retrying... attempt ${retryCount + 1}/3`);
-          setTimeout(() => {
-            loadingRef.current = false; // Reset loading flag for retry
-            loadCurrencyFromSettings(retryCount + 1);
-          }, 2000 * (retryCount + 1));
-          return;
-        }
-      }
-      
-      // Fallback to saved currency
-      try {
-        const savedCode = await AsyncStorage.getItem(`currencyCode_${user.id}`);
-        const savedSymbol = await AsyncStorage.getItem(`currencySymbol_${user.id}`);
-        
-        if (savedCode && savedSymbol) {
-          setCurrencyCode(savedCode);
-          setCurrencySymbol(savedSymbol);
-          console.log('✅ Using saved currency from storage');
-          loadedRef.current = true; // Mark as loaded even from cache
-        } else {
-          console.log('⚠️ Using default currency');
-        }
-      } catch (e) {
-        // Keep defaults
-      }
-    } finally {
-      loadingRef.current = false;
+    } catch (e) {
+      // Keep defaults
     }
-  };
-
+  } finally {
+    loadingRef.current = false;
+  }
+};
   const formatPrice = useCallback((amount: number): string => {
     if (amount === undefined || amount === null) return `${currencySymbol}0.00`;
     return `${currencySymbol}${amount.toFixed(2)}`;
@@ -190,13 +190,26 @@ export const CurrencyProvider = ({ children }: { children: React.ReactNode }) =>
     }
   };
 
-  const refreshCurrency = async () => {
+ const refreshCurrency = async () => {
+  try {
     console.log('🔄 Refreshing currency...');
-    loadedRef.current = false; // Force reload
-    loadingRef.current = false; // Reset loading flag
-    await loadCurrencyFromSettings(0);
-  };
-
+    
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    if (!outletId) {
+      console.log('⚠️ No outlet selected');
+      return;
+    }
+    
+    // ✅ Remove from loaded set to force reload
+    loadedOutletsRef.current.delete(outletId);
+    
+    await loadCurrencyFromSettings(0, outletId);
+    
+  } catch (error) {
+    console.log('❌ Error:', error);
+  }
+};
   return (
     <CurrencyContext.Provider value={{ 
       currencyCode, 

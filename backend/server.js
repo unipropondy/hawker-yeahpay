@@ -22,6 +22,8 @@ const companySettingsRoutes = require('./routes/companySettingsRoutes');
 const userRoutes = require('./routes/userRoutes');
 const paynowRoutes = require('./routes/paynowRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
+const cashDrawerRoutes = require('./routes/cashDrawerRoutes');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const uploadDir = path.join(__dirname, 'uploads');
@@ -212,6 +214,7 @@ app.use('/api/sales', authenticateToken, speedLimiter, salesRoutes);
 app.use('/api/company-settings', authenticateToken, apiLimiter, companySettingsRoutes); 
 app.use('/api/user', authenticateToken, apiLimiter, paynowRoutes);
 app.use('/api/owner', authenticateToken, ownerRoutes);
+app.use('/api/cash-drawer', cashDrawerRoutes);
 // Add near the top after middleware
 app.get('/health', (req, res) => {
     res.json({ 

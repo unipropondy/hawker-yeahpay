@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "UNIPRO HAWKER SYSTEM",
-    "slug": "unipro-pos",
+    "slug": "unipro-pos-new",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/unipro-hawker.png",
@@ -42,9 +42,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "184214a2-ce46-4d46-a4df-5412295c7baa"
+        "projectId": "984fbd31-a0ce-4d4e-a9e4-09cf244c78e1"
       }
     },
-    "owner": "azmiuniprosg"
+    "owner": "abdulazmiuniprosg"
   }
 }

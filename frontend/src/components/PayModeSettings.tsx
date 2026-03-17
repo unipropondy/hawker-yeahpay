@@ -16,6 +16,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import API from '../api';
 import PayNowSettings from './PayNowSettings';
+// At the top of PosScreen.tsx
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import UPISettings from './UPISettings';
 
 interface PayModeSettingsProps {
@@ -108,113 +110,141 @@ const PayModeSettings: React.FC<PayModeSettingsProps> = ({
   };
 
   const loadPaymentModes = async (force = false) => {
-    if (hasLoaded && !force) {
-      console.log('⏭️ Payment modes already loaded, skipping');
+  // 🛑 Skip if already loaded
+  if (hasLoaded && !force) {
+    console.log('⏭️ Payment modes already loaded, skipping');
+    return;
+  }
+  
+  // 🛑 Skip if loading
+  if (isLoading) {
+    console.log('⏳ Payment modes already loading, skipping');
+    return;
+  }
+
+  setIsLoading(true);
+  try {
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    // ✅ STEP 2: CHECK IF OUTLET ID EXISTS
+    if (!outletId) {
+      console.log('⚠️ No outlet selected - cannot load payment modes');
+      setIsLoading(false);
       return;
     }
     
-    if (isLoading) {
-      console.log('⏳ Payment modes already loading, skipping');
-      return;
+    console.log(`📡 Loading payment modes for outlet: ${outletId}`);
+    
+    // ✅ STEP 3: USE outletId WITH type='outlet'
+    const response = await API.get(`/user/payment-modes/${outletId}?type=outlet`);
+    const modes = response.data.paymentModes || [];
+    
+    console.log(`📥 Payment modes for outlet ${outletId}:`, modes);
+    
+    // Process modes
+    if (modes.length > 0 && typeof modes[0] === 'string') {
+      const convertedModes = modes.map((mode: string, index: number) => ({
+        id: mode,
+        name: getModeName(mode),
+        icon: getModeIcon(mode),
+        description: getModeDescription(mode),
+        isActive: true,
+        order: index
+      }));
+      setPaymentModes(convertedModes);
+    } else {
+      setPaymentModes(modes);
     }
+    
+    setHasLoaded(true);
+    
+  } catch (error: any) {
+    console.log('❌ Error loading payment modes:', error);
+    
+    const errorMessage = error.response?.data?.error || 
+                        error.message || 
+                        'Failed to load payment modes';
+    Alert.alert('Error', errorMessage);
+    
+    setHasLoaded(false);
+  } finally {
+    setIsLoading(false);
+  }
+};
+const getModeName = (modeId: string): string => {
+  const names: Record<string, string> = {
+    'cash': 'Cash',
+    'upi': 'UPI',
+    'paynow': 'PayNow',
+    'card': 'Card',
+    'cdc': 'CDC Voucher'
+  };
+  return names[modeId] || modeId;
+};
 
-    setIsLoading(true);
-    try {
-      console.log('📡 Loading payment modes from API...');
-      const response = await API.get(`/user/payment-modes/${userId}`);
-      const modes = response.data.paymentModes || [];
+const getModeIcon = (modeId: string): string => {
+  const icons: Record<string, string> = {
+    'cash': '💰',
+    'upi': '📱',
+    'paynow': '📱',
+    'card': '💳',
+    'cdc': '🎫'
+  };
+  return icons[modeId] || '💳';
+};
+
+const getModeDescription = (modeId: string): string => {
+  const desc: Record<string, string> = {
+    'cash': 'Pay with cash',
+    'upi': 'UPI QR payment',
+    'paynow': 'PayNow QR transfer',
+    'card': 'Credit/Debit card',
+    'cdc': 'CDC vouchers'
+  };
+  return desc[modeId] || `${modeId} payment`;
+};
+const saveModes = async () => {
+  if (!userId) {
+    Alert.alert(t.error, t.error);
+    return;
+  }
+
+  setSaving(true);
+  try {
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    const payload: any = {
+      paymentModes
+    };
+    
+    if (outletId) {
+      payload.outletId = parseInt(outletId);
+      console.log('💾 Saving for outlet:', outletId);
+    } else {
+      payload.userId = userId;
+    }
+    
+    const response = await API.put('/user/payment-modes', payload);
+    
+    if (response.data.success) {
+      Alert.alert(t.success, 'Payment modes saved');
       
-      if (modes.length > 0 && typeof modes[0] === 'string') {
-        const convertedModes = modes.map((mode: string, index: number) => ({
-          id: mode,
-          name: getModeName(mode),
-          icon: getModeIcon(mode),
-          description: getModeDescription(mode),
-          isActive: true,
-          order: index
-        }));
-        setPaymentModes(convertedModes);
-      } else {
-        setPaymentModes(modes);
+      // ✅ Reload with correct type
+      if (outletId) {
+        await loadPaymentModes(true);  // Force reload with ?type=outlet
       }
       
-      setHasLoaded(true);
-      
-    } catch (error) {
-      console.log('❌ Error loading modes:', error);
-      Alert.alert(t.error, t.paymentModes + ' ' + t.error);
-      setHasLoaded(false);
-    } finally {
-      setIsLoading(false);
+      onUpdate(paymentModes);
+      onClose();
     }
-  };
-
-  const getModeName = (modeId: string): string => {
-    const names: Record<string, string> = {
-      'cash': t.cash || 'Cash',
-      'upi': 'UPI',
-      'paynow': 'PayNow',
-      'visa': 'Visa/Master',
-      'cdc': t.cdc || 'CDC',
-      'paylah': 'PayLah!',
-      'grabpay': 'GrabPay'
-    };
-    return names[modeId] || modeId;
-  };
-
-  const getModeIcon = (modeId: string): string => {
-    const icons: Record<string, string> = {
-      'cash': '💰',
-      'upi': '📱',
-      'paynow': '📱',
-      'visa': '💳',
-      'cdc': '🎫',
-      'paylah': '📱',
-      'grabpay': '🛵'
-    };
-    return icons[modeId] || '💳';
-  };
-
-  const getModeDescription = (modeId: string): string => {
-    const desc: Record<string, string> = {
-      'cash': t.payWithCash || 'Pay with cash',
-      'upi': 'UPI QR payment',
-      'paynow': 'PayNow QR transfer',
-      'visa': t.cardPayment || 'Credit/Debit card',
-      'cdc': t.cdcPayment || 'CDC vouchers',
-      'paylah': 'DBS PayLah',
-      'grabpay': 'GrabPay wallet'
-    };
-    return desc[modeId] || `${modeId} payment`;
-  };
-
-  const saveModes = async () => {
-    if (!userId) {
-      Alert.alert(t.error, t.error);
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const response = await API.put('/user/payment-modes', {
-        userId,
-        paymentModes
-      });
-      
-      if (response.data.success) {
-        Alert.alert(t.success, t.paymentModes + ' ' + t.updateSuccess);
-        onUpdate(paymentModes);
-        onClose();
-      } else {
-        Alert.alert(t.error, t.paymentModes + ' ' + t.error);
-      }
-    } catch (error: any) {
-      Alert.alert(t.error, error.response?.data?.error || t.error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  } catch (error) {
+    console.log('❌ Error:', error);
+    Alert.alert(t.error, error.response?.data?.error || 'Failed to save');
+  } finally {
+    setSaving(false);
+  }
+};
   const openAddForm = () => {
     setEditingMode(null);
     setFormName('');

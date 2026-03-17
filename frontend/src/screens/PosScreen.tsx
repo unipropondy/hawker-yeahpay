@@ -4,7 +4,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, StatusBar, View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, Dimensions } from 'react-native';
+import { Platform,useWindowDimensions, StatusBar, View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, Dimensions } from 'react-native';
 import { Entypo } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,6 +19,7 @@ import { useDataLoader } from '../hooks/useDataLoader';
 import API, { uploadAPI } from '../api';
 import { useLicenseCheck } from '../hooks/useLicenseCheck';
 import PrinterManager from '../components/PrinterManager';
+
  // ✅ Correct path
  import { handleApiError, showSuccess } from '../utils/errorHandler';
 import { DishGroupManagement } from '../components/DishGroupManagement';
@@ -31,6 +32,7 @@ import POSSalesReport from '../components/POSSalesReport';
 import PayModeSettings from '../components/PayModeSettings';
 import BillPDFGenerator from '../components/BillPDFGenerator';  // ✅ ADD THIS
 import { useCurrency } from '../context/CurrencyContext'; 
+import CashDrawerLogs from '../components/CashDrawerLogs';
 // Add these missing imports at the top with your other imports
 import {
   TextInput,
@@ -40,7 +42,8 @@ import {
 import { MenuGrid } from '../components/MenuGrid';
 import { CartSection } from '../components/CartSection';
 import { ProfileModal } from '../components/ProfileModal';
-
+// At the top with other imports
+import { OutletSelector } from '../components/OutletSelector';
 // Import constants and utils
 import { themes } from '../utils/themes';
 import { translations, dishNameTranslations } from '../utils/translations';
@@ -74,7 +77,10 @@ export default function PosScreen() {
   
   const insets = useSafeAreaInsets();
     useLicenseCheck();
-  const { user, logout } = useAuth();
+  const { user , outlets, 
+  showOutletSelector, 
+  setShowOutletSelector,login,
+  selectOutlet , logout,  setAvailableOutlets } = useAuth();
   const isOwner = user?.role === 'owner';
 const isStaff = user?.role === 'staff';
 
@@ -89,7 +95,16 @@ const [loading, setLoading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
   const [profileTab, setProfileTab] = useState<string>('theme');
   const [profileMode, setProfileMode] = useState<string>('full');
+
+const { width, height } = useWindowDimensions();
+const [selectedOutlet, setSelectedOutlet] = useState<any>(null);
+const [outletInfo, setOutletInfo] = useState<any>(null);
   const [showHomeMenu, setShowHomeMenu] = useState<boolean>(false);
+  const [priceModal, setPriceModal] = useState({
+  visible: false,
+  item: null as any,
+  price: ''
+});
  const [state, setState] = useState<any[]>([]); 
 const { currencySymbol } = useCurrency();
 const dataLoadedRef = useRef({
@@ -101,7 +116,7 @@ const dataLoadedRef = useRef({
   payNow: false,
   currency: false
 });
-
+const currencyRefreshedRef = useRef(false);
 const apiCallInProgress = useRef({
   dishGroups: false,
   dishItems: false,
@@ -207,8 +222,85 @@ const settingsChecked = useRef(false);
 const settingsLoading = useRef(false);
 
 // ✅ Replace your existing checkLicense with this
+const getGridColumns = () => {
+  if (width < 480) return 2;    // Phone
+  if (width < 768) return 3;    // Phablet
+  if (width < 1024) return 4;   // Tablet
+  return 5;                      // Desktop/POS
+};
 
+// Add this useEffect
+const deviceType = useMemo(() => {
+  if (width < 480) return 'phone';
+  if (width < 768) return 'phablet';
+  if (width < 1024) return 'tablet';
+  return 'desktop';
+}, [width]);
 
+const orientation = width > height ? 'landscape' : 'portrait';
+
+// Layout calculations
+const layout = useMemo(() => {
+  // Menu section width based on device
+  let menuWidth = '70%';
+  let cartWidth = '30%';
+  let columns = 4; // Default grid columns
+  
+  if (deviceType === 'phone') {
+    menuWidth = orientation === 'portrait' ? '100%' : '60%';
+    cartWidth = orientation === 'portrait' ? '100%' : '40%';
+    columns = orientation === 'portrait' ? 2 : 3;
+  } else if (deviceType === 'phablet') {
+    menuWidth = '65%';
+    cartWidth = '35%';
+    columns = 3;
+  } else if (deviceType === 'tablet') {
+    menuWidth = '70%';
+    cartWidth = '30%';
+    columns = 4;
+  } else { // desktop
+    menuWidth = '75%';
+    cartWidth = '25%';
+    columns = 5;
+  }
+  
+  return { menuWidth, cartWidth, columns };
+}, [deviceType, orientation]);
+
+// Font sizes based on device
+const fontSizes = useMemo(() => {
+  if (deviceType === 'phone') {
+    return {
+      small: 10,
+      regular: 12,
+      medium: 14,
+      large: 16,
+      xlarge: 18,
+      header: 16,
+      title: 18
+    };
+  } else if (deviceType === 'tablet') {
+    return {
+      small: 12,
+      regular: 14,
+      medium: 16,
+      large: 18,
+      xlarge: 20,
+      header: 20,
+      title: 24
+    };
+  } else {
+    return {
+      small: 13,
+      regular: 15,
+      medium: 17,
+      large: 19,
+      xlarge: 22,
+      header: 22,
+      title: 26
+    };
+  }
+}, [deviceType]);
 
 // ✅ Add this for company settings
 useEffect(() => {
@@ -261,13 +353,14 @@ const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(nu
   const [selectedSalesFilter, setSelectedSalesFilter] = useState<string>('today');
   const [startDate, setStartDate] = useState<Date>(new Date());
 const [endDate, setEndDate] = useState<Date>(new Date());
+
 const [showPicker, setShowPicker] = useState<boolean>(false);
 const [pickerType, setPickerType] = useState<'start' | 'end'>('start');
 const [tempDate, setTempDate] = useState<Date>(new Date());
 const tempDateRef = useRef<Date>(new Date());
 const [showUPIPayment, setShowUPIPayment] = useState(false);
 const [upiId, setUpiId] = useState('');
-
+const [showOutletDropdown, setShowOutletDropdown] = useState(false);
 const timeLeftRef = useRef({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 const [showPayModeSettings, setShowPayModeSettings] = useState(false);
 const [showBillPrompt, setShowBillPrompt] = useState(false);
@@ -278,6 +371,7 @@ const [userPaymentModes, setUserPaymentModes] = useState<PaymentMode[]>([]);
 const [selectedBillStyle, setSelectedBillStyle] = useState<string>('professional');
 const [showStyleSelector, setShowStyleSelector] = useState<boolean>(false);
 const [showPayNowPayment, setShowPayNowPayment] = useState(false);
+const [showDrawerLogs, setShowDrawerLogs] = useState(false);
 const [payNowQrUrl, setPayNowQrUrl] = useState('');
 // ===== SIMPLE HANDLERS =====
 const openStartPicker = () => {
@@ -300,12 +394,23 @@ const loadPayNowQR = async (force?: boolean): Promise<string> => {
   
   if (payNowLoaded.current && !force) {
     console.log('⏭️ PayNow QR already loaded, skipping');
-    return payNowQrUrl;  // Return current value
+    return payNowQrUrl;
   }
 
   try {
-    console.log('📡 Loading PayNow QR...');
-    const response = await API.get(`/user/paynow/${user?.id}`);
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    // ✅ STEP 2: CHECK IF OUTLET ID EXISTS
+    if (!outletId) {
+      console.log('⚠️ No outlet selected - cannot load PayNow QR');
+      return '';
+    }
+    
+    console.log(`📡 Loading PayNow QR for outlet: ${outletId}`);
+    
+    // ✅ STEP 3: USE outletId INSTEAD OF user?.id
+    const response = await API.get(`/user/paynow/${outletId}?outletId=${outletId}`);
     
     const qrUrl = response.data.qrCodeUrl || '';
     
@@ -315,18 +420,20 @@ const loadPayNowQR = async (force?: boolean): Promise<string> => {
     // ✅ Set flag
     payNowLoaded.current = true;
     
-    console.log('✅ PayNow QR loaded:', qrUrl ? 'URL present' : 'No URL');
+    console.log('✅ PayNow QR loaded for outlet:', outletId, qrUrl ? 'URL present' : 'No URL');
     
-    return qrUrl;  // Return for immediate use
+    return qrUrl;
     
-  } catch (error) {
-    console.log('❌ Error loading PayNow:', error);
+  } catch (error: any) {
+    console.log('❌ Error loading PayNow:', {
+      message: error.message,
+      response: error.response?.data
+    });
     setPayNowQrUrl('');
     payNowLoaded.current = false;
     return '';
   }
 };
-
 
 const openEndPicker = () => {
   setPickerType('end');
@@ -341,29 +448,33 @@ const removeAllItems = () => {
 const loadingPaymentModes = useRef(false);
 const paymentModesLoaded = useRef(false);
 
+// In PosScreen.tsx - Update loadPaymentModes
 const loadPaymentModes = async (force = false) => {
-  // ✅ Reset if force
-  if (force) {
-    console.log('🔄 Force reload - resetting flag');
-    paymentModesLoaded.current = false;
-  }
-  
-  // ✅ Skip if already loaded
-  if (paymentModesLoaded.current) {
-    console.log('⏭️ Payment modes already loaded, skipping');
-    return;
-  }
+  if (paymentModesLoaded.current && !force) return;
+  if (loadingPaymentModes.current) return;
 
   try {
-    console.log('📡 Loading payment modes from API...');
-    const response = await API.get(`/user/payment-modes/${user?.id}`);
-    console.log('📥 Raw API Response:', response.data);
+    loadingPaymentModes.current = true;
+    
+    // ✅ Get target ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    const targetId = outletId || user?.id;
+    
+    if (!targetId) {
+      console.log('⚠️ No target ID found');
+      return;
+    }
+    
+    console.log(`📡 Loading payment modes for: ${targetId}`);
+    
+    // ✅ Use correct endpoint
+    const response = await API.get(`/user/payment-modes/${targetId}`);
+    console.log('📥 Payment modes response:', response.data);
     
     let modes = response.data.paymentModes || [];
     
     // ✅ Process modes
     const processedModes = modes.map((mode: any) => {
-      // Handle string format
       if (typeof mode === 'string') {
         return {
           id: mode,
@@ -374,34 +485,17 @@ const loadPaymentModes = async (force = false) => {
           order: 0
         };
       }
-      
-      // Handle object format
-      return {
-        id: mode.id,
-        name: mode.name,
-        icon: mode.icon || getModeIcon(mode.id),
-        description: mode.description || getModeDescription(mode.id),
-        isActive: mode.isActive === undefined ? true : mode.isActive,
-        order: mode.order || 0
-      };
+      return mode;
     });
     
     console.log('✅ Processed modes:', processedModes);
-    
-    // ✅ Update state
     setUserPaymentModes(processedModes);
-    
-    // ✅ Set flag AFTER state update
-    setTimeout(() => {
-      paymentModesLoaded.current = true;
-      console.log('✅ Flag set to true, UI should show:', 
-        processedModes.filter(m => m.isActive).map(m => m.name)
-      );
-    }, 100);
+    paymentModesLoaded.current = true;
     
   } catch (error) {
     console.log('❌ Error loading payment modes:', error);
-    paymentModesLoaded.current = false;
+  } finally {
+    loadingPaymentModes.current = false;
   }
 };
 
@@ -420,12 +514,12 @@ useEffect(() => {
 
 
 
-  useEffect(() => {
-    if (user?.id) {
-      console.log(`👤 User ${user.id} loaded, refreshing currency...`);
-      refreshCurrency();
-    }
-  }, [user?.id]); 
+useEffect(() => {
+  if (user?.id && !currencyRefreshedRef.current) {
+    currencyRefreshedRef.current = true;
+    refreshCurrency();
+  }
+}, [user?.id]);
   
 
  
@@ -434,14 +528,53 @@ useEffect(() => {
 }, [payNowQrUrl]);
 
 // Call this when component mounts and after save
+// In your component, initialize outletInfo from storage on mount
+useEffect(() => {
+    const loadStoredOutlet = async () => {
+        const name = await AsyncStorage.getItem('selectedOutletName');
+        const license = await AsyncStorage.getItem('selectedOutletLicense');
+        
+        if (name) {
+            setOutletInfo({
+                name: name,
+                license: license,
+                // ... other fields
+            });
+        }
+    };
+    loadStoredOutlet();
+}, []);
+// Add this near other useEffects
+useEffect(() => {
+    const loadStoredOutlet = async () => {
+        try {
+            const outletId = await AsyncStorage.getItem('selectedOutletId');
+            const outletName = await AsyncStorage.getItem('selectedOutletName');
+            const outletLicense = await AsyncStorage.getItem('selectedOutletLicense');
+            
+            if (outletId && outletName) {
+                console.log('📦 Loading stored outlet:', outletName);
+                setOutletInfo({
+                    name: outletName,
+                    license: outletLicense,
+                    id: parseInt(outletId)
+                });
+            }
+        } catch (error) {
+            console.log('❌ Error loading stored outlet:', error);
+        }
+    };
+    
+    loadStoredOutlet();
+}, []); // Run once on mount
+// Add this useEffect
+useEffect(() => {
+    console.log('🔍 outletInfo changed:', outletInfo);
+}, [outletInfo]);
 
 useEffect(() => {
-  if (user?.id) {
-     loadPaymentModes();
-    loadUPIId();
-     loadPayNowQR();
-  }
-}, [user]);
+    console.log('🔍 selectedOutlet changed:', selectedOutlet);
+}, [selectedOutlet]);
 const handlePaymentModesUpdate = (modes: PaymentMode[]) => {
   console.log('🔄 Received updated modes from PayModeSettings:', 
     modes.map(m => ({
@@ -483,24 +616,69 @@ const loadUPIId = async (force = false) => {
 
   try {
     loadingUpi.current = true;
-    console.log('📡 Loading UPI ID...');
     
-    const response = await API.get(`/user/upi/${user?.id}`);
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
     
-    // ✅ Mark as loaded BEFORE setting state
+    // ✅ STEP 2: CHECK IF OUTLET ID EXISTS
+    if (!outletId) {
+      console.log('⚠️ No outlet selected - cannot load UPI ID');
+      return;
+    }
+    
+    console.log(`📡 Loading UPI ID for outlet: ${outletId}`);
+    
+    // ✅ STEP 3: USE outletId INSTEAD OF user.id
+    const response = await API.get(`/user/upi/${outletId}?outletId=${outletId}`);
+    
+    // ✅ Mark as loaded
     upiLoaded.current = true;
     setUpiId(response.data.upiId || '');
     
-    console.log('✅ UPI ID loaded:', response.data.upiId || 'not set');
+    console.log('✅ UPI ID loaded for outlet:', outletId, response.data.upiId || 'not set');
     
-  } catch (error) {
-    console.log('❌ Error loading UPI:', error);
-    // Reset on error so we can try again
+  } catch (error: any) {
+    console.log('❌ Error loading UPI:', {
+      message: error.message,
+      response: error.response?.data
+    });
     upiLoaded.current = false;
   } finally {
     loadingUpi.current = false;
   }
 };
+const handleOutletSelect = async (outlet) => {
+    try {
+        console.log('🏪 Selected outlet:', outlet);
+        
+        // ✅ Save all outlet details
+        await AsyncStorage.setItem('selectedOutletId', outlet.Id.toString());
+        await AsyncStorage.setItem('selectedOutletName', outlet.name);
+         await AsyncStorage.setItem('selectedOutletLicense', outlet.LicenseKey || ''); 
+        await AsyncStorage.setItem('selectedOutletExpiry', outlet.license?.expiryDate || '');
+        
+        // ✅ CRITICAL: Update state immediately
+        setSelectedOutlet(outlet);
+        setOutletInfo({
+            name: outlet.name,
+           license: outlet.LicenseKey,
+            expiry: outlet.license?.expiryDate,
+            staff: outlet.staff?.username
+        });
+        
+        console.log('✅ Outlet info set:', {
+            name: outlet.name,
+            license: outlet.license?.key
+        });
+        
+        setShowOutletSelector(false);
+        await loadData();
+        
+    } catch (error) {
+        console.log('❌ Error:', error);
+    }
+};
+
 // Helper functions for string to object conversion
 const getModeName = (modeId: string): string => {
   const names: Record<string, string> = {
@@ -604,7 +782,48 @@ useEffect(() => {
 useEffect(() => {
   console.log('📅 endDate changed to:', endDate);
 }, [endDate]);
-
+// Dynamic styles based on device
+const getStyles = (deviceType: string, orientation: string) => {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: deviceType === 'phone' ? 8 : 16,
+      paddingVertical: deviceType === 'phone' ? 8 : 12,
+      minHeight: deviceType === 'phone' ? 50 : 60,
+    },
+    headerTitle: {
+      fontSize: deviceType === 'phone' ? 14 : 18,
+    },
+    categoriesContainer: {
+      height: deviceType === 'phone' ? 40 : 50,
+    },
+    categoryText: {
+      fontSize: deviceType === 'phone' ? 12 : 14,
+      paddingHorizontal: deviceType === 'phone' ? 12 : 16,
+    },
+    mainContent: {
+      flex: 1,
+      flexDirection: orientation === 'portrait' && deviceType === 'phone' 
+        ? 'column' 
+        : 'row',
+    },
+    menuSection: {
+      flex: orientation === 'portrait' && deviceType === 'phone' ? 1 : 0.7,
+      width: orientation === 'portrait' && deviceType === 'phone' ? '100%' : '70%',
+    },
+    cartSection: {
+      flex: orientation === 'portrait' && deviceType === 'phone' ? 0.4 : 0.3,
+      width: orientation === 'portrait' && deviceType === 'phone' ? '100%' : '30%',
+      borderLeftWidth: deviceType === 'phone' ? 0 : 1,
+      borderTopWidth: deviceType === 'phone' ? 1 : 0,
+    },
+  });
+};
  const [menuItems, setMenuItems] = useState<any[]>([]); // Start empty
  const [menuUpdateTrigger, setMenuUpdateTrigger] = useState(0);
   // ============ LICENSE COUNTDOWN (Keep but optimize) ============
@@ -640,9 +859,20 @@ const loadDishGroups = async (force = false) => {
 
   try {
     loadingGroups.current = true;
-    console.log('📦 Loading dish groups...');
     
-    const response = await API.get('/dishgroups');
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    // ✅ STEP 2: CHECK IF OUTLET ID EXISTS
+    if (!outletId && user?.role !== 'admin') {
+      console.log('⚠️ No outlet selected - cannot load dish groups');
+      return;
+    }
+    
+    console.log(`📦 Loading dish groups for outlet: ${outletId}`);
+    
+    // ✅ STEP 3: ADD outletId TO API CALL
+    const response = await API.get(`/dishgroups?outletId=${outletId}`);
     console.log('📦 Raw dishGroups response:', response.data);
     
     // ✅ Map groups with ALL fields including DisplayOrder
@@ -651,7 +881,7 @@ const loadDishGroups = async (force = false) => {
       name: group.Name,
       itemCount: group.ItemCount,
       active: group.active,
-      DisplayOrder: group.DisplayOrder ?? group.order ?? 999 // Use DisplayOrder from backend
+      DisplayOrder: group.DisplayOrder ?? group.order ?? 999
     }));
     
     // ✅ Sort by DisplayOrder (from backend)
@@ -663,7 +893,7 @@ const loadDishGroups = async (force = false) => {
     
     console.log('📋 Final order (by DisplayOrder):', groups.map(g => g.name));
     
-    // ✅ Save to AsyncStorage for backup (optional)
+    // ✅ Save to AsyncStorage for backup
     const orderArray = groups.map(g => g.id);
     await AsyncStorage.setItem('dishGroupOrder', JSON.stringify(orderArray));
     
@@ -724,9 +954,20 @@ const loadDishItems = async (force = false) => {
 
   try {
     loadingItems.current = true;
-    console.log('📦 Loading dish items...');
     
-    const response = await API.get('/dishitems');
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    // ✅ STEP 2: CHECK IF OUTLET ID EXISTS
+    if (!outletId && user?.role !== 'admin') {
+      console.log('⚠️ No outlet selected - cannot load dish items');
+      return;
+    }
+    
+    console.log(`📦 Loading dish items for outlet: ${outletId}`);
+    
+    // ✅ STEP 3: ADD outletId TO API CALL
+    const response = await API.get(`/dishitems?outletId=${outletId}`);
     console.log('Raw items response:', response.data);
     
     const baseURL = 'https://hawkerfinalv-production.up.railway.app';
@@ -745,15 +986,16 @@ const loadDishItems = async (force = false) => {
       originalCategory: item.OriginalCategory || item.originalCategory,
       displayCategory: item.DisplayCategory || item.displayCategory,
       isActive: item.IsActive ?? true,
+      isOpenPrice: item.IsOpenPrice === true || item.isOpenPrice === true,
     }));
     
-    console.log('📊 Items loaded:', items.length);
+    console.log(`📊 Items loaded for outlet ${outletId}:`, items.length);
     
     // ✅ Mark as loaded BEFORE setting state
     itemsLoaded.current = true;
     setMenuItems(items);
     
-    // ✅ OPTIMIZATION: Only update counts if items actually changed
+    // ✅ Update category counts
     const newCounts: Record<string, number> = {};
     items.forEach((item: any) => {
       const categoryId = item.categoryId;
@@ -762,7 +1004,7 @@ const loadDishItems = async (force = false) => {
       }
     });
     
-    // Check if counts changed before updating
+    // Update dish groups with new counts
     setDishGroups(prev => {
       const needsUpdate = prev.some(group => 
         group.itemCount !== (newCounts[group.id?.toString()] || 0)
@@ -911,7 +1153,14 @@ const getEnglishCategory = (categoryName: string): string => {
     await AsyncStorage.setItem('language', newLanguage);
     await setSettingsLanguage(newLanguage);
   };
-
+// Add this near your other useEffects
+useEffect(() => {
+  console.log('🔍 FINAL CHECK:');
+  console.log('  - outlets:', outlets);
+  console.log('  - outlets length:', outlets?.length);
+  console.log('  - outlets type:', typeof outlets);
+  console.log('  - isArray:', Array.isArray(outlets));
+}, [outlets]);
   useEffect(() => {
     loadSettings();
     loadDishGroups();
@@ -1029,98 +1278,333 @@ useEffect(() => {
 
  // In PosScreen.tsx - Replace your addToCart function
 
-const addToCart = (item: any): void => {
-      console.log('🔍 STEP 1: Item received from MenuGrid:', {
+// ============================================
+// ADD TO CART - Updated for Open Price
+// ============================================
+const addToCart = (item: any, customPrice?: number): void => {
+    console.log('🔍 STEP 1: Item received from MenuGrid:', {
         id: item.id,
         name: item.name,
+        isOpenPrice: item.isOpenPrice,
+        customPrice: customPrice,
         imageUri: item.imageUri
     });
-    // ✅ Get the FULL item from menuItems (important!)
+    
+    // Get the FULL item from menuItems
     const fullItem = menuItems.find(i => i.id === item.id);
-        
     
     console.log('🔍 STEP 2: Full item from menuItems:', {
         id: fullItem?.id,
         name: fullItem?.name,
+        price: fullItem?.price,
+        isOpenPrice: fullItem?.isOpenPrice,
         imageUri: fullItem?.imageUri,
         found: !!fullItem
     });
+    
     if (!fullItem) {
-       console.error('❌ Item not found in menuItems!');
+        console.error('❌ Item not found in menuItems!');
         return;
     }
     
-    // ✅ Create cart item with ALL fields including category
+    // ✅ Handle open price - use custom price if provided
+    const isOpenPriceItem = fullItem.isOpenPrice || false;
+    let finalPrice = fullItem.price;
+    
+    if (isOpenPriceItem) {
+        // Validate custom price for open price items
+        if (!customPrice || customPrice <= 0) {
+            Alert.alert(
+                'Invalid Price',
+                'Please enter a valid amount'
+            );
+            return;
+        }
+        finalPrice = customPrice;
+    }
+    
+    // Create cart item with ALL fields
     const cartItem = {
         id: fullItem.id,
         name: fullItem.name,
-        price: fullItem.price,
+        price: finalPrice,
+        originalPrice: fullItem.price,  // Store original for reference
         quantity: 1,
         imageUri: fullItem.imageUri,
-        // ✅ CRITICAL: Include category from all possible sources
+        isOpenPrice: isOpenPriceItem,  // ✅ IMPORTANT: Store flag!
         category: fullItem.displayCategory || fullItem.categoryName || fullItem.category || 'Uncategorized',
         displayCategory: fullItem.displayCategory || fullItem.categoryName || fullItem.category,
         originalCategory: fullItem.originalCategory,
-         // ✅ Use full URL
     };
     
-    // 🔍 DEBUG: See what's being added
     console.log('🔍 STEP 3: Cart item created:', {
         name: cartItem.name,
-        imageUri: cartItem.imageUri,
-        imageType: typeof cartItem.imageUri,
-        imageValue: cartItem.imageUri ? 'Has value' : 'Null/undefined'
+        price: cartItem.price,
+        isOpenPrice: cartItem.isOpenPrice,
+        imageUri: cartItem.imageUri ? 'Has value' : 'Null/undefined'
     });
     
     setCart(prevCart => {
         console.log('🔍 STEP 4: Current cart before update:', prevCart.map(i => ({
             name: i.name,
-            imageUri: i.imageUri ? 'Yes' : 'No'
+            price: i.price,
+            quantity: i.quantity,
+            isOpenPrice: i.isOpenPrice
         })));
         
-        const existing = prevCart.find(i => i.id === item.id);
+        // ✅ Find existing item - for open price, match by id AND price
+        let existing = null;
+        
+        if (isOpenPriceItem) {
+            // Open price items: match by id AND exact price
+            existing = prevCart.find(i => 
+                i.id === item.id && i.price === finalPrice
+            );
+        } else {
+            // Normal items: match by id only
+            existing = prevCart.find(i => i.id === item.id);
+        }
+        
         let newCart;
         
         if (existing) {
-            newCart = prevCart.map(i => 
-                i.id === item.id ? {...i, quantity: i.quantity + 1} : i
-            );
+            // Increase quantity if same item exists
+            newCart = prevCart.map(i => {
+                if (isOpenPriceItem) {
+                    // For open price, match by id AND price
+                    if (i.id === item.id && i.price === finalPrice) {
+                        return {...i, quantity: i.quantity + 1};
+                    }
+                } else {
+                    // For normal items
+                    if (i.id === item.id) {
+                        return {...i, quantity: i.quantity + 1};
+                    }
+                }
+                return i;
+            });
         } else {
+            // Add new item
             newCart = [...prevCart, cartItem];
         }
         
         console.log('🔍 STEP 5: New cart after update:', newCart.map(i => ({
             name: i.name,
-            imageUri: i.imageUri ? 'Yes' : 'No'
+            price: i.price,
+            quantity: i.quantity,
+            isOpenPrice: i.isOpenPrice
         })));
         
         return newCart;
     });
 };
-  const increaseQuantity = (itemId: number): void => {
-    setCart(cart.map(item => 
-      item.id === itemId 
-        ? {...item, quantity: item.quantity + 1} 
-        : item
-    ));
-  };
-  
-  const decreaseQuantity = (itemId: number): void => {
-    const item = cart.find(item => item.id === itemId);
-    if (item && item.quantity === 1) {
-      setCart(cart.filter(item => item.id !== itemId));
-    } else {
-      setCart(cart.map(item => 
-        item.id === itemId 
-          ? {...item, quantity: item.quantity - 1} 
-          : item
-      ));
+const loadData = useCallback(async () => {
+    try {
+        console.log('📦 Loading data for outlet...');
+        
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        
+        if (!outletId) {
+            console.log('⚠️ No outlet selected');
+            return;
+        }
+        
+        // ✅ ALL calls must use outletId, not user.id
+        await Promise.all([
+            loadDishGroups(true),
+            loadDishItems(true),
+            loadPaymentModes(true),  // This should use outletId
+            loadUPIId(true),          // This should use outletId
+            loadPayNowQR(true),       // This should use outletId
+            refreshCurrency()          // This should use outletId
+        ]);
+        
+        console.log('✅ All data loaded for outlet:', outletId);
+        
+    } catch (error) {
+        console.log('❌ Error loading data:', error);
     }
-  };
+},  [loadDishGroups, loadDishItems, loadPaymentModes, loadUPIId, loadPayNowQR, refreshCurrency]);
+// In your login handler (where you set user state)
+const handleLoginResponse = (response) => {
+  console.log('✅ Login response:', response.data);
+  
+  if (response.data.user.role === 'owner' && response.data.outlets) {
+    console.log('🏪 Owner login - outlets:', response.data.outlets);
+    console.log('🏪 Owner login - outlets count:', response.data.outlets.length);
+    setAvailableOutlets(response.data.outlets);
+    // ✅ Set availableOutlets
+   
+    
+    // ✅ Save to AsyncStorage (important!)
+    AsyncStorage.setItem('userOutlets', JSON.stringify(response.data.outlets))
+      .then(() => console.log('✅ Outlets saved to storage'))
+      .catch(err => console.log('❌ Error saving outlets:', err));
+    
+    setShowOutletSelector(true);
+    
+    // Clear any old outlet data
+    setOutletInfo(null);
+    setSelectedOutlet(null);
+    AsyncStorage.removeItem('selectedOutletId');
+    AsyncStorage.removeItem('selectedOutletName');
+    AsyncStorage.removeItem('selectedOutletLicense');
+    AsyncStorage.removeItem('selectedOutletExpiry');
+    
+  } else if (response.data.user.role === 'staff') {
+    console.log('👤 Staff login - direct access');
+    
+    const staffOutletId = response.data.user.outletId;
+    const staffOutletName = response.data.user.shopName;
+    
+    AsyncStorage.setItem('selectedOutletId', staffOutletId.toString());
+    AsyncStorage.setItem('selectedOutletName', staffOutletName);
+    
+    setOutletInfo({
+      name: staffOutletName,
+      id: staffOutletId
+    });
+    
+    loadData();
+  }
+};
 
-  const removeItem = (itemId: number): void => {
-    setCart(cart.filter(item => item.id !== itemId));
-  };
+useEffect(() => {
+  console.log('🔍 OUTLETS from context:', outlets);
+  console.log('🔍 OUTLETS length:', outlets?.length);
+  if (outlets?.length > 0) {
+    console.log('🔍 First outlet:', outlets[0]);
+    console.log('🔍 All outlets:', outlets.map(o => ({ id: o.Id, name: o.name, staff: o.staffUsername })));
+  }
+}, [outlets]);
+
+
+useEffect(() => {
+  console.log('🔍 showOutletDropdown:', showOutletDropdown);
+}, [showOutletDropdown]);
+// ============================================
+// INCREASE QUANTITY - Updated for Open Price
+// ============================================
+const increaseQuantity = (itemId: number, itemPrice?: number): void => {
+    setCart(prevCart => 
+        prevCart.map(item => {
+            // Check if this is the item to increase
+            let isMatch = false;
+            
+            if (item.isOpenPrice && itemPrice !== undefined) {
+                // Open price item: match by id AND price
+                isMatch = (item.id === itemId && item.price === itemPrice);
+            } else if (!item.isOpenPrice) {
+                // Normal item: match by id only
+                isMatch = (item.id === itemId);
+            }
+            
+            if (isMatch) {
+                return {...item, quantity: item.quantity + 1};
+            }
+            return item;
+        })
+    );
+};
+
+// ============================================
+// DECREASE QUANTITY - Updated for Open Price
+// ============================================
+const decreaseQuantity = (itemId: number, itemPrice?: number): void => {
+    setCart(prevCart => {
+        const newCart = [];
+        
+        for (const item of prevCart) {
+            // Check if this is the item to decrease
+            let isMatch = false;
+            
+            if (item.isOpenPrice && itemPrice !== undefined) {
+                isMatch = (item.id === itemId && item.price === itemPrice);
+            } else if (!item.isOpenPrice) {
+                isMatch = (item.id === itemId);
+            }
+            
+            if (isMatch) {
+                if (item.quantity === 1) {
+                    // Remove item if quantity becomes 0
+                    console.log(`🗑️ Removing item: ${item.name} (price: ${item.price})`);
+                    continue; // Skip adding to newCart
+                } else {
+                    // Decrease quantity
+                    newCart.push({...item, quantity: item.quantity - 1});
+                }
+            } else {
+                // Keep other items
+                newCart.push(item);
+            }
+        }
+        
+        console.log('📦 Cart after decrease:', newCart.map(i => ({
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity
+        })));
+        
+        return newCart;
+    });
+};
+
+// ============================================
+// REMOVE ITEM - Updated for Open Price
+// ============================================
+const removeItem = (itemId: number, itemPrice?: number): void => {
+    setCart(prevCart => {
+        const newCart = prevCart.filter(item => {
+            if (item.isOpenPrice && itemPrice !== undefined) {
+                // Open price: remove specific price variant
+                return !(item.id === itemId && item.price === itemPrice);
+            } else if (!item.isOpenPrice) {
+                // Normal item: remove all with this id
+                return item.id !== itemId;
+            }
+            return true; // Keep others
+        });
+        
+        console.log('🗑️ Item removed. New cart:', newCart.map(i => ({
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity
+        })));
+        
+        return newCart;
+    });
+};
+const switchOutlet = async (outlet) => {
+    try {
+        console.log('🔄 Switching to outlet:', outlet.name);
+        
+        // Save new outlet
+        await AsyncStorage.setItem('selectedOutletId', outlet.Id.toString());
+        await AsyncStorage.setItem('selectedOutletName', outlet.name);
+        await AsyncStorage.setItem('selectedOutletLicense', outlet.LicenseKey || '');
+        await AsyncStorage.setItem('selectedOutletExpiry', outlet.ExpiryDate || '');
+        
+        // Update state
+        setOutletInfo({
+            name: outlet.name,
+            license: outlet.LicenseKey,
+            expiry: outlet.ExpiryDate,
+            staff: outlet.staffUsername,
+            id: outlet.Id
+        });
+        
+        setSelectedOutlet(outlet);
+        
+        // Reload all data for new outlet
+        await loadData();
+        
+        console.log('✅ Switched to outlet:', outlet.name);
+        
+    } catch (error) {
+        console.log('❌ Error switching outlet:', error);
+        Alert.alert('Error', 'Failed to switch outlet');
+    }
+};
 const handleCheckout = (): void => {
   try {
     // Cart empty check
@@ -1275,8 +1759,14 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
 
 const handlePayNowSuccess = async () => {
   try {
-    const totalAmount = parseFloat(calculateTotal());
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    console.log('📍 PayNow - Outlet ID:', outletId);
     
+    const totalAmount = parseFloat(calculateTotal());
+    console.log('💰 PayNow - Total amount:', totalAmount);
+    
+    // ✅ STEP 2: ADD outletId TO saleData
     const saleData = {
       total: totalAmount,
       paymentMethod: 'PayNow',
@@ -1287,21 +1777,33 @@ const handlePayNowSuccess = async () => {
         category: item.category || item.displayCategory || 'Uncategorized',
         displayCategory: item.displayCategory || item.category
       })),
-      cashier: user?.username || 'Admin'
+      cashier: user?.username || 'Admin',
+      outletId: outletId  // ← ADD THIS!
     };
+    
+    console.log('📦 PayNow - Sale data prepared');
 
     const response = await API.post('/sales', saleData);
+    console.log('✅ PayNow - API Response:', response.data);
     
+    // ✅ STEP 3: STORE outletId IN PENDING SALE
     setPendingSaleData({
       ...saleData,
-      id: response.data.id
+      id: response.data.id,
+      outletId: outletId  // ← Important for bill printing!
     });
     
     setShowPayNowPayment(false);
     setCart([]);
     setShowBillPrompt(true);
     
-  } catch (error) {
+    console.log('✅ PayNow - Success, bill prompt shown');
+    
+  } catch (error: any) {
+    console.log('❌ PayNow error:', {
+      message: error.message,
+      response: error.response?.data
+    });
     Alert.alert('Error', 'Failed to save sale');
   }
 };
@@ -1312,9 +1814,14 @@ const handleUPISuccess = async () => {
     console.log('1️⃣ Cart before any operation:', JSON.stringify(cart, null, 2));
     console.log('2️⃣ calculateTotal() result:', calculateTotal());
     
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    console.log('📍 Outlet ID:', outletId);
+    
     const totalAmount = parseFloat(calculateTotal());
     console.log('3️⃣ Parsed totalAmount:', totalAmount);
     
+    // ✅ STEP 2: ADD outletId TO saleData
     const saleData = {
       total: totalAmount,
       paymentMethod: 'UPI',
@@ -1325,7 +1832,8 @@ const handleUPISuccess = async () => {
         category: item.category || item.displayCategory || 'Uncategorized',
         displayCategory: item.displayCategory || item.category
       })),
-      cashier: user?.username || 'Admin'
+      cashier: user?.username || 'Admin',
+      outletId: outletId  // ← ADD THIS!
     };
     
     console.log('4️⃣ Sale data prepared:', JSON.stringify(saleData, null, 2));
@@ -1342,7 +1850,8 @@ const handleUPISuccess = async () => {
     
     setPendingSaleData({
       ...saleData,
-      id: response.data.id
+      id: response.data.id,
+      outletId: outletId  // ← Store for bill printing
     });
     
     console.log('7️⃣ Pending sale data set with ID:', response.data.id);
@@ -1418,14 +1927,34 @@ const handleCashPayment = async (): Promise<void> => {
   const balance = cashPaid - totalAmount;
   setBalanceAmount(balance);
   
-  setSelectedPayment({ id: 1, name: t.cash, icon: '💰', description: t.payWithCash });
-  setPaymentSuccess(true);
   
+   // ========== 🔥 NEW CODE START ==========
+  // ✅ STEP 1: TRY TO OPEN CASH DRAWER (SILENT)
+  const drawerOpened = await UniversalPrinter.openCashDrawer();
+  
+  // ✅ STEP 2: LOG TO DATABASE (ONLY IF OPENED)
+  let drawerLogId = null;
+  if (drawerOpened) {
+    try {
+      const drawerResponse = await API.post('/cash-drawer/open', {
+        totalAmount: totalAmount,
+        paymentMethod: 'Cash',
+        notes: 'Cash payment'
+      });
+      drawerLogId = drawerResponse.data.log?.Id;
+      console.log('💰 Drawer opened and logged');
+    } catch (drawerError) {
+      console.log('⚠️ Drawer log failed, but drawer opened');
+    }
+  }
   try {
-    // ✅ FIX: Add cashPaid to saleData
+    // ✅ STEP 1: GET OUTLET ID
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    // ✅ STEP 2: ADD outletId TO saleData
     const saleData = {
       total: totalAmount,
-      cashPaid: cashPaid,           // ← ADD THIS
+      cashPaid: cashPaid,
       paymentMethod: t.cash,
       items: cart.map(item => ({
         name: item.name,
@@ -1435,10 +1964,12 @@ const handleCashPayment = async (): Promise<void> => {
         displayCategory: item.displayCategory || item.category
       })),
       change: balance,
-      cashier: user?.username || 'Admin'
+      cashier: user?.username || 'Admin',
+      outletId: outletId,  // ← ADD THIS!
+       drawerLogId: drawerLogId 
     };
 
-    console.log('💰 Sale data with cashPaid:', saleData); // Debug
+    console.log('💰 Sale data with outlet:', saleData); // Debug
 
     const response = await API.post('/sales', saleData);
     console.log('✅ Sale saved:', response.data);
@@ -1450,13 +1981,23 @@ const handleCashPayment = async (): Promise<void> => {
       date: response.data.date || response.data.SaleDate || new Date(),
       items: response.data.items || response.data.ItemsJson || [],
       change: balance,
-      cashPaid: cashPaid  // ← Also store in newSale
+      cashPaid: cashPaid,
+      outletId: outletId  // ← Store for pending sale
     };
     
     setSalesHistory(prev => [newSale, ...prev]);
-    
-    setTimeout(() => {
-      setPaymentSuccess(false);
+      // ========== 🔥 UPDATE DRAWER LOG WITH SALE ID ==========
+    if (drawerLogId) {
+      try {
+        await API.put(`/cash-drawer/${drawerLogId}`, {
+          saleId: newSale.id,
+          totalAmount: totalAmount
+        });
+      } catch (updateError) {
+        // Silent fail - not important
+      }
+    }
+   
       setShowCashModal(false);
       setSelectedPayment(null);
       setCashAmount('');
@@ -1465,18 +2006,57 @@ const handleCashPayment = async (): Promise<void> => {
         ...saleData,
         id: newSale.id,
         change: balance,
-        cashPaid: cashPaid,  // ← Make sure it's in pendingSaleData
-        userId: user?.id
+        cashPaid: cashPaid,
+        userId: user?.id,
+        outletId: outletId  // ← Important for bill printing!
       });
       setShowBillPrompt(true);
       
-    }, 1500);
+    
     
   } catch (error: any) {
-   
+    console.log('❌ Cash payment error:', error);
     Alert.alert('Error', 'Payment failed');
   }
 };
+useEffect(() => {
+  if (!user?.id) return;
+  
+  // Check for open drawers every 10 seconds
+  const interval = setInterval(async () => {
+    try {
+      const response = await API.get('/cash-drawer/check-open');
+      const openDrawers = response.data.openDrawers || [];
+      
+      openDrawers.forEach((drawer: any) => {
+        if (drawer.CurrentDuration > 30) {
+          // Show reminder
+          Alert.alert(
+            '⚠️ Cash Drawer Open',
+            `Drawer opened ${Math.floor(drawer.CurrentDuration)} seconds ago!\nPlease close it.`,
+            [
+              {
+                text: 'Close Now',
+                onPress: async () => {
+                  await API.post('/cash-drawer/close');
+                }
+              },
+              {
+                text: 'OK',
+                style: 'cancel'
+              }
+            ]
+          );
+        }
+      });
+      
+    } catch (error) {
+      // Silent fail
+    }
+  }, 10000); // Every 10 seconds
+  
+  return () => clearInterval(interval);
+}, [user?.id]);
 const loadSalesSummary = useCallback(async () => {
   try {
     let url = '/sales/summary';
@@ -1603,7 +2183,7 @@ const applyCustomFilter = useCallback(() => {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         setter(result.assets[0].uri);
-        Alert.alert(t.success, t.imageSelected);
+        
       }
     } catch (error) {
       Alert.alert(t.error, 'Failed to pick image');
@@ -1645,12 +2225,15 @@ const loadImageWithFallback = async (url: string) => {
 
   // Payment Options
 // In PosScreen.tsx, move this to the top with other useMemo declarations
+// In PosScreen.tsx - Update paymentOptions useMemo
 const paymentOptions = useMemo(() => {
   console.log('💰 Computing paymentOptions from:', userPaymentModes);
   
   if (!userPaymentModes || userPaymentModes.length === 0) {
-    console.log('⚠️ No payment modes available');
-    return [];
+    console.log('⚠️ No payment modes available - using defaults');
+    
+    // ✅ Return default modes if nothing configured
+  
   }
   
   // Filter only active modes
@@ -1659,16 +2242,21 @@ const paymentOptions = useMemo(() => {
   console.log('✅ Active modes:', activeModes.map(m => m.name));
   
   // Sort by order
-  const sortedModes = activeModes.sort((a, b) => a.order - b.order);
-  
-  // Map to the format needed for display
-  return sortedModes.map(mode => ({
-    id: mode.id,
-    name: mode.name,
-    icon: mode.icon,
-    description: mode.description
-  }));
+  return activeModes.sort((a, b) => (a.order || 0) - (b.order || 0));
 }, [userPaymentModes]);
+// In PosScreen.tsx - Add this useEffect
+useEffect(() => {
+  if (user?.id) {
+    // Force load payment modes after outlet selected
+    const loadModes = async () => {
+      const outletId = await AsyncStorage.getItem('selectedOutletId');
+      if (outletId) {
+        await loadPaymentModes(true);
+      }
+    };
+    loadModes();
+  }
+}, [user?.id, showOutletSelector]); // Re-run when outlet selector closes
 useEffect(() => {
   console.log('💳 paymentOptions computed:', 
     paymentOptions.map(o => ({ name: o.name, icon: o.icon }))
@@ -1842,94 +2430,7 @@ useEffect(() => {
 
  // Modify handleAddDish to save to database with image
 // Modify handleAddDish to save to database with image
-const handleAddDish = async (): Promise<void> => {
-  console.log('Adding dish:', newDish);
-  
-  if (!newDish.name || !newDish.name.trim()) {
-    Alert.alert(t.error, 'Please enter dish name');
-    return;
-  }
-  
-  if (!newDish.price || isNaN(parseFloat(newDish.price)) || parseFloat(newDish.price) <= 0) {
-    Alert.alert(t.error, 'Please enter valid price');
-    return;
-  }
 
-  try {
-    const formData = new FormData();
-    formData.append('name', newDish.name.trim());
-    formData.append('price', parseFloat(newDish.price).toString());
-    
-    const categoryId = getCategoryIdByName(newDish.category);
-    console.log('Category:', newDish.category, 'ID:', categoryId);
-    formData.append('category', categoryId.toString());
-    
-    const englishCategory = getEnglishCategory(newDish.category);
-    formData.append('originalName', newDish.name.trim());
-    formData.append('originalCategory', englishCategory);
-    formData.append('displayCategory', newDish.category);
-    
-    if (newDish.imageUri) {
-      const filename = newDish.imageUri.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const type = match ? `image/${match[1]}` : 'image';
-      
-      formData.append('image', {
-        uri: newDish.imageUri,
-        name: filename || 'image.jpg',
-        type,
-      } as any);
-    }
-    
-    console.log('Sending to server...');
-   const response = await uploadAPI.post('/api/dishitems', formData, {  // ✅ Add /api and fix syntax
-  headers: {
-    'Content-Type': 'multipart/form-data',
-  },
-});
-    
-    console.log('Response:', response.data);
-    
-    // ✅ FIX: Create full image URL
-    const imageUrl = response.data.imageUri || response.data.ImageUrl
-      ? `http://192.168.0.169:5000${response.data.imageUri || response.data.ImageUrl}`
-      : null;
-    
-    const newItem = {
-      id: response.data.Id || response.data.id,
-      name: response.data.Name || response.data.name,
-      price: parseFloat(response.data.Price || response.data.price || newDish.price),
-      category: response.data.CategoryId?.toString() || categoryId.toString(),
-      imageUri: imageUrl,
-      originalName: response.data.OriginalName || newDish.name,
-      originalCategory: response.data.OriginalCategory || englishCategory,
-      displayCategory: response.data.DisplayCategory || newDish.category,
-    };
-    
-    console.log('New item to add:', newItem);
-    
-    setMenuItems([...menuItems, newItem]);
-    
-      setDishGroups(prev => prev.map(group =>
-    group.name === newDish.category
-      ? { ...group, itemCount: (group.itemCount || 0) + 1 }
-      : group
-  ));
-    
-    setNewDish({ 
-      name: '', 
-      price: '', 
-      category: categories[0],
-      imageUri: null,
-    });
-    setShowAddDish(false);
-    
-    Alert.alert(t.success, `${newDish.name} ${t.addSuccess}`);
-  } catch (error) {
-   
-    Alert.alert(t.error, 'Failed to add dish item: ' + (error as any).message);
-  }
-};
 // Add this test function in your PosScreen.tsx
 const testSunmiNow = async () => {
   try {
@@ -1963,6 +2464,151 @@ const testSunmiNow = async () => {
     console.log('❌ Test error:', error);
     Alert.alert('❌ Error', error.message);
   }
+};
+useEffect(() => {
+  console.log('📢 priceModal state changed:', priceModal);
+}, [priceModal]);
+
+const handleOpenPriceItem = (item: any) => {
+  console.log('🔥🔥🔥 handleOpenPriceItem CALLED with:', item.name);
+  
+  // Force modal to open
+  setPriceModal({
+    visible: true,
+    item: item,
+    price: ''
+  });
+  
+  // Add this to verify state change
+  console.log('📢 priceModal after set:', {
+    visible: true,
+    item: item.name,
+    price: ''
+  });
+};
+
+ const modalContent = useMemo(() => {
+    if (!priceModal.visible) return null;
+    
+    return (
+      <Modal
+        visible={true}  // Force visible when priceModal.visible is true
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setPriceModal({ visible: false, item: null, price: '' })}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.priceModalContent, { backgroundColor: currentTheme.card }]}>
+            
+            <View style={styles.priceModalHeader}>
+              <Text style={[styles.priceModalTitle, { color: currentTheme.text }]}>
+                Enter Price
+              </Text>
+              <TouchableOpacity 
+                onPress={() => setPriceModal({ visible: false, item: null, price: '' })}
+              >
+                <Ionicons name="close" size={24} color={currentTheme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {priceModal.item && (
+              <View style={styles.itemInfoContainer}>
+                {priceModal.item.imageUri && (
+                  <Image 
+                    source={{ uri: priceModal.item.imageUri }} 
+                    style={styles.modalItemImage} 
+                  />
+                )}
+                <Text style={[styles.modalItemName, { color: currentTheme.text }]}>
+                  {priceModal.item.name}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.priceInputContainer}>
+              <Text style={[styles.currencySymbol, { color: currentTheme.primary }]}>
+                {currencySymbol}
+              </Text>
+              <TextInput
+                style={[styles.priceInput, { 
+                  backgroundColor: currentTheme.surface,
+                  color: currentTheme.text,
+                  borderColor: currentTheme.border
+                }]}
+                placeholder="0.00"
+                placeholderTextColor={currentTheme.textSecondary}
+                keyboardType="numeric"
+                value={priceModal.price}
+                onChangeText={(text) => setPriceModal({ ...priceModal, price: text })}
+                autoFocus={true}
+              />
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickAmountScroll}>
+              {[10, 20, 50, 100, 200].map(amount => (
+                <TouchableOpacity
+                  key={amount}
+                  style={[styles.quickAmountBtn, { 
+                    backgroundColor: currentTheme.surface,
+                    borderColor: currentTheme.border 
+                  }]}
+                  onPress={() => setPriceModal({ ...priceModal, price: amount.toString() })}
+                >
+                  <Text style={[styles.quickAmountText, { color: currentTheme.text }]}>
+                    {formatPrice(amount)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={styles.priceModalButtons}>
+              <TouchableOpacity
+                style={[styles.priceModalBtn, styles.cancelBtn, { 
+                  borderColor: currentTheme.border,
+                  backgroundColor: currentTheme.surface
+                }]}
+                onPress={() => setPriceModal({ visible: false, item: null, price: '' })}
+              >
+                <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.priceModalBtn, styles.addBtn, { 
+                  backgroundColor: currentTheme.primary 
+                }]}
+                onPress={handlePriceSubmit}
+              >
+                <Text style={styles.addBtnText}>
+                  Add to Cart
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }, [priceModal.visible, priceModal.item, priceModal.price, currentTheme]);
+// Also add this useEffect
+useEffect(() => {
+  console.log('📢 MenuGrid - onOpenPriceItem prop:', !!handleOpenPriceItem);
+}, []);
+
+
+// ✅ ADD THIS FUNCTION
+// In PosScreen.tsx - Update this function
+const handlePriceSubmit = () => {
+  if (!priceModal.item) return;
+  
+  const price = parseFloat(priceModal.price);
+  if (isNaN(price) || price <= 0) {
+    Alert.alert('Error', 'Please enter valid price');
+    return;
+  }
+  
+  addToCart(priceModal.item, price);
+  setPriceModal({ visible: false, item: null, price: '' });  // ✅ Using priceModal
 };
 const checkPrinterStatus = async () => {
   try {
@@ -2017,81 +2663,7 @@ const testSunmiConnection = async () => {
     Alert.alert('❌ Error', 'Printer not responding');
   }
 };
-  const handleEditDish = (): void => {
-    if (editingDish && newDish.name && newDish.price) {
-      const oldEnglishCategory = editingDish.originalCategory || editingDish.category;
-      
-      const newEnglishCategory = (() => {
-        if (newDish.category === t.appetiser) return 'Appetiser';
-        if (newDish.category === t.mainCourse) return 'Main Course';
-        if (newDish.category === t.hotDrinks) return 'Hot Drinks';
-        if (newDish.category === t.desserts) return 'Desserts';
-        return newDish.category;
-      })();
-      
-      const updatedMenuItems = menuItems.map((item: any) => 
-        item.id === editingDish.id 
-          ? {
-              ...item,
-              originalName: newDish.name,
-              name: newDish.name,
-              category: newEnglishCategory,
-              originalCategory: newEnglishCategory,
-              displayCategory: newDish.category,
-              price: parseFloat(newDish.price),
-              imageUri: newDish.imageUri,
-            }
-          : item
-      );
-      
-      setMenuItems(updatedMenuItems);
-      
-      if (oldEnglishCategory !== newEnglishCategory) {
-        setDishGroups(dishGroups.map(group => {
-          if (group.name === editingDish.displayCategory || group.name === editingDish.category) {
-            return {...group, itemCount: Math.max(0, group.itemCount - 1)};
-          }
-          if (group.name === newDish.category) {
-            return {...group, itemCount: group.itemCount + 1};
-          }
-          return group;
-        }));
-      }
-      
-      setEditingDish(null);
-      setNewDish({ name: '', price: '', category: categories[0], imageUri: null });
-      setShowEditDish(false);
-      Alert.alert(t.success, `${newDish.name} ${t.updateSuccess}`);
-    }
-  };
-
-  const handleDeleteDish = (dish: any): void => {
-    Alert.alert(
-      t.delete,
-      `${t.confirmDelete} "${dish.name}"?`,
-      [
-        { text: t.no, style: 'cancel' },
-        {
-          text: t.yes,
-          style: 'destructive',
-          onPress: () => {
-            const updatedMenuItems = menuItems.filter((item: any) => item.id !== dish.id);
-            setMenuItems(updatedMenuItems);
-            
-            setDishGroups(dishGroups.map(group => 
-              group.name === dish.category 
-                ? {...group, itemCount: Math.max(0, group.itemCount - 1)} 
-                : group
-            ));
-            
-            setCart(cart.filter((item: any) => item.id !== dish.id));
-            
-            Alert.alert(t.success, `${dish.name} ${t.deleteSuccess}`);
-          }
-        }
-      ]
-    );
-  };
+  
 
   const total = calculateTotal();
 
@@ -2119,9 +2691,17 @@ const testSunmiConnection = async () => {
     setDishGroups={setDishGroups}
     currentTheme={currentTheme}
     t={t}
-    onItemUpdate={() => {
-      loadDishGroups();
-      loadDishItems();
+    onItemUpdate={async () => {  // ✅ Make it async
+      console.log('🔄 Item updated - forcing reload...');
+      
+      // ✅ Force reload with true parameter
+      await loadDishGroups(true);
+      await loadDishItems(true);
+      
+      // ✅ Force UI refresh
+      setMenuRefreshKey(prev => prev + 1);
+      
+      console.log('✅ Data reloaded, images should appear!');
     }}
     imageUploading={imageUploading}
     setImageUploading={setImageUploading}
@@ -2129,7 +2709,6 @@ const testSunmiConnection = async () => {
     captureImage={captureImage}
   />
 );
-
 
  const renderMainMenu = () => (
   <View style={[styles.menuContent, { backgroundColor: currentTheme.background }]}>
@@ -2414,7 +2993,7 @@ const renderCashModal = () => (
           </TouchableOpacity>
         </View>
 
-        {/* ✅ Updated with formatPrice */}
+        {/* Amount Display */}
         <View style={[styles.paymentAmountContainer, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.paymentAmountLabel, { color: currentTheme.textSecondary }]}>{t.totalAmount}</Text>
           <Text style={[styles.paymentAmountValue, { color: currentTheme.primary }]}>
@@ -2422,78 +3001,69 @@ const renderCashModal = () => (
           </Text>
         </View>
 
-        {paymentSuccess ? (
-          <View style={styles.paymentSuccessContainer}>
-            <ActivityIndicator size="large" color={currentTheme.success} />
-            <Text style={[styles.paymentSuccessText, { color: currentTheme.text }]}>{t.processing} {t.cash} {t.payment}</Text>
+        {/* ✅ REMOVED the paymentSuccess condition - Directly show input */}
+        
+        {/* Cash Input with Currency Symbol */}
+        <View style={styles.cashInputContainer}>
+          <Text style={[styles.cashInputLabel, { color: currentTheme.text }]}>{t.cashReceived}</Text>
+          <View style={[styles.cashInputWrapper, { borderColor: currentTheme.primary }]}>
+            <Text style={[styles.cashInputCurrency, { color: currentTheme.primary }]}>
+              {currencySymbol || '$'}
+            </Text>
+            <TextInput
+              style={[styles.cashInput, { color: currentTheme.text }]}
+              placeholder="0.00"
+              placeholderTextColor={currentTheme.textSecondary}
+              keyboardType="numeric"
+              value={cashAmount}
+              onChangeText={setCashAmount}
+              autoFocus={true}
+            />
           </View>
-        ) : (
-          <>
-            {/* Cash Input with Currency Symbol */}
-            <View style={styles.cashInputContainer}>
-              <Text style={[styles.cashInputLabel, { color: currentTheme.text }]}>{t.cashReceived}</Text>
-              <View style={[styles.cashInputWrapper, { borderColor: currentTheme.primary }]}>
-                <Text style={[styles.cashInputCurrency, { color: currentTheme.primary }]}>
-                  {currencySymbol || '$'}
-                </Text>
-                <TextInput
-                  style={[styles.cashInput, { color: currentTheme.text }]}
-                  placeholder="0.00"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
-                  value={cashAmount}
-                  onChangeText={setCashAmount}
-                  autoFocus={true}
-                />
-              </View>
-            </View>
+        </View>
 
-            {/* Balance Display with formatPrice */}
-            {cashAmount !== '' && !isNaN(parseFloat(cashAmount)) && (
-              <View style={[styles.balanceContainer, { backgroundColor: currentTheme.surface }]}>
-                <Text style={[styles.balanceLabel, { color: currentTheme.textSecondary }]}>
-                  {parseFloat(cashAmount) >= parseFloat(total) ? t.balanceToReturn : t.additionalNeeded}
-                </Text>
-                <Text style={[
-                  styles.balanceValue,
-                  parseFloat(cashAmount) >= parseFloat(total) ? { color: currentTheme.success } : { color: currentTheme.danger }
-                ]}>
-                  {formatPrice(Math.abs(parseFloat(cashAmount) - parseFloat(total)))}
-                </Text>
-                {parseFloat(cashAmount) < parseFloat(total) && (
-                  <Text style={[styles.balanceWarning, { color: currentTheme.danger }]}>
-                    {t.insufficientCash} {formatPrice(parseFloat(total) - parseFloat(cashAmount))} {t.more}
-                  </Text>
-                )}
-              </View>
+        {/* Balance Display */}
+        {cashAmount !== '' && !isNaN(parseFloat(cashAmount)) && (
+          <View style={[styles.balanceContainer, { backgroundColor: currentTheme.surface }]}>
+            <Text style={[styles.balanceLabel, { color: currentTheme.textSecondary }]}>
+              {parseFloat(cashAmount) >= parseFloat(total) ? t.balanceToReturn : t.additionalNeeded}
+            </Text>
+            <Text style={[
+              styles.balanceValue,
+              parseFloat(cashAmount) >= parseFloat(total) ? { color: currentTheme.success } : { color: currentTheme.danger }
+            ]}>
+              {formatPrice(Math.abs(parseFloat(cashAmount) - parseFloat(total)))}
+            </Text>
+            {parseFloat(cashAmount) < parseFloat(total) && (
+              <Text style={[styles.balanceWarning, { color: currentTheme.danger }]}>
+                {t.insufficientCash} {formatPrice(parseFloat(total) - parseFloat(cashAmount))} {t.more}
+              </Text>
             )}
-
-            {/* ✅ Smart Quick Amounts - Two Row System */}
-{/* ✅ Smart Quick Amounts - Fixed */}
-<View style={styles.quickAmountContainer}>
-  {/* Quick Cash */}
-  <Text style={[styles.quickAmountLabel, { color: currentTheme.text }]}>
-    {t.quickCash || 'Quick Cash'}
-  </Text>
-  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-    {[10, 20, 50, 100, 200, 500].map(amount => (
-      <TouchableOpacity
-        key={amount}
-        style={[styles.quickAmountBtn, { 
-          backgroundColor: currentTheme.surface,
-          borderColor: currentTheme.border 
-        }]}
-        onPress={() => setCashAmount(amount.toString())}
-      >
-        <Text style={[styles.quickAmountBtnText, { color: currentTheme.text }]}>
-          {formatPrice(amount)}  {/* ✅ Use formatPrice */}
-        </Text>
-      </TouchableOpacity>
-    ))}
-  </ScrollView>
-</View>
-          </>
+          </View>
         )}
+
+        {/* Quick Amount Buttons */}
+        <View style={styles.quickAmountContainer}>
+          <Text style={[styles.quickAmountLabel, { color: currentTheme.text }]}>
+            {t.quickCash || 'Quick Cash'}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {[10, 20, 50, 100, 200, 500].map(amount => (
+              <TouchableOpacity
+                key={amount}
+                style={[styles.quickAmountBtn, { 
+                  backgroundColor: currentTheme.surface,
+                  borderColor: currentTheme.border 
+                }]}
+                onPress={() => setCashAmount(amount.toString())}
+              >
+                <Text style={[styles.quickAmountBtnText, { color: currentTheme.text }]}>
+                  {formatPrice(amount)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         {/* Buttons */}
         <View style={styles.cashModalButtons}>
@@ -2587,7 +3157,21 @@ const renderCashModal = () => (
               </TouchableOpacity>
               
               <View style={[styles.dropdownDivider, { backgroundColor: currentTheme.border }]} />
-              
+                  <TouchableOpacity 
+      style={styles.dropdownItem}
+      onPress={() => {
+        setShowHomeMenu(false);
+        setShowDrawerLogs(true);  // ← New state
+      }}
+    >
+      <Text style={styles.dropdownIcon}>💰</Text>
+      <Text style={[styles.dropdownText, { color: currentTheme.text }]}>
+        Cash Drawer Logs
+      </Text>
+    </TouchableOpacity>
+    
+    <View style={[styles.dropdownDivider, { backgroundColor: currentTheme.border }]} />
+
               <TouchableOpacity 
                 style={styles.dropdownItem}
                 onPress={() => {
@@ -2604,10 +3188,89 @@ const renderCashModal = () => (
           )}
         </View>
         
-        <View style={styles.headerCenter}>
-          <Text style={[styles.registerText, { color: currentTheme.headerText }]}>
-            {user?.shopName || 'Unipro Softwares SG Pte Ltd'}</Text>
-        </View>
+      <View style={styles.headerCenter}>
+    {/* Make outlet name clickable for owners */}
+    <TouchableOpacity 
+        onPress={() => {
+            if (user?.role === 'owner') {
+                setShowOutletDropdown(!showOutletDropdown);
+            }
+        }}
+        style={styles.outletNameContainer}
+        activeOpacity={user?.role === 'owner' ? 0.7 : 1}
+    >
+        <Text style={[styles.registerText, { color: currentTheme.headerText }]}>
+            {/* Show dropdown arrow for owners */}
+            {user?.role === 'owner' ? '▼ ' : ''}
+            {user?.role === 'staff' 
+                ? user?.shopName 
+                : (outletInfo?.name || user?.shopName || 'POS System')
+            }
+        </Text>
+        
+        {/* Only show license for owners with outlet */}
+        {user?.role === 'owner' && outletInfo?.license && (
+            <Text style={[styles.licenseText, { color: currentTheme.headerText + 'CC' }]}>
+                {outletInfo.license}
+            </Text>
+        )}
+        
+        {user?.role === 'owner' && outletInfo?.expiry && (
+            <Text style={[styles.expiryText, { color: currentTheme.headerText + 'AA' }]}>
+                Expires: {new Date(outletInfo.expiry).toLocaleDateString()}
+            </Text>
+        )}
+    </TouchableOpacity>
+    
+    {/* Outlet Dropdown for owners */}
+{showOutletDropdown && user?.role === 'owner' && (
+  <View style={[styles.outletDropdown, { 
+    backgroundColor: currentTheme.card,
+    borderColor: currentTheme.border,
+    top: 60
+  }]}>
+    <Text style={[styles.dropdownTitle, { color: currentTheme.textSecondary }]}>
+      Select Outlet
+    </Text>
+    
+    {outlets?.length > 0 ? (  // ← Use outlets from context!
+      outlets.map(outlet => (
+        <TouchableOpacity
+          key={outlet.Id}
+          style={[
+            styles.outletOption,
+            outlet.Id === outletInfo?.id && { 
+              backgroundColor: currentTheme.primary + '20' 
+            }
+          ]}
+          onPress={async () => {
+            setShowOutletDropdown(false);
+            await switchOutlet(outlet);
+          }}
+        >
+          <View style={styles.outletOptionLeft}>
+            <Text style={[styles.outletOptionName, { color: currentTheme.text }]}>
+              {outlet.name}
+            </Text>
+            <Text style={[styles.outletOptionStaff, { color: currentTheme.textSecondary }]}>
+              Staff: {outlet.staffUsername || '—'}
+            </Text>
+          </View>
+          {outlet.LicenseActive ? (
+            <Text style={[styles.outletBadge, { color: currentTheme.success }]}>✅</Text>
+          ) : (
+            <Text style={[styles.outletBadge, { color: currentTheme.danger }]}>❌</Text>
+          )}
+        </TouchableOpacity>
+      ))
+    ) : (
+      <Text style={[styles.noOutletsText, { color: currentTheme.textSecondary, padding: 16 }]}>
+        No outlets available
+      </Text>
+    )}
+  </View>
+)}
+</View>
         
         <View style={styles.headerRight}>
           <TouchableOpacity 
@@ -2673,6 +3336,8 @@ const renderCashModal = () => (
       formatPrice={formatPrice} 
       activeCategory={activeCategory}
       categories={categories}
+     onOpenPriceItem={handleOpenPriceItem} 
+     columns={getGridColumns()}
     />
   </View>
          {!isOwner && (
@@ -2693,7 +3358,43 @@ const renderCashModal = () => (
         </View>
         )}
       </View>
-
+{showOutletSelector && (
+  <OutletSelector
+    visible={showOutletSelector}
+    outlets={outlets}
+    onSelect={async (outlet) => {
+      console.log('🎯 Outlet selected:', outlet);
+      
+      // ✅ Save to AsyncStorage
+      await AsyncStorage.setItem('selectedOutletId', outlet.Id.toString());
+      await AsyncStorage.setItem('selectedOutletName', outlet.name);
+       await AsyncStorage.setItem('selectedOutletLicense', outlet.LicenseKey || '');
+       await AsyncStorage.setItem('selectedOutletExpiry', outlet.ExpiryDate || '');
+      
+      // ✅ Update state IMMEDIATELY
+      setOutletInfo({
+        name: outlet.name,
+        license: outlet.LicenseKey,
+        expiry: outlet.ExpiryDate,
+        staff: outlet.staff?.username,
+        id: outlet.Id
+      });
+      
+      // ✅ Also update selectedOutlet if you have that state
+      setSelectedOutlet(outlet);
+      
+      // ✅ Call selectOutlet from context
+      await selectOutlet(outlet.Id);
+      
+      // ✅ Load data
+      await loadData();
+      
+       console.log('✅ Outlet info set:', outlet.name, 'License:', outlet.LicenseKey, 'Expiry:', outlet.ExpiryDate);
+}}
+    theme={currentTheme}
+    t={t}
+  />
+)}
       {/* Side Menu Modal */}
       <Modal
         visible={menuVisible}
@@ -2752,6 +3453,7 @@ const renderCashModal = () => (
   t={t}
   isMobile={isMobile}
   formatPrice={formatPrice}
+  userId={user?.id} 
 />
 <PayModeSettings
   visible={showPayModeSettings}
@@ -2845,6 +3547,7 @@ const renderCashModal = () => (
   qrCodeUrl={payNowQrUrl}
    formatPrice={formatPrice} 
 />
+
       {/* Profile Modal */}
       <ProfileModal
         visible={showProfileModal}
@@ -2862,6 +3565,117 @@ const renderCashModal = () => (
         handleLogout={handleLogout}
         user={user}
       />
+      <CashDrawerLogs
+  visible={showDrawerLogs}
+  onClose={() => setShowDrawerLogs(false)}
+  theme={currentTheme}
+  t={t}
+  userRole={user?.role || 'staff'}
+  outletId={outletInfo?.id}
+/>
+        {/* Open Price Modal */}
+ {/* Open Price Modal - Using priceModal state */}
+<Modal
+  key={`price-modal-${priceModal.visible ? 'open' : 'closed'}`}
+  visible={priceModal.visible}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => {
+    console.log('📱 Modal close requested');
+    setPriceModal({ visible: false, item: null, price: '' });
+  }}
+>
+  <View style={styles.modalOverlay}>
+    <View style={[styles.priceModalContent, { backgroundColor: currentTheme.card }]}>
+      
+      <View style={styles.priceModalHeader}>
+        <Text style={[styles.priceModalTitle, { color: currentTheme.text }]}>
+          Enter Price
+        </Text>
+        <TouchableOpacity 
+          onPress={() => setPriceModal({ visible: false, item: null, price: '' })}
+        >
+          <Ionicons name="close" size={24} color={currentTheme.text} />
+        </TouchableOpacity>
+      </View>
+
+      {priceModal.item && (
+        <View style={styles.itemInfoContainer}>
+          {priceModal.item.imageUri && (
+            <Image 
+              source={{ uri: priceModal.item.imageUri }} 
+              style={styles.modalItemImage} 
+            />
+          )}
+          <Text style={[styles.modalItemName, { color: currentTheme.text }]}>
+            {priceModal.item.name}
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.priceInputContainer}>
+        <Text style={[styles.currencySymbol, { color: currentTheme.primary }]}>
+          {currencySymbol}
+        </Text>
+        <TextInput
+          style={[styles.priceInput, { 
+            backgroundColor: currentTheme.surface,
+            color: currentTheme.text,
+            borderColor: currentTheme.border
+          }]}
+          placeholder="0.00"
+          placeholderTextColor={currentTheme.textSecondary}
+          keyboardType="numeric"
+          value={priceModal.price}
+          onChangeText={(text) => setPriceModal({ ...priceModal, price: text })}
+          autoFocus={true}
+        />
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickAmountScroll}>
+        {[10, 20, 50, 100, 200].map(amount => (
+          <TouchableOpacity
+            key={amount}
+            style={[styles.quickAmountBtn, { 
+              backgroundColor: currentTheme.surface,
+              borderColor: currentTheme.border 
+            }]}
+            onPress={() => setPriceModal({ ...priceModal, price: amount.toString() })}
+          >
+            <Text style={[styles.quickAmountText, { color: currentTheme.text }]}>
+              {formatPrice(amount)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <View style={styles.priceModalButtons}>
+        <TouchableOpacity
+          style={[styles.priceModalBtn, styles.cancelBtn, { 
+            borderColor: currentTheme.border,
+            backgroundColor: currentTheme.surface
+          }]}
+          onPress={() => setPriceModal({ visible: false, item: null, price: '' })}
+        >
+          <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.priceModalBtn, styles.addBtn, { 
+            backgroundColor: currentTheme.primary 
+          }]}
+          onPress={handlePriceSubmit}
+        >
+          <Text style={styles.addBtnText}>
+            Add to Cart
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
     </SafeAreaView>
   );
 }
@@ -3840,16 +4654,14 @@ quickAmountLabel: {
   marginBottom: 12,
   color: '#333',
 },
- quickAmountBtn: {
-  paddingHorizontal: 20,
-  paddingVertical: 12,
-  borderRadius: 10,
-  marginRight: 10,
+quickAmountBtn: {
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  borderRadius: 20,
+  marginRight: 8,
   borderWidth: 1,
   minWidth: 70,
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: '#f5f5f5',
+  alignItems: 'center',         // ✅ Centers text inside button
 },
  quickAmountBtnText: {
   fontSize: 16,
@@ -3858,7 +4670,9 @@ quickAmountLabel: {
 },
 quickAmountScroll: {
   flexDirection: 'row',
-  marginBottom: 8,
+  maxHeight: 50,
+  marginBottom: 20,
+  width: '100%',                // ✅ Takes full width
 },
   cashModalButtons: {
   flexDirection: 'row',
@@ -3927,6 +4741,54 @@ cashModalConfirm: {
     minHeight: 44,
     justifyContent: 'center',
   },
+  // Add to your StyleSheet
+outletNameContainer: {
+    alignItems: 'center',
+    padding: 4,
+},
+outletDropdown: {
+    position: 'absolute',
+    width: 280,
+    maxHeight: 300,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 8,
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+},
+dropdownTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    padding: 8,
+    paddingBottom: 4,
+},
+outletOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 2,
+},
+outletOptionLeft: {
+    flex: 1,
+},
+outletOptionName: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 2,
+},
+outletOptionStaff: {
+    fontSize: 11,
+},
+outletBadge: {
+    fontSize: 16,
+    marginLeft: 8,
+},
   filterBtnText: { 
     fontSize: 13, 
     fontWeight: '500',
@@ -4001,6 +4863,12 @@ cashModalConfirm: {
     minHeight: 80,
     justifyContent: 'center',
   },
+   noOutletsText: {
+        fontSize: 14,
+        textAlign: 'center',
+        padding: 20,
+        includeFontPadding: false,
+    }, 
   summaryLabel: { 
     fontSize: 13, 
     marginBottom: 6,
@@ -4178,6 +5046,88 @@ saleTotalContainer: {  // ✅ THIS IS THE MISSING STYLE
     fontSize: 15,
     includeFontPadding: false,
   },
+  // Add these to your styles object
+priceModalContent: {
+  width: '100%',
+  maxWidth: 450,
+  borderRadius: 20,
+  padding: 20,
+  // ✅ Already has backgroundColor from theme
+},
+priceModalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 20,
+  width: '100%',                // ✅ Takes full width
+},
+priceModalTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+},
+itemInfoContainer: {
+  alignItems: 'center',         // ✅ Centers image and name
+  marginBottom: 50,
+  width: '100%',
+},
+modalItemImage: {
+  width: 80,
+  height: 80,
+  borderRadius: 12,
+  marginBottom: 10,
+},
+modalItemName: {
+  fontSize: 16,
+  fontWeight: '600',
+  textAlign: 'center',
+},
+priceInputContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',     // ✅ Centers the input row
+  marginBottom: 60,
+  width: '100%',
+},
+
+currencySymbol: {
+  fontSize: 24,
+  fontWeight: '700',
+  marginRight: 10,
+},
+priceInput: {
+  flex: 1,
+  borderWidth: 1,
+  borderRadius: 10,
+  padding: 15,
+  fontSize: 20,
+  textAlign: 'center',
+},
+
+
+quickAmountText: {
+  fontSize: 14,
+  fontWeight: '600',
+},
+priceModalButtons: {
+  flexDirection: 'row',
+  gap: 12,
+  justifyContent: 'space-between',  // ✅ Buttons side by side
+  width: '100%',
+},
+priceModalBtn: {
+  flex: 1,
+  paddingVertical: 14,
+  borderRadius: 10,
+  alignItems: 'center',         // ✅ Centers button text
+},
+addBtn: {
+  backgroundColor: '#4CAF50',
+},
+addBtnText: {
+  color: '#fff',
+  fontSize: 15,
+  fontWeight: '600',
+},
   modalContainer: { 
     flex: 1, 
     backgroundColor: 'rgba(0, 0, 0, 0.5)', 
@@ -4529,6 +5479,14 @@ bottomLogo: {
   alignItems: 'center',
   marginRight: 10,
 },
+expiryText: {
+    fontSize: 9,
+    fontWeight: '300',
+    includeFontPadding: false,
+    textAlign: 'center',
+    marginTop: 1,
+    opacity: 0.7,
+},
 bottomLogoText: {
   fontSize: 16,
 },
@@ -4666,6 +5624,23 @@ quickAmountSubText: {
   fontSize: 8,
   marginTop: 2,
   textAlign: 'center',
+},
+  licenseText: {
+    fontSize: 10,
+    fontWeight: '400',
+    includeFontPadding: false,
+    textAlign: 'center',
+    marginTop: 2,
+    opacity: 0.8,
+  },
+
+staffText: {
+    fontSize: 9,
+    fontWeight: '300',
+    includeFontPadding: false,
+    textAlign: 'center',
+    marginTop: 1,
+    opacity: 0.7,
 },
 dropdownDivider: {
   height: 1,

@@ -1,36 +1,17 @@
 // frontend/src/components/UPIQRPayment.tsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   Modal,
   StyleSheet,
-  Alert,
-  AppState,
-  AppStateStatus,
-  Share,
-  Linking,
-  Platform
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import QRCode from 'react-native-qrcode-svg';
-import { useCurrency } from '../context/CurrencyContext';  // ✅ Add this
-
-// Clipboard fallback
-let Clipboard: any;
-try {
-  Clipboard = require('expo-clipboard');
-} catch (e) {
-  console.log('Clipboard not available, using fallback');
-  Clipboard = {
-    setStringAsync: async (text: string) => {
-      Alert.alert('UPI ID', text);
-      return true;
-    }
-  };
-}
+import QRCode from 'react-native-qrcode-svg';  // ✅ ADD THIS!
+import { useCurrency } from '../context/CurrencyContext';
 
 interface UPIQRPaymentProps {
   visible: boolean;
@@ -55,16 +36,12 @@ const UPIQRPayment: React.FC<UPIQRPaymentProps> = ({
   shopName,
   upiId
 }) => {
-  // ✅ Add currency hook
   const { formatPrice } = useCurrency();
-  
   const [showQR, setShowQR] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
   
   useEffect(() => {
     if (visible) {
       setShowQR(true);
-      setIsProcessing(false);
     }
   }, [visible]);
 
@@ -85,8 +62,12 @@ const UPIQRPayment: React.FC<UPIQRPaymentProps> = ({
     );
   };
 
-  const handleCancel = () => {
-    onClose();
+  // Generate UPI URL
+  const generateUPIUrl = () => {
+    if (!upiId) return '';
+    const cleanUpiId = upiId.trim();
+    const cleanShopName = shopName.replace(/[&?=]/g, '').trim();
+    return `upi://pay?pa=${cleanUpiId}&pn=${cleanShopName}&am=${amount}&cu=INR`;
   };
 
   return (
@@ -102,22 +83,21 @@ const UPIQRPayment: React.FC<UPIQRPaymentProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* ✅ Amount - Updated with formatPrice */}
+          {/* Amount */}
           <View style={[styles.amountContainer, { backgroundColor: theme.surface }]}>
             <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>Amount to Pay</Text>
             <Text style={[styles.amountValue, { color: theme.primary }]}>
-              {formatPrice(amount)}  {/* ✅ Changed from ₹{amount} */}
+              {formatPrice(amount)}
             </Text>
           </View>
 
-          {/* QR Code */}
-          {showQR && (
+          {/* QR Code - Now visible! */}
+          {showQR && upiId && (
             <>
               <View style={styles.qrContainer}>
                 <View style={[styles.qrBox, { backgroundColor: '#fff' }]}>
                   <QRCode
-                    value={`upi://pay?pa=${encodeURIComponent(upiId || '')}&pn=${encodeURIComponent(shopName || '')}&am=${amount}&cu=INR`}
-
+                    value={generateUPIUrl()}
                     size={200}
                     color="#000"
                     backgroundColor="#fff"
@@ -139,33 +119,28 @@ const UPIQRPayment: React.FC<UPIQRPaymentProps> = ({
             </>
           )}
 
-          {/* Manual Confirmation Button */}
+          {/* Buttons */}
           <TouchableOpacity
-            style={[styles.successButton, { backgroundColor: theme.success, marginBottom: 10 }]}
+            style={[styles.successButton, { backgroundColor: theme.success }]}
             onPress={handleManualSuccess}
           >
             <Ionicons name="checkmark-circle" size={24} color="#fff" />
             <Text style={styles.successButtonText}>✅ Payment Received</Text>
           </TouchableOpacity>
 
-          {/* Cancel Button */}
           <TouchableOpacity
-            style={[styles.failedButton, { borderColor: theme.danger, marginBottom: 10 }]}
+            style={[styles.failedButton, { borderColor: theme.danger }]}
             onPress={() => {
-              Alert.alert(
-                'Cancel Payment',
-                'Cancel this transaction?',
-                [
-                  { text: 'No', style: 'cancel' },
-                  {
-                    text: 'Yes',
-                    onPress: () => {
-                      if (onFailed) onFailed();
-                      onClose();
-                    }
+              Alert.alert('Cancel Payment', 'Cancel this transaction?', [
+                { text: 'No', style: 'cancel' },
+                {
+                  text: 'Yes',
+                  onPress: () => {
+                    if (onFailed) onFailed();
+                    onClose();
                   }
-                ]
-              );
+                }
+              ]);
             }}
           >
             <Ionicons name="close-circle" size={20} color={theme.danger} />
@@ -178,7 +153,6 @@ const UPIQRPayment: React.FC<UPIQRPaymentProps> = ({
   );
 };
 
-// Styles remain the same
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
@@ -216,19 +190,29 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
   },
-  qrContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  qrBox: {
-    width: 200,
-    height: 200,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 10,
-    marginBottom: 8,
-  },
+// In your styles, update/add these:
+
+qrContainer: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginVertical: 20,
+  minHeight: 220,  // Force height
+  width: '100%',
+},
+
+qrBox: {
+  width: 200,
+  height: 200,
+  borderRadius: 12,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#fff',
+  elevation: 5,  // Add shadow for Android
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+},
   qrSubtext: {
     fontSize: 12,
     marginTop: 4,
@@ -252,6 +236,7 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 16,
     borderRadius: 10,
+    marginBottom: 10,
   },
   failedButton: {
     flexDirection: 'row',
@@ -267,6 +252,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  
   failedButtonText: {
     fontSize: 14,
     fontWeight: '500',

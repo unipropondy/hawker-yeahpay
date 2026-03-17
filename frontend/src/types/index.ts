@@ -22,6 +22,7 @@ export interface MenuItem {
   originalCategory: string;
   displayCategory?: string;
   isActive?: boolean; 
+  isOpenPrice?: boolean; 
 }
 
 interface DishGroup {

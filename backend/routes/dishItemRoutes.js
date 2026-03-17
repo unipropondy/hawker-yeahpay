@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { getPool, sql } = require('../config/db');  // ✅ Add for middleware
+const { getPool, sql } = require('../config/db');
 const {
     getAllItems,
     getItemsByCategory,
@@ -14,41 +14,78 @@ const {
 const { authenticateToken } = require('../middleware/auth');
 
 // ============================================
-// MIDDLEWARE - Get effective user ID (owner for staff)
+// MIDDLEWARE - Get effective OUTLET ID
 // ============================================
-const getEffectiveUserId = async (req, res, next) => {
+const getEffectiveOutletId = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
         
-        // If user is staff, get their owner's ID
+        // For staff: get their outlet ID from Users table
         if (userRole === 'staff') {
             const pool = getPool();
             const result = await pool.request()
                 .input('userId', sql.Int, userId)
-                .query('SELECT OwnerId FROM Users WHERE Id = @userId');
+                .query('SELECT OutletId FROM Users WHERE Id = @userId');
             
-            if (result.recordset.length > 0 && result.recordset[0].OwnerId) {
-                req.effectiveUserId = result.recordset[0].OwnerId;
-                console.log(`👤 Staff ${userId} using owner ${req.effectiveUserId} data for dish items`);
+            if (result.recordset.length > 0 && result.recordset[0].OutletId) {
+                req.outletId = result.recordset[0].OutletId;
+                console.log(`👤 Staff ${userId} using outlet ${req.outletId} for dish items`);
             } else {
-                req.effectiveUserId = userId; // Fallback
+                return res.status(403).json({ error: 'Staff not assigned to any outlet' });
             }
-        } else {
-            // Owner or admin uses their own ID
-            req.effectiveUserId = userId;
+        }
+        
+        // For owner: get outlet from header or query
+        else if (userRole === 'owner') {
+            const outletId = req.headers['x-outlet-id'] || req.query.outletId;
+            
+            if (!outletId) {
+                return res.status(400).json({ 
+                    error: 'OUTLET_REQUIRED',
+                    message: 'Please select an outlet'
+                });
+            }
+            
+            // Verify outlet belongs to this owner
+            const pool = getPool();
+            const result = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .input('ownerId', sql.Int, userId)
+                .query('SELECT Id FROM Outlets WHERE Id = @outletId AND OwnerId = @ownerId');
+            
+            if (result.recordset.length === 0) {
+                return res.status(403).json({ error: 'Access denied to this outlet' });
+            }
+            
+            req.outletId = parseInt(outletId);
+            console.log(`👑 Owner ${userId} using outlet ${req.outletId} for dish items`);
+        }
+        
+        // Admin - can access any outlet (must specify)
+        else if (userRole === 'admin') {
+            const outletId = req.query.outletId;
+            if (outletId) {
+                req.outletId = parseInt(outletId);
+            } else {
+                return res.status(400).json({ error: 'Outlet ID required for admin' });
+            }
+        }
+        
+        if (!req.outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
         }
         
         next();
+        
     } catch (err) {
-        console.error('❌ Error in getEffectiveUserId:', err);
-        req.effectiveUserId = req.user.id;
-        next();
+        console.error('❌ Error in getEffectiveOutletId:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
 // ============================================
-// MULTER CONFIGURATION
+// MULTER CONFIGURATION (unchanged)
 // ============================================
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -61,7 +98,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const filetypes = /jpeg|jpg|png|gif/;
         const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -79,19 +116,19 @@ const upload = multer({
 // APPLY MIDDLEWARE TO ALL ROUTES
 // ============================================
 router.use(authenticateToken);  // First authenticate
-router.use(getEffectiveUserId); // Then get effective user ID
+router.use(getEffectiveOutletId); // Then get effective outlet ID
 
 // ============================================
-// ROUTES
+// ROUTES (unchanged - controllers handle the logic)
 // ============================================
 
-// GET all dish items - Staff sees owner's items
+// GET all dish items
 router.get('/', getAllItems);
 
 // GET items by category
 router.get('/category/:categoryId', getItemsByCategory);
 
-// CREATE new dish item - Staff creates under owner's ID
+// CREATE new dish item
 router.post('/', upload.single('image'), createItem);
 
 // UPDATE dish item

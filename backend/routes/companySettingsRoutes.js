@@ -1,58 +1,96 @@
-// backend/routes/companySettingsRoutes.js - UPDATED with Owner-Staff Support
+// backend/routes/companySettingsRoutes.js
 const express = require('express');
 const router = express.Router();
 const { getPool, sql } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
 // ============================================
-// HELPER FUNCTION - Get effective user ID (owner for staff)
+// MIDDLEWARE - Get effective OUTLET ID
 // ============================================
-const getEffectiveUserId = async (userId, userRole) => {
-    // If user is staff, get their owner's ID
-    if (userRole === 'staff') {
-        const pool = getPool();
-        const result = await pool.request()
-            .input('userId', sql.Int, userId)
-            .query('SELECT OwnerId FROM Users WHERE Id = @userId');
+const getEffectiveOutletId = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        let outletId = null;
         
-        if (result.recordset.length > 0 && result.recordset[0].OwnerId) {
-            console.log(`👤 Staff ${userId} using owner ${result.recordset[0].OwnerId} for company settings`);
-            return result.recordset[0].OwnerId;
+        console.log(`🔍 Getting outlet for ${userRole} ${userId}`);
+        
+        if (userRole === 'staff') {
+            const pool = getPool();
+            const result = await pool.request()
+                .input('userId', sql.Int, userId)
+                .query('SELECT OutletId FROM Users WHERE Id = @userId');
+            
+            if (result.recordset.length > 0 && result.recordset[0].OutletId) {
+                outletId = result.recordset[0].OutletId;
+                console.log(`👤 Staff ${userId} using outlet ${outletId}`);
+            } else {
+                return res.status(403).json({ error: 'Staff not assigned to any outlet' });
+            }
         }
+        
+        else if (userRole === 'owner') {
+            outletId = req.headers['x-outlet-id'] || req.query.outletId;
+            
+            if (!outletId) {
+                return res.status(400).json({ 
+                    error: 'OUTLET_REQUIRED',
+                    message: 'Please select an outlet'
+                });
+            }
+            
+            const pool = getPool();
+            const result = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .input('ownerId', sql.Int, userId)
+                .query('SELECT Id FROM Outlets WHERE Id = @outletId AND OwnerId = @ownerId');
+            
+            if (result.recordset.length === 0) {
+                return res.status(403).json({ error: 'Access denied to this outlet' });
+            }
+            
+            outletId = parseInt(outletId);
+            console.log(`👑 Owner ${userId} using outlet ${outletId}`);
+        }
+        
+        else if (userRole === 'admin') {
+            outletId = req.query.outletId;
+            if (!outletId) {
+                return res.status(400).json({ error: 'Outlet ID required for admin' });
+            }
+            outletId = parseInt(outletId);
+        }
+        
+        req.outletId = outletId;
+        req.query.outletId = outletId;
+        if (req.body) req.body.outletId = outletId;
+        
+        next();
+        
+    } catch (err) {
+        console.error('❌ Error in getEffectiveOutletId:', err);
+        res.status(500).json({ error: err.message });
     }
-    // Owner or admin uses their own ID
-    return userId;
 };
 
+// Apply middleware
+router.use(authenticateToken);
+router.use(getEffectiveOutletId);
+
 // ============================================
-// GET company settings
+// GET company settings (UPDATED)
 // ============================================
-router.get('/:userId', authenticateToken, async (req, res) => {
+router.get('/:targetId', authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.params;
-        const loggedInUserId = req.user.id;
-        const userRole = req.user.role;
-        
-        // Get effective user ID (if staff, use owner)
-        const effectiveUserId = await getEffectiveUserId(parseInt(userId), userRole);
-        
-        // Security check - allow if:
-        // 1. User is accessing their own data (or owner's data for staff)
-        // 2. User is admin
-        if (parseInt(userId) !== loggedInUserId && 
-            effectiveUserId !== loggedInUserId && 
-            userRole !== 'admin') {
-            return res.status(403).json({ error: 'Access denied' });
-        }
+        const outletId = req.outletId;
         
         const pool = getPool();
         
-        // ✅ Use effectiveUserId for query
         const result = await pool.request()
-            .input('userId', sql.Int, effectiveUserId)
+            .input('outletId', sql.Int, outletId)
             .query(`
                 SELECT 
-                    u.ShopName,
+                    o.OutletName as ShopName,
                     ISNULL(c.CompanyName, '') as CompanyName,
                     ISNULL(c.Address, '') as Address,
                     ISNULL(c.GSTNo, '') as GSTNo,
@@ -62,13 +100,13 @@ router.get('/:userId', authenticateToken, async (req, res) => {
                     ISNULL(c.CashierName, '') as CashierName,
                     ISNULL(c.Currency, 'SGD') as Currency,
                     ISNULL(c.CurrencySymbol, '$') as CurrencySymbol
-                FROM Users u
-                LEFT JOIN CompanySettings c ON u.Id = c.UserId
-                WHERE u.Id = @userId
+                FROM Outlets o
+                LEFT JOIN CompanySettings c ON o.Id = c.OutletId
+                WHERE o.Id = @outletId
             `);
         
         if (result.recordset.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+            return res.status(404).json({ error: 'Outlet not found' });
         }
         
         const row = result.recordset[0];
@@ -85,7 +123,7 @@ router.get('/:userId', authenticateToken, async (req, res) => {
             CurrencySymbol: row.CurrencySymbol
         };
         
-        console.log(`✅ ${userRole} ${loggedInUserId} fetched settings for user ${effectiveUserId}`);
+        console.log(`✅ ${req.user.role} ${req.user.id} fetched settings for outlet ${outletId}`);
         res.json({
             success: true,
             settings,
@@ -99,24 +137,10 @@ router.get('/:userId', authenticateToken, async (req, res) => {
 });
 
 // ============================================
-// POST (create/update) company settings
+// POST (create/update) company settings (UPDATED)
 // ============================================
-router.post('/:userId', authenticateToken, async (req, res) => {
+router.post('/:targetId', authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.params;
-        const loggedInUserId = req.user.id;
-        const userRole = req.user.role;
-        
-        // Get effective user ID (if staff, update owner's settings)
-        const effectiveUserId = await getEffectiveUserId(parseInt(userId), userRole);
-        
-        // Security check
-        if (parseInt(userId) !== loggedInUserId && 
-            effectiveUserId !== loggedInUserId && 
-            userRole !== 'admin') {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-        
         const { 
             CompanyName, 
             Address, 
@@ -129,11 +153,13 @@ router.post('/:userId', authenticateToken, async (req, res) => {
             CurrencySymbol
         } = req.body;
         
+        const outletId = req.outletId;
+        
         const pool = getPool();
         
-        // ✅ Save under effectiveUserId (owner's ID for staff)
+        // ✅ Save using OutletId only (UserId can be NULL)
         await pool.request()
-            .input('userId', sql.Int, effectiveUserId)
+            .input('outletId', sql.Int, outletId)
             .input('companyName', sql.NVarChar, CompanyName || '')
             .input('address', sql.NVarChar, Address || '')
             .input('gstNo', sql.NVarChar, GSTNo || '')
@@ -145,8 +171,8 @@ router.post('/:userId', authenticateToken, async (req, res) => {
             .input('currencySymbol', sql.NVarChar, CurrencySymbol || '$')
             .query(`
                 MERGE INTO CompanySettings AS target
-                USING (SELECT @userId AS UserId) AS source
-                ON target.UserId = source.UserId
+                USING (SELECT @outletId AS OutletId) AS source
+                ON target.OutletId = source.OutletId
                 WHEN MATCHED THEN
                     UPDATE SET 
                         CompanyName = @companyName,
@@ -159,11 +185,11 @@ router.post('/:userId', authenticateToken, async (req, res) => {
                         Currency = @currency,
                         CurrencySymbol = @currencySymbol
                 WHEN NOT MATCHED THEN
-                    INSERT (UserId, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol)
-                    VALUES (@userId, @companyName, @address, @gstNo, @gstPercentage, @phone, @email, @cashierName, @currency, @currencySymbol);
+                    INSERT (OutletId, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol)
+                    VALUES (@outletId, @companyName, @address, @gstNo, @gstPercentage, @phone, @email, @cashierName, @currency, @currencySymbol);
             `);
         
-        console.log(`✅ ${userRole} ${loggedInUserId} saved settings for user ${effectiveUserId}`);
+        console.log(`✅ ${req.user.role} ${req.user.id} saved settings for outlet ${outletId}`);
         res.json({ 
             success: true, 
             message: 'Company settings saved successfully' 

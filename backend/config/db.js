@@ -27,7 +27,7 @@ const config = {
 let pool = null;
 let connecting = false;
 let connectionPromise = null;
-
+let monitoringInterval = null; 
 // Store config in a variable that monitoring can access
 const poolConfig = config.pool;
 
@@ -85,6 +85,7 @@ const connectDB = async () => {
 };
 
 const resetPool = () => {
+    stopPoolMonitoring(); 
     pool = null;
     connecting = false;
     connectionPromise = null;
@@ -107,8 +108,19 @@ const updatePoolMetrics = () => {
     }
 };
 
+ // Store interval reference
+
 const startPoolMonitoring = () => {
-    setInterval(() => {
+    // Stop existing monitoring if any (safety)
+    if (monitoringInterval) {
+        console.log('🔄 Stopping existing monitoring');
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+    }
+    
+    // Start new monitoring
+    console.log('📊 Starting pool monitoring (every 60s)');
+    monitoringInterval = setInterval(() => {
         if (pool) {
             updatePoolMetrics();
             
@@ -120,7 +132,6 @@ const startPoolMonitoring = () => {
                 time: poolMetrics.lastChecked
             });
 
-            // ✅ FIXED: Use poolConfig instead of config.pool
             if (poolMetrics.connectionWaitTime > 5) {
                 console.warn('⚠️ High connection wait time:', poolMetrics.connectionWaitTime);
             }
@@ -132,6 +143,14 @@ const startPoolMonitoring = () => {
     }, 60000);
 };
 
+// ✅ ADD THIS FUNCTION
+const stopPoolMonitoring = () => {
+    if (monitoringInterval) {
+        console.log('🛑 Stopping pool monitoring');
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+    }
+};
 const getPool = () => {
     if (!pool) {
         throw new Error('Database not connected. Call connectDB first.');
@@ -178,13 +197,15 @@ const closePool = async () => {
 };
 
 process.on('SIGINT', async () => {
-    console.log('📦 Received SIGINT, closing pool...');
+    console.log('📦 Received SIGINT, cleaning up...');
+    stopPoolMonitoring(); 
     await closePool();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-    console.log('📦 Received SIGTERM, closing pool...');
+     console.log('📦 Received SIGTERM, cleaning up...');
+    stopPoolMonitoring();
     await closePool();
     process.exit(0);
 });

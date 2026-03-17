@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAPI } from '../api';
 import { useCurrency } from '../context/CurrencyContext';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 interface MenuItem {
   id: number;
   name: string;
@@ -35,6 +35,7 @@ interface MenuItem {
   originalCategory?: string;
   displayCategory?: string;
   isActive?: boolean;
+  isOpenPrice?: boolean;  // ✅ NEW FIELD
 }
 
 interface DishGroup {
@@ -75,6 +76,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
   captureImage,
 }) => {
   const { formatPrice } = useCurrency();
+  const [refreshKey, setRefreshKey] = useState(0);
   
   // ============================================
   // STATE MANAGEMENT
@@ -83,6 +85,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
   const [showAddDish, setShowAddDish] = useState(false);
   const [showEditDish, setShowEditDish] = useState(false);
   const [editingDish, setEditingDish] = useState<MenuItem | null>(null);
+  const [isOpenPrice, setIsOpenPrice] = useState(false);  // ✅ NEW STATE
   
   const [newDish, setNewDish] = useState<any>({
     name: '',
@@ -90,6 +93,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
     category: '',
     imageUri: null,
     isActive: true,
+    isOpenPrice: false,  // ✅ NEW FIELD
   });
   
   const [loading, setLoading] = useState(false);
@@ -116,21 +120,19 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
         item.displayCategory === selectedGroup.name ||
         item.category === selectedGroup.name
       )
-      .sort((a, b) => a.name.localeCompare(b.name)); // Sort items alphabetically within group
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [menuItems, selectedGroup]);
 
   // ============================================
   // EFFECTS
   // ============================================
   
-  // ✅ FIRST DISHGROUP SHOW AAGUM - Set first group as selected when groups load
   useEffect(() => {
     if (sortedGroups.length > 0 && !selectedGroup) {
       setSelectedGroup(sortedGroups[0]);
     }
   }, [sortedGroups]);
 
-  // ✅ ADD FORM LA CATEGORY AUTO-SET - Update form category when selected group changes
   useEffect(() => {
     if (selectedGroup && showAddDish) {
       setNewDish(prev => ({
@@ -139,6 +141,38 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       }));
     }
   }, [selectedGroup, showAddDish]);
+// In DishItemsManagement.tsx - Add useEffect to check outlet
+
+useEffect(() => {
+  const checkOutlet = async () => {
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    if (!outletId) {
+      Alert.alert(
+        'No Outlet Selected',
+        'Please select an outlet first',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Close modal or navigate back
+              setShowAddDish(false);
+            }
+          }
+        ]
+      );
+    }
+  };
+  
+  if (showAddDish) {
+    checkOutlet();
+  }
+}, [showAddDish]);
+  // ✅ Reset isOpenPrice when form closes
+  useEffect(() => {
+    if (!showAddDish && !showEditDish) {
+      setIsOpenPrice(false);
+    }
+  }, [showAddDish, showEditDish]);
 
   // ============================================
   // HELPER FUNCTIONS
@@ -163,13 +197,15 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       return false;
     }
 
-    const price = parseFloat(newDish.price);
-    if (isNaN(price) || price <= 0) {
-      Alert.alert(t.error || 'Error', 'Please enter valid price');
-      return false;
+    // ✅ Only validate price if NOT open price
+    if (!isOpenPrice) {
+      const price = parseFloat(newDish.price);
+      if (isNaN(price) || price <= 0) {
+        Alert.alert(t.error || 'Error', 'Please enter valid price');
+        return false;
+      }
     }
 
-    // ✅ CHECK CATEGORY - Should be automatically set from selectedGroup
     if (!selectedGroup) {
       Alert.alert(t.error || 'Error', 'Please select a group first');
       return false;
@@ -191,30 +227,64 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
     setNewDish({
       name: '',
       price: '',
-      category: selectedGroup.name, // ✅ AUTO-SET from selected group
+      category: selectedGroup.name,
       imageUri: null,
-      isActive: true
+      isActive: true,
+      isOpenPrice: false,
     });
+    setIsOpenPrice(false);  // ✅ Reset checkbox
     setCategoryError(false);
     setShowAddDish(true);
   };
-
-   const handleAddDish = async (): Promise<void> => {
+// Add this near your other useEffects
+useEffect(() => {
+  console.log('🔄 isOpenPrice changed to:', isOpenPrice);
+  console.log('📦 newDish price:', newDish.price);
+}, [isOpenPrice, newDish.price]);
+  const handleAddDish = async (): Promise<void> => {
     if (!validateDishForm() || !selectedGroup) return;
 
     setLoading(true);
     setCategoryError(false);
     
     try {
+      // ✅ STEP 1: GET OUTLET ID FROM STORAGE
+      const outletId = await AsyncStorage.getItem('selectedOutletId');
+      
+      // ✅ STEP 2: CHECK IF OUTLET EXISTS
+      if (!outletId) {
+        Alert.alert(
+          'Outlet Required',
+          'Please select an outlet before adding items.',
+          [
+            {
+              text: 'OK',
+              onPress: () => setShowAddDish(false)
+            }
+          ]
+        );
+        setLoading(false);
+        return;
+      }
+      
+      console.log('📍 Adding dish for outlet:', outletId);
+      
       const formData = new FormData();
       formData.append('name', newDish.name.trim());
-      formData.append('price', parseFloat(newDish.price).toString());
+      
+      // ✅ If open price, send price as 0
+      const priceValue = isOpenPrice ? '0' : newDish.price;
+      formData.append('price', priceValue);
+      formData.append('isOpenPrice', isOpenPrice ? 'true' : 'false');
       formData.append('isActive', newDish.isActive ? 'true' : 'false');
       
       formData.append('category', selectedGroup.id.toString());
       formData.append('originalName', newDish.name.trim());
       formData.append('originalCategory', selectedGroup.name);
       formData.append('displayCategory', selectedGroup.name);
+      
+      // ✅ STEP 3: ADD OUTLET ID TO FORM DATA
+      formData.append('outletId', outletId);
 
       if (newDish.imageUri) {
         const filename = newDish.imageUri.split('/').pop();
@@ -229,59 +299,44 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       }
 
       const response = await uploadAPI.post('/dishitems', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': 'multipart/form-data',
+    'X-Outlet-Id': outletId   },
       });
 
-      console.log('✅ Upload response:', response.data);
-
-      // ✅ FIX: Dynamic baseURL based on environment
       const baseURL = __DEV__ 
-        ? 'http://192.168.0.169:5000'  // Development
-        : 'https://hawkerfinalv-production.up.railway.app'; // Production
+        ? 'http://192.168.0.169:5000'
+        : 'https://hawkerfinalv-production.up.railway.app';
       
-      // Get image path from response
       const imagePath = response.data.imageUri || response.data.ImageUrl;
       
-      // Construct full URL
       let imageUrl = null;
       if (imagePath) {
         if (imagePath.startsWith('http')) {
-          imageUrl = imagePath;  // Already full URL
+          imageUrl = imagePath;
         } else if (imagePath.startsWith('/')) {
-          imageUrl = `${baseURL}${imagePath}`;  // Add base URL
+          imageUrl = `${baseURL}${imagePath}`;
         } else {
-          imageUrl = `${baseURL}/uploads/${imagePath}`;  // Just filename
+          imageUrl = `${baseURL}/uploads/${imagePath}`;
         }
       }
-
-      console.log('🖼️ Image URL:', {
-        original: imagePath,
-        constructed: imageUrl,
-        environment: __DEV__ ? 'Development' : 'Production',
-        baseURL
-      });
 
       const newItem = {
         id: response.data.Id || response.data.id,
         name: response.data.Name || response.data.name,
-        price: parseFloat(response.data.Price || response.data.price || newDish.price),
+        price: isOpenPrice ? 0 : parseFloat(newDish.price),
         category: selectedGroup.id.toString(),
         categoryId: selectedGroup.id.toString(),
         displayCategory: selectedGroup.name,
-        imageUri: imageUrl,  // ✅ Store full URL
+        imageUri: imageUrl,
         originalName: newDish.name.trim(),
         originalCategory: selectedGroup.name,
         isActive: newDish.isActive,
+        isOpenPrice: isOpenPrice,
+        outletId: parseInt(outletId)  // ✅ Store outlet ID in item
       };
-
-      console.log('✅ New item created:', {
-        name: newItem.name,
-        imageUri: newItem.imageUri
-      });
   
       setMenuItems([...menuItems, newItem]);
 
-      // Update group item count
       const updatedGroups = dishGroups.map(group =>
         group.id === selectedGroup.id
           ? { ...group, itemCount: (group.itemCount || 0) + 1 }
@@ -291,7 +346,11 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
 
       setShowAddDish(false);
       onItemUpdate();
-      Alert.alert('✅ Success', 'Item added successfully!');
+      setRefreshKey(prev => prev + 1);  
+
+      Alert.alert('✅ Success', 
+        isOpenPrice ? 'Open price item added' : 'Item added successfully'
+      );
       
     } catch (error: any) {
       console.log('❌ Error:', {
@@ -303,20 +362,35 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       setLoading(false);
     }
   };
- const handleEditDish = async (): Promise<void> => {
+  const handleEditDish = async (): Promise<void> => {
     if (!editingDish || !selectedGroup) return;
     
     setLoading(true);
     
     try {
+      // ✅ STEP 1: GET OUTLET ID FROM STORAGE
+      const outletId = await AsyncStorage.getItem('selectedOutletId');
+      
+      if (!outletId) {
+        Alert.alert('Error', 'No outlet selected');
+        setLoading(false);
+        return;
+      }
+      
       const formData = new FormData();
       formData.append('name', newDish.name.trim());
-      formData.append('price', parseFloat(newDish.price).toString());
+      
+      const priceValue = isOpenPrice ? '0' : newDish.price;
+      formData.append('price', priceValue);
+      formData.append('isOpenPrice', isOpenPrice ? 'true' : 'false'); 
       formData.append('isActive', newDish.isActive ? 'true' : 'false');
       formData.append('category', selectedGroup.id.toString());
       formData.append('originalName', newDish.name.trim());
       formData.append('originalCategory', selectedGroup.name);
       formData.append('displayCategory', selectedGroup.name);
+      
+      // ✅ STEP 2: ADD OUTLET ID TO FORM DATA
+      formData.append('outletId', outletId);
 
       if (newDish.imageUri && newDish.imageUri !== editingDish.imageUri) {
         const filename = newDish.imageUri.split('/').pop();
@@ -331,50 +405,41 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       }
 
       const response = await uploadAPI.put(`/dishitems/${editingDish.id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': 'multipart/form-data',
+    'X-Outlet-Id': outletId  },
       });
 
-      console.log('✅ Edit response:', response.data);
-
-      // ✅ FIX: Dynamic baseURL based on environment
       const baseURL = __DEV__ 
-        ? 'http://192.168.0.169:5000'  // Development
-        : 'https://hawkerfinalv-production.up.railway.app'; // Production
+        ? 'http://192.168.0.169:5000'
+        : 'https://hawkerfinalv-production.up.railway.app';
       
-      // Get image path from response
       const imagePath = response.data.imageUri || response.data.ImageUrl;
       
-      // Construct full URL
-      let imageUrl = newDish.imageUri; // Default to existing
+      let imageUrl = newDish.imageUri;
       
       if (imagePath) {
         if (imagePath.startsWith('http')) {
-          imageUrl = imagePath;  // Already full URL
+          imageUrl = imagePath;
         } else if (imagePath.startsWith('/')) {
-          imageUrl = `${baseURL}${imagePath}`;  // Add base URL
+          imageUrl = `${baseURL}${imagePath}`;
         } else {
-          imageUrl = `${baseURL}/uploads/${imagePath}`;  // Just filename
+          imageUrl = `${baseURL}/uploads/${imagePath}`;
         }
       }
-
-      console.log('🖼️ Edit image URL:', {
-        original: imagePath,
-        constructed: imageUrl,
-        environment: __DEV__ ? 'Development' : 'Production',
-        baseURL
-      });
 
       const updatedItem = {
         ...editingDish,
         name: newDish.name.trim(),
-        price: parseFloat(newDish.price),
+        price: isOpenPrice ? 0 : parseFloat(newDish.price),
         category: selectedGroup.id.toString(),
         categoryId: selectedGroup.id.toString(),
         displayCategory: selectedGroup.name,
-        imageUri: imageUrl,  // ✅ Store full URL
+        imageUri: imageUrl,
         originalName: newDish.name.trim(),
         originalCategory: selectedGroup.name,
         isActive: newDish.isActive,
+        isOpenPrice: isOpenPrice,
+        outletId: parseInt(outletId)  // ✅ Update outlet ID
       };
 
       const updatedItems = menuItems.map(item =>
@@ -382,13 +447,10 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       );
       setMenuItems(updatedItems);
 
-      console.log('✅ Item updated:', {
-        name: updatedItem.name,
-        imageUri: updatedItem.imageUri
-      });
-
       setShowEditDish(false);
       onItemUpdate();
+      
+      Alert.alert('✅ Success', 'Item updated successfully');
       
     } catch (error: any) {
       console.log('❌ Edit error:', {
@@ -400,7 +462,6 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       setLoading(false);
     }
   };
-
   const toggleActive = async (item: MenuItem) => {
     setLoading(true);
     try {
@@ -415,14 +476,15 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
         return;
       }
       
-      const response = await API.put(`/dishitems/${item.id}`, {
+      await API.put(`/dishitems/${item.id}`, {
         name: item.name,
         price: item.price,
         category: category.id,
         originalName: item.originalName || item.name,
         originalCategory: item.originalCategory || categoryName,
         displayCategory: item.displayCategory || categoryName,
-        isActive: newActiveState
+        isActive: newActiveState,
+        isOpenPrice: item.isOpenPrice || false,
       });
 
       const updatedItems = menuItems.map(i => 
@@ -438,7 +500,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
     }
   };
 
-   const handleDeleteDish = (dish: MenuItem): void => {
+  const handleDeleteDish = (dish: MenuItem): void => {
     Alert.alert(
       t.delete,
       `${t.confirmDelete} "${dish.name}"?`,
@@ -463,6 +525,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
               setDishGroups(updatedGroups);
 
               onItemUpdate();
+              Alert.alert('✅ Success', 'Item deleted');
               
             } catch (error) {
               Alert.alert(t.error || '❌ Error', 'Failed to delete dish item');
@@ -474,11 +537,26 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       ]
     );
   };
+
+  // ✅ Show open price badge in item list
+  const renderOpenPriceBadge = (item: MenuItem) => {
+    if (item.isOpenPrice) {
+      return (
+        <View style={[styles.openPriceBadge, { backgroundColor: currentTheme.warning + '20' }]}>
+          <Text style={[styles.openPriceBadgeText, { color: currentTheme.warning }]}>
+            Open Price
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
       <Text style={[styles.title, { color: currentTheme.text }]}>{t.dishItems}</Text>
 
-      {/* ✅ GROUP CHIPS - Horizontal scroll of all dishgroups */}
+      {/* GROUP CHIPS */}
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -497,7 +575,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                 borderColor: currentTheme.border
               }
             ]}
-            onPress={() => setSelectedGroup(group)} // ✅ Click panna adha select pannum
+            onPress={() => setSelectedGroup(group)}
           >
             <Text style={[
               styles.groupChipText,
@@ -513,7 +591,6 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
         ))}
       </ScrollView>
 
-      {/* ✅ SELECTED GROUP INFO - Shows which group is active */}
       {selectedGroup && (
         <View style={[styles.groupInfo, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.groupInfoTitle, { color: currentTheme.text }]}>
@@ -522,7 +599,6 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
         </View>
       )}
 
-      {/* Add Button */}
       <TouchableOpacity
         style={[styles.addButton, { backgroundColor: currentTheme.secondary }]}
         onPress={handleOpenAdd}
@@ -535,7 +611,6 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
 
       {loading && <ActivityIndicator size="large" color={currentTheme.primary} />}
 
-      {/* ✅ ITEMS LIST - Shows only items from selected group */}
       <ScrollView style={styles.dishList} showsVerticalScrollIndicator={false}>
         {groupItems.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -567,16 +642,19 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
               </View>
 
               <View style={styles.dishInfo}>
-                <Text style={[styles.dishName, { color: currentTheme.text }]} numberOfLines={2}>
-                  {item.name}
-                </Text>
+                <View style={styles.dishNameRow}>
+                  <Text style={[styles.dishName, { color: currentTheme.text }]} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  {renderOpenPriceBadge(item)}
+                </View>
                 <Text style={[styles.dishCategory, { color: currentTheme.textSecondary }]} numberOfLines={1}>
                   {item.displayCategory || item.category}
                 </Text>
               </View>
               
               <Text style={[styles.dishPrice, { color: currentTheme.primary }]}>
-                {formatPrice(item.price)}
+                {item.isOpenPrice ? '—' : formatPrice(item.price)}
               </Text>
               
               <View style={styles.dishActions}>
@@ -604,7 +682,9 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                       category: selectedGroup?.name || item.displayCategory || item.category,
                       imageUri: item.imageUri,
                       isActive: item.isActive ?? true,
+                      isOpenPrice: item.isOpenPrice || false,
                     });
+                    setIsOpenPrice(item.isOpenPrice || false); 
                     setCategoryError(false);
                     setShowEditDish(true);
                   }}
@@ -626,7 +706,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
         )}
       </ScrollView>
 
-      {/* ✅ ADD DISH MODAL - Category is READONLY (automatically set) */}
+      {/* ADD DISH MODAL */}
       <Modal visible={showAddDish} transparent animationType="slide">
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -645,7 +725,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                     Add Item to {selectedGroup?.name}
                   </Text>
 
-                  {/* ✅ READONLY CATEGORY FIELD */}
+                  {/* READONLY CATEGORY FIELD */}
                   <View style={[styles.readonlyField, { backgroundColor: currentTheme.surface }]}>
                     <Text style={[styles.readonlyLabel, { color: currentTheme.textSecondary }]}>
                       Category:
@@ -655,6 +735,37 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                     </Text>
                   </View>
 
+                  {/* ✅ OPEN PRICE CHECKBOX */}
+                 <View style={styles.checkboxRow}>
+  <TouchableOpacity
+    style={[
+      styles.checkbox,
+      { 
+        backgroundColor: isOpenPrice ? currentTheme.primary : 'transparent',
+        borderColor: currentTheme.border
+      }
+    ]}
+    onPress={() => {
+      // ✅ FIXED: Use functional update
+      setIsOpenPrice(prev => {
+        const newValue = !prev;
+        console.log('📝 Checkbox toggled to:', newValue);
+        
+        if (newValue) {
+          // Clear price when becoming open price
+          setNewDish(current => ({ ...current, price: '' }));
+        }
+        
+        return newValue;
+      });
+    }}
+  >
+    {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
+  </TouchableOpacity>
+  <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
+    Open Price (Customer enters amount)
+  </Text>
+</View>
                   {/* Image upload section */}
                   <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishImage}</Text>
                   <View style={styles.imageUploadContainer}>
@@ -714,16 +825,26 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                     editable={!loading}
                   />
 
-                  <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
-                    placeholder="0.00"
-                    placeholderTextColor={currentTheme.textSecondary}
-                    keyboardType="numeric"
-                    value={newDish.price}
-                    onChangeText={(text) => setNewDish({ ...newDish, price: text })}
-                    editable={!loading}
-                  />
+                  {/* ✅ PRICE FIELD - Hidden when open price checked */}
+{!isOpenPrice && (
+  <>
+    <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
+    <TextInput
+      style={[styles.modalInput, { 
+        backgroundColor: currentTheme.surface, 
+        borderColor: currentTheme.border, 
+        color: currentTheme.text 
+      }]}
+      placeholder="0.00"
+      placeholderTextColor={currentTheme.textSecondary}
+      keyboardType="numeric"
+      value={newDish.price}
+      onChangeText={(text) => setNewDish({ ...newDish, price: text })}
+      editable={!loading}
+    />
+  </>
+)}
+
 
                   {/* Active Switch */}
                   <View style={styles.activeRow}>
@@ -747,8 +868,10 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                           price: '', 
                           category: '',
                           imageUri: null, 
-                          isActive: true 
+                          isActive: true,
+                          isOpenPrice: false
                         });
+                        setIsOpenPrice(false);
                       }}
                       disabled={loading}
                     >
@@ -771,7 +894,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* EDIT DISH MODAL - Similar changes */}
+      {/* EDIT DISH MODAL */}
       <Modal visible={showEditDish} transparent animationType="slide">
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -783,7 +906,6 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
               <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
                 <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.edit}</Text>
 
-                {/* ✅ READONLY CATEGORY FIELD */}
                 <View style={[styles.readonlyField, { backgroundColor: currentTheme.surface }]}>
                   <Text style={[styles.readonlyLabel, { color: currentTheme.textSecondary }]}>
                     Category:
@@ -793,7 +915,30 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                   </Text>
                 </View>
 
-                {/* Image upload section - same as add modal */}
+                {/* ✅ OPEN PRICE CHECKBOX in Edit */}
+                <View style={styles.checkboxRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.checkbox,
+                      { 
+                        backgroundColor: isOpenPrice ? currentTheme.primary : 'transparent',
+                        borderColor: currentTheme.border
+                      }
+                    ]}
+                    onPress={() => {
+                      setIsOpenPrice(!isOpenPrice);
+                      if (!isOpenPrice) {
+                        setNewDish({ ...newDish, price: '' });
+                      }
+                    }}
+                  >
+                    {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
+                  </TouchableOpacity>
+                  <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
+                    Open Price (Customer enters amount)
+                  </Text>
+                </View>
+
                 <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishImage}</Text>
                 <View style={styles.imageUploadContainer}>
                   {newDish.imageUri ? (
@@ -852,18 +997,22 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                   editable={!loading}
                 />
 
-                <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
-                <TextInput
-                  style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
-                  placeholder="0.00"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
-                  value={newDish.price}
-                  onChangeText={(text) => setNewDish({ ...newDish, price: text })}
-                  editable={!loading}
-                />
+                {/* ✅ PRICE FIELD - Hidden for open price */}
+                {!isOpenPrice && (
+                  <>
+                    <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
+                    <TextInput
+                      style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
+                      placeholder="0.00"
+                      placeholderTextColor={currentTheme.textSecondary}
+                      keyboardType="numeric"
+                      value={newDish.price}
+                      onChangeText={(text) => setNewDish({ ...newDish, price: text })}
+                      editable={!loading}
+                    />
+                  </>
+                )}
 
-                {/* Active Switch */}
                 <View style={styles.activeRow}>
                   <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
                   <Switch
@@ -885,8 +1034,10 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
                         price: '', 
                         category: '', 
                         imageUri: null, 
-                        isActive: true 
+                        isActive: true,
+                        isOpenPrice: false
                       });
+                      setIsOpenPrice(false);
                     }}
                     disabled={loading}
                   >
@@ -911,7 +1062,7 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
   );
 };
 
-// Styles
+// Styles - Add new styles
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
@@ -955,11 +1106,45 @@ const styles = StyleSheet.create({
   dishThumbnailPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   dishThumbnailText: { fontSize: 22 },
   dishInfo: { flex: 1, marginRight: 8 },
-  dishName: { fontSize: 13, fontWeight: '400', marginBottom: 4 },
+  dishNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  dishName: { fontSize: 13, fontWeight: '400', flex: 1 },
   dishCategory: { fontSize: 13, color: '#666' },
   dishPrice: { fontSize: 16, fontWeight: '700', marginRight: 12 },
   dishActions: { flexDirection: 'row', gap: 4, width: 86, justifyContent: 'flex-end' },
   actionBtn: { width: 27, height: 32, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  
+  // ✅ NEW STYLES for Open Price
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  openPriceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  openPriceBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  
+  // Existing styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', padding: 16 },
   modalContent: { borderRadius: 16, padding: 20, width: '100%' },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, textAlign: 'center' },

@@ -1,9 +1,17 @@
 // components/POSSalesReport.tsx - FINAL OPTIMIZED VERSION
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, } from 'react';
+import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert,  } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import API from '../api';
-
+import UniversalPrinter from './UniversalPrinter';  
+import { Ionicons } from '@expo/vector-icons';
+interface CategorySummary {
+  totalRevenue: number;
+  totalTransactions: number;
+  totalCategories: number;
+  totalItems: number;
+  paymentBreakdown: Record<string, number>;
+}
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -18,6 +26,9 @@ interface Props {
   t: any;
   isMobile: boolean;
   formatPrice: (amount: number) => string;
+   companySettings?: any;
+  categories?: any[];
+  userId: string | number; 
 }
 
 const POSSalesReport: React.FC<Props> = ({
@@ -33,7 +44,9 @@ const POSSalesReport: React.FC<Props> = ({
   theme,
   t,
   isMobile,
-  formatPrice
+  formatPrice,
+  companySettings,  // ✅ Add this
+  userId,  
 }) => {
   // ============ REFS ============
   const isMounted = useRef(true);
@@ -42,6 +55,7 @@ const POSSalesReport: React.FC<Props> = ({
   const prevFilterRef = useRef(selectedFilter);
   const prevStartRef = useRef(startDate);
   const prevEndRef = useRef(endDate);
+  
   const loadTimerRef = useRef<NodeJS.Timeout | null>(null);
   // ✅ Define filterMap HERE (inside component)
   const filterMap = {
@@ -56,7 +70,7 @@ const POSSalesReport: React.FC<Props> = ({
   const [tempDate, setTempDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'categories'>('overview');
-  
+  const prevTabRef = useRef(activeTab); 
   const [summary, setSummary] = useState({
     totalSales: 0,
     totalRevenue: 0,
@@ -74,7 +88,8 @@ const POSSalesReport: React.FC<Props> = ({
     totalRevenue: 0,
     totalTransactions: 0,
     totalCategories: 0,
-    totalItems: 0
+    totalItems: 0,
+     paymentBreakdown: {}
   });
 
   // ============ CLEANUP ============
@@ -87,7 +102,13 @@ const POSSalesReport: React.FC<Props> = ({
       }
     };
   }, []);
-
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
   // ============ LOAD FUNCTIONS ============
   const loadOverviewData = useCallback(async () => {
     if (loadingRef.current) return;
@@ -132,44 +153,77 @@ const POSSalesReport: React.FC<Props> = ({
   }, [selectedFilter, startDate, endDate]);
 
   const loadCategoryData = useCallback(async () => {
-    if (loadingRef.current) return;
+  if (loadingRef.current) return;
+  
+  loadingRef.current = true;
+  if (isMounted.current) {
+    setSelectedCategory(null);
+    setCategoryItems([]);
+    setCategoryTransactions([]);
+    setLoading(true);
+  }
+  
+  try {
+    const filterValue = selectedFilter?.toLowerCase() || 'today';
     
-    loadingRef.current = true;
+    // 🔥 PARALLEL API CALLS - Get categories AND payment breakdown
+    let categoryUrl = '/sales/by-category';
+    const categoryParams = new URLSearchParams();
+    categoryParams.append('filter', filterValue);
+    
+    let paymentUrl = '/sales/summary';
+    const paymentParams = new URLSearchParams();
+    paymentParams.append('filter', filterValue);
+    
+    if (filterValue === 'custom') {
+      const start = startDate.toISOString().split('T')[0];
+      const end = endDate.toISOString().split('T')[0];
+      
+      categoryParams.append('startDate', start);
+      categoryParams.append('endDate', end);
+      
+      paymentParams.append('startDate', start);
+      paymentParams.append('endDate', end);
+    }
+    
+    console.log(`📊 Loading categories with filter: ${filterValue}`);
+    console.log(`📊 Loading payment breakdown with filter: ${filterValue}`);
+    
+    // 🔥 Call both APIs simultaneously
+    const [categoryResponse, paymentResponse] = await Promise.all([
+      API.get(`${categoryUrl}?${categoryParams.toString()}`),
+      API.get(`${paymentUrl}?${paymentParams.toString()}`)
+    ]);
+    
     if (isMounted.current) {
-      setSelectedCategory(null);
-      setCategoryItems([]);
-      setCategoryTransactions([]);
-      setLoading(true);
+      // Set categories
+      if (categoryResponse.data.success) {
+        setCategories(categoryResponse.data.categories || []);
+        
+        // ✅ Set category summary WITH payment breakdown
+        setCategorySummary({
+          totalRevenue: categoryResponse.data.summary?.totalRevenue || 0,
+          totalTransactions: categoryResponse.data.summary?.totalTransactions || 0,
+          totalCategories: categoryResponse.data.summary?.totalCategories || 0,
+          totalItems: categoryResponse.data.summary?.totalItems || 0,
+          paymentBreakdown: paymentResponse.data.paymentBreakdown || {} // ✅ ADD THIS
+        });
+        
+        console.log('✅ Category Summary with Payment:', {
+          totalRevenue: categoryResponse.data.summary?.totalRevenue,
+          totalItems: categoryResponse.data.summary?.totalItems,
+          paymentBreakdown: paymentResponse.data.paymentBreakdown
+        });
+      }
     }
     
-    try {
-      const filterValue = selectedFilter?.toLowerCase() || 'today';
-      
-      let url = '/sales/by-category';
-      const params = new URLSearchParams();
-      params.append('filter', filterValue);
-      
-      if (filterValue === 'custom') {
-        params.append('startDate', startDate.toISOString().split('T')[0]);
-        params.append('endDate', endDate.toISOString().split('T')[0]);
-      }
-      
-      console.log(`📊 Loading categories with filter: ${filterValue}`);
-      
-      const response = await API.get(`${url}?${params.toString()}`);
-      
-      if (isMounted.current && response.data.success) {
-        setCategories(response.data.categories || []);
-        setCategorySummary(response.data.summary || {});
-      }
-    } catch (error) {
-      console.log('❌ Error loading categories:', error);
-    } finally {
-      loadingRef.current = false;
-      if (isMounted.current) setLoading(false);
-    }
-  }, [selectedFilter, startDate, endDate]);
-
+  } catch (error) {
+    console.log('❌ Error loading categories:', error);
+  } finally {
+    loadingRef.current = false;
+    if (isMounted.current) setLoading(false);
+  }
+}, [selectedFilter, startDate, endDate]);
   const loadCategoryItems = useCallback(async (category: string) => {
     if (loadingRef.current) return;
     
@@ -207,56 +261,62 @@ const POSSalesReport: React.FC<Props> = ({
   }, [selectedFilter, startDate, endDate]);
 
   // ============ MAIN EFFECT ============
-  useEffect(() => {
-    if (!visible) {
-      // Reset on close
-      initialLoadDone.current = false;
-      prevFilterRef.current = selectedFilter;
-      prevStartRef.current = startDate;
-      prevEndRef.current = endDate;
-      return;
-    }
+useEffect(() => {
+  if (!visible) {
+    // Reset on close
+    initialLoadDone.current = false;
+    prevFilterRef.current = selectedFilter;
+    prevStartRef.current = startDate;
+    prevEndRef.current = endDate;
+    prevTabRef.current = activeTab;  // ✅ Add tab ref
+    return;
+  }
 
-    // Initial load - ONCE
-    if (!initialLoadDone.current) {
-      console.log('📊 First time load');
-      initialLoadDone.current = true;
-      
-      if (activeTab === 'overview') {
-        loadOverviewData();
-      } else {
-        loadCategoryData();
-      }
-      
-      // Update refs
-      prevFilterRef.current = selectedFilter;
-      prevStartRef.current = startDate;
-      prevEndRef.current = endDate;
-      return;
-    }
-
-    // Check if values actually changed
-    const filterChanged = prevFilterRef.current !== selectedFilter;
-    const startChanged = prevStartRef.current.getTime() !== startDate.getTime();
-    const endChanged = prevEndRef.current.getTime() !== endDate.getTime();
+  // Initial load - ONCE
+  if (!initialLoadDone.current) {
+    console.log('📊 First time load');
+    initialLoadDone.current = true;
     
-    // Only reload if something changed
-    if (filterChanged || startChanged || endChanged) {
-      console.log('📊 Change detected, reloading...', { filterChanged, startChanged, endChanged });
-      
-      if (activeTab === 'overview') {
-        loadOverviewData();
-      } else {
-        loadCategoryData();
-      }
-      
-      // Update refs
-      prevFilterRef.current = selectedFilter;
-      prevStartRef.current = startDate;
-      prevEndRef.current = endDate;
+    if (activeTab === 'overview') {
+      loadOverviewData();
+    } else {
+      loadCategoryData();
     }
     
-  }, [visible, selectedFilter, startDate, endDate, activeTab]);
+    // Update refs
+    prevFilterRef.current = selectedFilter;
+    prevStartRef.current = startDate;
+    prevEndRef.current = endDate;
+    prevTabRef.current = activeTab;  // ✅ Add tab ref
+    return;
+  }
+
+  // ✅ Check for tab change
+  const tabChanged = prevTabRef.current !== activeTab;
+  
+  // Check if values actually changed
+  const filterChanged = prevFilterRef.current !== selectedFilter;
+  const startChanged = prevStartRef.current.getTime() !== startDate.getTime();
+  const endChanged = prevEndRef.current.getTime() !== endDate.getTime();
+  
+  // ✅ Include tabChanged in condition
+  if (tabChanged || filterChanged || startChanged || endChanged) {
+    console.log('📊 Change detected:', { tabChanged, filterChanged, startChanged, endChanged });
+    
+    if (activeTab === 'overview') {
+      loadOverviewData();
+    } else {
+      loadCategoryData();
+    }
+    
+    // Update refs
+    prevFilterRef.current = selectedFilter;
+    prevStartRef.current = startDate;
+    prevEndRef.current = endDate;
+    prevTabRef.current = activeTab;  // ✅ Update tab ref
+  }
+  
+}, [visible, selectedFilter, startDate, endDate, activeTab]);
 
   // ============ HANDLERS ============
  const handleFilterChange = (filter: string) => {
@@ -320,6 +380,134 @@ const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
   };
+// In POSSalesReport.tsx - Update print function
+
+// In POSSalesReport.tsx - Replace the printReport function with this
+
+const printReport = async () => {
+  try {
+    if (activeTab === 'categories') {
+      console.log('📊 Printing Category Report with:', {
+        filter: selectedFilter,
+        categorySummary,
+        categoriesCount: categories.length,
+        selectedCategory
+      });
+
+      if (selectedCategory) {
+        // 📦 Specific category with items
+        await UniversalPrinter.printCategoryReport(
+          categories,
+          selectedCategory,
+          categoryItems,
+          categoryTransactions,
+          userId,
+          t,
+          {
+            filter: selectedFilter,
+            startDate: startDate,
+            endDate: endDate,
+            summary: {
+              totalSales: categorySummary.totalTransactions,
+              totalItems: categorySummary.totalItems,
+              totalRevenue: categorySummary.totalRevenue,
+              paymentBreakdown: categorySummary.paymentBreakdown
+            }
+          }
+        );
+      } else {
+        // 📁 All categories overview
+        // Get payment breakdown for current filter
+        let paymentBreakdown = categorySummary.paymentBreakdown;
+        
+        // If payment breakdown is empty, fetch it
+        if (Object.keys(paymentBreakdown).length === 0) {
+          paymentBreakdown = await fetchPaymentBreakdown(selectedFilter);
+        }
+        
+        await UniversalPrinter.printCategoryReport(
+          categories,
+          null,
+          [],
+          [],
+          userId,
+          t,
+          {
+            filter: selectedFilter,
+            startDate: startDate,
+            endDate: endDate,
+            summary: {
+              totalSales: categorySummary.totalTransactions,
+              totalItems: categorySummary.totalItems,
+              totalRevenue: categorySummary.totalRevenue,
+              paymentBreakdown: paymentBreakdown
+            }
+          }
+        );
+      }
+      
+      Alert.alert('✅ Success', 'Category report printed');
+      
+    } else {
+      // 📊 Overview tab print
+      const reportData = {
+        summary: {
+          totalSales: summary.totalSales,
+          totalItems: summary.totalItems,
+          totalRevenue: summary.totalRevenue
+        },
+        paymentBreakdown: summary.paymentBreakdown,
+        salesHistory: salesHistory,
+        period: selectedFilter === 'custom' 
+          ? `${formatDate(startDate)} to ${formatDate(endDate)}`
+          : selectedFilter
+      };
+
+      await UniversalPrinter.printSalesReport(
+        reportData,
+        userId,
+        t
+      );
+      
+      Alert.alert('✅ Success', 'Sales report printed');
+    }
+  } catch (error) {
+    console.log('❌ Print error:', error);
+    Alert.alert('❌ Error', 'Failed to print report');
+  }
+};
+const getPaymentBreakdownForFilter = async (filter: string) => {
+  try {
+    // You need to fetch payment breakdown for the current filter
+    // This could be stored in state or fetched from API
+    if (filter === 'week') {
+      // Return week's payment breakdown
+      return await fetchPaymentBreakdown('week');
+    }
+    return summary.paymentBreakdown; // Default
+  } catch (error) {
+    console.log('Error fetching payment breakdown:', error);
+    return {};
+  }
+};
+// Helper to fetch payment breakdown
+const fetchPaymentBreakdown = async (filter: string) => {
+  try {
+    const params = new URLSearchParams();
+    params.append('filter', filter);
+    
+    if (filter === 'custom') {
+      params.append('startDate', startDate.toISOString().split('T')[0]);
+      params.append('endDate', endDate.toISOString().split('T')[0]);
+    }
+    
+    const response = await API.get(`/sales/summary?${params.toString()}`);
+    return response.data.paymentBreakdown || {};
+  } catch (error) {
+    console.log('Error fetching payment breakdown:', error);
+    return {};
+  }
+};
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -367,29 +555,38 @@ const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
             </TouchableOpacity>
           </View>
 
+          {activeTab === 'categories' && (
+        <TouchableOpacity
+          style={[styles.printButton, { backgroundColor: theme.primary }]}
+          onPress={printReport}
+        >
+          <Ionicons name="print" size={20} color="#fff" />
+          <Text style={styles.printButtonText}>Print Report</Text>
+        </TouchableOpacity>
+      )}
           {/* Filter Section */}
-        <View style={styles.filterContainer}>
-  {['Today', 'Week', 'Month', 'Custom'].map(filter => (  // 👈 All with capital first letter
-    <TouchableOpacity
-      key={filter}
-      style={[
-        styles.filterBtn,
-        { 
-          backgroundColor: selectedFilter === filterMap[filter] ? theme.primary : theme.surface,
-          borderColor: theme.border 
-        }
-      ]}
-      onPress={() => handleFilterChange(filter)}
-    >
-      <Text style={[
-        styles.filterBtnText,
-        { color: selectedFilter === filterMap[filter] ? '#fff' : theme.text }
-      ]}>
-        {filter}  
-      </Text>
-    </TouchableOpacity>
-  ))}
-</View>
+          <View style={styles.filterContainer}>
+            {['Today', 'Week', 'Month', 'Custom'].map(filter => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.filterBtn,
+                  { 
+                    backgroundColor: selectedFilter === filterMap[filter] ? theme.primary : theme.surface,
+                    borderColor: theme.border 
+                  }
+                ]}
+                onPress={() => handleFilterChange(filter)}
+              >
+                <Text style={[
+                  styles.filterBtnText,
+                  { color: selectedFilter === filterMap[filter] ? '#fff' : theme.text }
+                ]}>
+                  {filter}  
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           {/* Custom Date Picker */}
           {(selectedFilter === 'custom' || selectedFilter === 'Custom') && (
@@ -552,7 +749,17 @@ const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
                       </View>
                     </View>
 
-                    {!selectedCategory ? (
+                    {/* ✅ LOADING INDICATOR */}
+                    {loading && (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color={theme.primary} />
+                        <Text style={{ color: theme.textSecondary, marginTop: 10 }}>
+                          Loading categories...
+                        </Text>
+                      </View>
+                    )}
+
+                    {!loading && !selectedCategory ? (
                       /* 📁 CATEGORIES LIST */
                       categories.length > 0 ? (
                         categories.map((cat, index) => (
@@ -609,7 +816,7 @@ const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
                           </Text>
                         </View>
                       )
-                    ) : (
+                    ) : !loading && selectedCategory ? (
                       /* 📦 SELECTED CATEGORY VIEW */
                       <View>
                         <TouchableOpacity
@@ -767,7 +974,7 @@ const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
                           </>
                         )}
                       </View>
-                    )}
+                    ) : null}
                   </>
                 )}
               </>
@@ -792,6 +999,21 @@ const styles = StyleSheet.create({
   containerMobile: {
     marginTop: 6,
   },
+  printButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      padding: 12,
+      borderRadius: 8,
+      marginHorizontal: 12,
+      marginVertical: 10,
+    },
+    printButtonText: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: '600',
+    },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

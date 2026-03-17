@@ -2,34 +2,44 @@
 const { getPool, sql } = require('../config/db');
 
 // ============================================
-// HELPER FUNCTION - Get effective user ID (owner for staff)
+// HELPER FUNCTION - Get effective OUTLET ID
 // ============================================
-const getEffectiveUserId = async (userId, userRole) => {
-    // If user is staff, get their owner's ID
+const getEffectiveOutletId = async (req) => {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    // For staff: get their outlet ID
     if (userRole === 'staff') {
         const pool = getPool();
         const result = await pool.request()
             .input('userId', sql.Int, userId)
-            .query('SELECT OwnerId FROM Users WHERE Id = @userId');
+            .query('SELECT OutletId FROM Users WHERE Id = @userId');
         
-        if (result.recordset.length > 0 && result.recordset[0].OwnerId) {
-            console.log(`👤 Staff ${userId} using owner ${result.recordset[0].OwnerId} for sales`);
-            return result.recordset[0].OwnerId;
+        if (result.recordset.length > 0 && result.recordset[0].OutletId) {
+            return result.recordset[0].OutletId;
         }
     }
-    // Owner or admin uses their own ID
-    return userId;
+    
+    // For owner: get from body or query
+    if (userRole === 'owner') {
+        return req.body.outletId || req.query.outletId;
+    }
+    
+    return null;
 };
-
 // ============================================
-// CREATE sale
+// CREATE sale (UPDATED)
 // ============================================
 const createSale = async (req, res) => {
     try {
-        const { total, paymentMethod, items } = req.body;
+        const { total, paymentMethod, items, cashPaid, change } = req.body;
         
-        // ✅ Staff creates sale under owner's ID
-        const effectiveUserId = await getEffectiveUserId(req.user.id, req.user.role);
+        // ✅ Get outlet ID
+         const outletId = req.outletId;
+        
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
+        }
         
         // Process items
         const itemsWithCategory = items.map(item => ({
@@ -50,11 +60,19 @@ const createSale = async (req, res) => {
             .input('total', sql.Decimal(10,2), total)
             .input('paymentMethod', sql.NVarChar, paymentMethod)
             .input('itemsJson', sql.NVarChar, itemsJson)
-            .input('userId', sql.Int, effectiveUserId)  // Store under owner's ID
+            .input('cashPaid', sql.Decimal(10,2), cashPaid || null)
+            .input('changeAmount', sql.Decimal(10,2), change || null)
+            .input('outletId', sql.Int, outletId)
             .query(`
-                INSERT INTO Sales (Total, PaymentMethod, ItemsJson, UserId)
+                INSERT INTO Sales (
+                    Total, PaymentMethod, ItemsJson, 
+                    CashPaid, ChangeAmount, OutletId
+                )
                 OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, INSERTED.SaleDate
-                VALUES (@total, @paymentMethod, @itemsJson, @userId)
+                VALUES (
+                    @total, @paymentMethod, @itemsJson,
+                    @cashPaid, @changeAmount, @outletId
+                )
             `);
 
         const newSale = {
@@ -65,7 +83,7 @@ const createSale = async (req, res) => {
             items: itemsWithCategory
         };
         
-        console.log(`✅ ${req.user.role} ${req.user.id} created sale under owner ${effectiveUserId}`);
+        console.log(`✅ ${req.user.role} ${req.user.id} created sale for outlet ${outletId}`);
         res.status(201).json(newSale);
         
     } catch (err) {
@@ -75,32 +93,30 @@ const createSale = async (req, res) => {
 };
 
 // ============================================
-// GET sales
+// GET sales (UPDATED)
 // ============================================
 const getSales = async (req, res) => {
     try {
         const { filter, startDate, endDate } = req.query;
         
-        // ✅ Use the helper function correctly
-        const pool = getPool();
+        const outletId = req.outletId;
         
-        // Get effective user ID (owner for staff)
-        let effectiveUserId = req.user.id;
-        
-        if (req.user.role === 'staff') {
-            const result = await pool.request()
-                .input('userId', sql.Int, req.user.id)
-                .query('SELECT OwnerId FROM Users WHERE Id = @userId');
-            
-            if (result.recordset.length > 0 && result.recordset[0].OwnerId) {
-                effectiveUserId = result.recordset[0].OwnerId;
-                console.log(`👤 Staff ${req.user.id} using owner ${effectiveUserId} for sales`);
-            }
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
         }
+        
+        const pool = getPool();
 
-        let query = 'SELECT Id, Total, PaymentMethod, SaleDate, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson FROM Sales WITH (NOLOCK) WHERE UserId = @userId';
+        let query = `
+            SELECT Id, Total, PaymentMethod, SaleDate, 
+                   CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson,
+                   CashPaid, ChangeAmount
+            FROM Sales WITH (NOLOCK) 
+            WHERE OutletId = @outletId
+        `;
+        
         const request = pool.request();
-        request.input('userId', sql.Int, effectiveUserId);
+        request.input('outletId', sql.Int, outletId);
 
         // Date filters
         if (filter === 'today') {
@@ -142,11 +158,13 @@ const getSales = async (req, res) => {
                 total: sale.Total,
                 paymentMethod: sale.PaymentMethod,
                 date: sale.SaleDate,
-                items: items
+                items: items,
+                cashPaid: sale.CashPaid,
+                change: sale.ChangeAmount
             };
         });
 
-        console.log(`✅ ${req.user.role} ${req.user.id} fetched ${formattedSales.length} sales (userId: ${effectiveUserId})`);
+        console.log(`✅ ${req.user.role} ${req.user.id} fetched ${formattedSales.length} sales for outlet ${outletId}`);
         res.json(formattedSales);
         
     } catch (err) {
@@ -154,32 +172,39 @@ const getSales = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
 // ============================================
-// GET sales summary
+// GET sales summary (UPDATED)
 // ============================================
 const getSalesSummary = async (req, res) => {
     try {
         const { filter, startDate, endDate } = req.query;
         
-        // ✅ Staff sees owner's summary
-       const effectiveUserId = await getEffectiveUserId(req.user.id, req.user.role);
+        const outletId = req.outletId;
+        
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
+        }
+        
         const pool = getPool();
         
+        // Build query with CTE
         let query = `
-            SELECT 
-                COUNT(*) as totalSales,
-                ISNULL(SUM(Total), 0) as totalRevenue,
-                PaymentMethod,
-                ISNULL((
-                    SELECT SUM(TRY_CAST(JSON_VALUE(value, '$.quantity') AS INT))
-                    FROM OPENJSON(ItemsJson)
-                ), 0) as itemsCount
-            FROM Sales WITH (NOLOCK)
-            WHERE UserId = @userId
+            WITH SalesWithItems AS (
+                SELECT 
+                    Id,
+                    Total,
+                    PaymentMethod,
+                    (
+                        SELECT ISNULL(SUM(TRY_CAST(JSON_VALUE(value, '$.quantity') AS INT)), 0)
+                        FROM OPENJSON(ItemsJson)
+                    ) as ItemCount
+                FROM Sales WITH (NOLOCK)
+                WHERE OutletId = @outletId
         `;
         
         const request = pool.request();
-        request.input('userId', sql.Int, effectiveUserId);
+        request.input('outletId', sql.Int, outletId);
 
         // Date filters
         if (filter === 'today') {
@@ -202,48 +227,70 @@ const getSalesSummary = async (req, res) => {
             request.input('endDate', sql.DateTime, end);
         }
 
-        query += ' GROUP BY PaymentMethod, ItemsJson';
+        query += `
+            )
+            SELECT 
+                COUNT(*) as totalSales,
+                ISNULL(SUM(Total), 0) as totalRevenue,
+                ISNULL(SUM(ItemCount), 0) as totalItems,
+                PaymentMethod
+            FROM SalesWithItems
+            GROUP BY PaymentMethod
+        `;
         
         const result = await request.query(query);
         
         // Calculate totals
         let totalRevenue = 0;
         let totalItems = 0;
+        let totalSales = 0;
         const paymentBreakdown = {};
         
         result.recordset.forEach(row => {
             totalRevenue += row.totalRevenue;
-            totalItems += parseInt(row.itemsCount || 0);
+            totalItems += parseInt(row.totalItems || 0);
+            totalSales += row.totalSales;
             paymentBreakdown[row.PaymentMethod] = row.totalRevenue;
         });
 
+        console.log(`✅ Summary for outlet ${outletId}:`, { totalSales, totalRevenue, totalItems });
+
         res.json({
-            totalSales: result.recordset.length,
+            totalSales,
             totalRevenue,
             totalItems,
             paymentBreakdown
         });
         
     } catch (err) {
-        console.error('Error getting sales summary:', err);
+        console.error('❌ Error getting sales summary:', err);
         res.status(500).json({ error: err.message });
     }
 };
 
 // ============================================
-// GET sales by category
+// GET sales by category (UPDATED)
 // ============================================
 const getSalesByCategory = async (req, res) => {
     try {
         const { filter, startDate, endDate } = req.query;
         
-        // ✅ Staff sees owner's category data
-       const effectiveUserId = await getEffectiveUserId(req.user.id, req.user.role);
+         const outletId = req.outletId;
+        
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
+        }
+        
         const pool = getPool();
         
-        let query = 'SELECT Id, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson FROM Sales WITH (NOLOCK) WHERE UserId = @userId';
+        let query = `
+            SELECT Id, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson 
+            FROM Sales WITH (NOLOCK) 
+            WHERE OutletId = @outletId
+        `;
+        
         const request = pool.request();
-        request.input('userId', sql.Int, effectiveUserId);
+        request.input('outletId', sql.Int, outletId);
 
         // Date filters
         if (filter === 'today') {
@@ -268,7 +315,7 @@ const getSalesByCategory = async (req, res) => {
 
         const result = await request.query(query);
         
-        // Process data
+        // Process data (same logic, just filtered by outlet)
         const categoryMap = new Map();
         const transactionSet = new Set();
         
@@ -319,7 +366,7 @@ const getSalesByCategory = async (req, res) => {
             }
         });
         
-        // Format response
+        // Format response (same as before)
         const formattedCategories = [];
         let totalRevenue = 0;
         let totalItems = 0;
@@ -371,20 +418,29 @@ const getSalesByCategory = async (req, res) => {
 };
 
 // ============================================
-// GET category items
+// GET category items (UPDATED)
 // ============================================
 const getCategoryItems = async (req, res) => {
     try {
         const { category } = req.params;
         const { filter, startDate, endDate } = req.query;
         
-        // ✅ Staff sees owner's category items
-        const effectiveUserId = await getEffectiveUserId(req.user.id, req.user.role);
+        const outletId = req.outletId;
+        
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
+        }
+        
         const pool = getPool();
         
-        let query = 'SELECT Id, SaleDate, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson FROM Sales WITH (NOLOCK) WHERE UserId = @userId';
+        let query = `
+            SELECT Id, SaleDate, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson 
+            FROM Sales WITH (NOLOCK) 
+            WHERE OutletId = @outletId
+        `;
+        
         const request = pool.request();
-        request.input('userId', sql.Int, effectiveUserId);
+        request.input('outletId', sql.Int, outletId);
 
         // Date filters
         if (filter === 'today') {
@@ -409,7 +465,7 @@ const getCategoryItems = async (req, res) => {
 
         const result = await request.query(query);
         
-        // Process items
+        // Process items (same logic, filtered by outlet)
         const itemMap = new Map();
         const transactions = [];
         

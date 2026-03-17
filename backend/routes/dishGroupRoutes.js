@@ -1,7 +1,7 @@
 // backend/routes/dishGroupRoutes.js
 const express = require('express');
 const router = express.Router();
-const { getPool, sql } = require('../config/db');  // ✅ Add this for middleware
+const { getPool, sql } = require('../config/db');
 const {
     getAllGroups,
     getGroupById,
@@ -11,48 +11,84 @@ const {
     updateGroupOrder
 } = require('../controllers/dishGroupController');
 
-// ✅ MIDDLEWARE: Get effective user ID (owner for staff)
-const getEffectiveUserId = async (req, res, next) => {
+// ✅ MIDDLEWARE: Get effective OUTLET ID
+const getEffectiveOutletId = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
         
-        // If user is staff, get their owner's ID
+        // For staff: get their outlet ID from Users table
         if (userRole === 'staff') {
             const pool = getPool();
             const result = await pool.request()
                 .input('userId', sql.Int, userId)
-                .query('SELECT OwnerId FROM Users WHERE Id = @userId');
+                .query('SELECT OutletId FROM Users WHERE Id = @userId');
             
-            if (result.recordset.length > 0 && result.recordset[0].OwnerId) {
-                req.effectiveUserId = result.recordset[0].OwnerId;
-                console.log(`👤 Staff ${userId} using owner ${req.effectiveUserId} data`);
+            if (result.recordset.length > 0 && result.recordset[0].OutletId) {
+                req.outletId = result.recordset[0].OutletId;
+                console.log(`👤 Staff ${userId} using outlet ${req.outletId}`);
             } else {
-                req.effectiveUserId = userId; // Fallback
+                return res.status(403).json({ error: 'Staff not assigned to any outlet' });
             }
-        } else {
-            // Owner or admin uses their own ID
-            req.effectiveUserId = userId;
+        }
+        
+        // For owner: get outlet from header or query
+        else if (userRole === 'owner') {
+            const outletId = req.headers['x-outlet-id'] || req.query.outletId;
+            
+            if (!outletId) {
+                return res.status(400).json({ 
+                    error: 'OUTLET_REQUIRED',
+                    message: 'Please select an outlet'
+                });
+            }
+            
+            // Verify outlet belongs to this owner
+            const pool = getPool();
+            const result = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .input('ownerId', sql.Int, userId)
+                .query('SELECT Id FROM Outlets WHERE Id = @outletId AND OwnerId = @ownerId');
+            
+            if (result.recordset.length === 0) {
+                return res.status(403).json({ error: 'Access denied to this outlet' });
+            }
+            
+            req.outletId = parseInt(outletId);
+            console.log(`👑 Owner ${userId} using outlet ${req.outletId}`);
+        }
+        
+        // Admin - can access any outlet (must specify)
+        else if (userRole === 'admin') {
+            const outletId = req.query.outletId;
+            if (outletId) {
+                req.outletId = parseInt(outletId);
+            }
+        }
+        
+        // Attach outletId to request for controllers to use
+        if (!req.outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
         }
         
         next();
+        
     } catch (err) {
-        console.error('❌ Error in getEffectiveUserId:', err);
-        req.effectiveUserId = req.user.id;
-        next();
+        console.error('❌ Error in getEffectiveOutletId:', err);
+        res.status(500).json({ error: err.message });
     }
 };
 
 // Apply middleware to all routes
-router.use(getEffectiveUserId);
+router.use(getEffectiveOutletId);
 
-// GET all dish groups - Staff sees owner's groups
+// GET all dish groups
 router.get('/', getAllGroups);
 
 // GET single dish group by ID
 router.get('/:id', getGroupById);
 
-// CREATE new dish group - Staff creates under owner's ID
+// CREATE new dish group
 router.post('/', createGroup);
 
 // UPDATE dish group

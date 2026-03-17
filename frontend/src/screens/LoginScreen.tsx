@@ -222,11 +222,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
 
               {/* Hint text */}
-              {rememberMe && (
-                <Text style={styles.hintText}>
-                  🔒 Your credentials will be saved on this device
-                </Text>
-              )}
+             
             </View>
 
             {/* Company Name and Copyright */}

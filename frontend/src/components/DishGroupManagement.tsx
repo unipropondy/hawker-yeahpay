@@ -1,5 +1,5 @@
 // src/components/DishGroupManagement.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Switch
+  Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -55,9 +56,9 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   const [formActive, setFormActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-const [refreshKey, setRefreshKey] = useState(0);
+
   // Add Group
-   const handleAddGroup = async (): Promise<void> => {
+  const handleAddGroup = async (): Promise<void> => {
     if (!newGroupName.trim()) {
       Alert.alert(t.error, 'Please enter group name');
       return;
@@ -77,20 +78,15 @@ const [refreshKey, setRefreshKey] = useState(0);
         active: response.data.active ?? formActive,
       };
 
-      // Add new group to the END of list
       const updatedGroups = [...dishGroups, newGroup];
       setDishGroups(updatedGroups);
-      
-      // Update categories (add to end)
       setCategories([...categories, newGroupName.trim()]);
       
       setNewGroupName('');
       setFormActive(true);
       setShowAddGroup(false);
       
-      // Save order to backend after adding
       await saveOrderToBackend(updatedGroups);
-      
       onGroupUpdate();
       
     } catch (error) {
@@ -100,20 +96,18 @@ const [refreshKey, setRefreshKey] = useState(0);
     }
   };
 
-  // Edit Group
   const handleEditGroup = async (): Promise<void> => {
     if (!editingGroup || !newGroupName.trim()) return;
 
     setLoading(true);
     try {
-      const response = await API.put(`/dishgroups/${editingGroup.id}`, {
+      const oldName = editingGroup.name;
+      
+      await API.put(`/dishgroups/${editingGroup.id}`, {
         name: newGroupName.trim(),
         active: formActive
       });
 
-      const oldName = editingGroup.name;
-      
-      // Update groups
       const updatedGroups = dishGroups.map(group =>
         group.id === editingGroup.id
           ? { ...group, name: newGroupName.trim(), active: formActive }
@@ -122,7 +116,6 @@ const [refreshKey, setRefreshKey] = useState(0);
       
       setDishGroups(updatedGroups);
 
-      // Update categories (preserve order)
       const updatedCategories = categories.map(cat =>
         cat === oldName ? newGroupName.trim() : cat
       );
@@ -140,14 +133,12 @@ const [refreshKey, setRefreshKey] = useState(0);
       onGroupUpdate();
       
     } catch (error: any) {
-      console.log('❌ Edit group error:', error);
       Alert.alert(t.error || '❌ Error', 'Failed to edit dish group');
     } finally {
       setLoading(false);
     }
   };
 
-  // Toggle Active Status
   const toggleActive = async (group: DishGroup) => {
     setLoading(true);
     try {
@@ -162,7 +153,6 @@ const [refreshKey, setRefreshKey] = useState(0);
         g.id === group.id ? { ...g, active: newActiveState } : g
       );
       setDishGroups(updatedGroups);
-
       onGroupUpdate();
       
     } catch (error) {
@@ -172,7 +162,6 @@ const [refreshKey, setRefreshKey] = useState(0);
     }
   };
 
-  // Delete Group
   const handleDeleteGroup = (group: DishGroup): void => {
     Alert.alert(
       t.delete,
@@ -197,9 +186,7 @@ const [refreshKey, setRefreshKey] = useState(0);
                 setActiveCategory(updatedCategories[0]);
               }
 
-              // Save new order after deletion
               await saveOrderToBackend(updatedGroups);
-              
               onGroupUpdate();
               
             } catch (error) {
@@ -213,40 +200,23 @@ const [refreshKey, setRefreshKey] = useState(0);
     );
   };
 
-  // ✅ NEW: Save order to backend
-  // In DishGroupManagement.tsx
-const saveOrderToBackend = async (groups: DishGroup[]) => {
-  try {
-    const orderData = groups.map((group, index) => ({
-      id: group.id,
-      order: index
-    }));
-    
-    console.log('📤 Sending order to backend:', orderData);
-    
-    // Send to backend
-    const response = await API.post('/dishgroups/update-order', { groups: orderData });
-    console.log('✅ Backend response:', response.data);
-    
-  } catch (error) {
-    console.log('❌ Failed to save order to backend:', error);
-    Alert.alert('Error', 'Failed to save group order');
-  }
-};
+  const saveOrderToBackend = async (groups: DishGroup[]) => {
+    try {
+      const orderData = groups.map((group, index) => ({
+        id: group.id,
+        order: index
+      }));
+      
+      await API.post('/dishgroups/update-order', { groups: orderData });
+      
+    } catch (error) {
+      console.log('❌ Failed to save order:', error);
+    }
+  };
 
-  // ✅ NEW: Handle drag end
   const handleDragEnd = async ({ data }: { data: DishGroup[] }) => {
-    console.log('🔄 New order after drag:', data.map(g => g.name));
-    
-    // Update local state
     setDishGroups(data);
-    
-    // Update categories order
-      setRefreshKey(prev => prev + 1);
-    
-    // Save to backend
     await saveOrderToBackend(data);
-    
     setIsDragging(false);
     onGroupUpdate();
   };
@@ -258,11 +228,13 @@ const saveOrderToBackend = async (groups: DishGroup[]) => {
     setShowEditGroup(true);
   };
 
-  // Render each draggable item
-  const renderItem = ({ item, drag, isActive }: RenderItemParams<DishGroup>) => {
+  const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<DishGroup>) => {
     return (
       <ScaleDecorator>
-        <View
+        <TouchableOpacity
+          activeOpacity={1}
+          onLongPress={!loading ? drag : null}
+          delayLongPress={200}
           style={[
             styles.groupCard,
             {
@@ -270,40 +242,28 @@ const saveOrderToBackend = async (groups: DishGroup[]) => {
               borderColor: currentTheme.border,
               opacity: item.active ? 1 : 0.6,
               transform: [{ scale: isActive ? 1.02 : 1 }],
-              shadowColor: isActive ? '#000' : 'transparent',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 4,
-              elevation: isActive ? 5 : 0,
             }
           ]}
         >
-          {/* Left side - Drag handle and info */}
           <View style={styles.groupInfo}>
-            {/* Drag Handle - Long press to drag */}
-            <TouchableOpacity
-              onLongPress={drag}
-              disabled={loading}
-              style={styles.dragHandle}
-            >
-              <Ionicons 
-                name="menu" 
-                size={24} 
-                color={isActive ? currentTheme.primary : currentTheme.textSecondary} 
-              />
-            </TouchableOpacity>
+            <Ionicons 
+              name="menu" 
+              size={24} 
+              color={isActive ? currentTheme.primary : currentTheme.textSecondary} 
+              style={styles.dragIcon}
+            />
             
             <View style={styles.groupNameContainer}>
-              <Text style={[styles.groupName, { color: currentTheme.text }]}>{item.name}</Text>
+              <Text style={[styles.groupName, { color: currentTheme.text }]}>
+                {item.name}
+              </Text>
               <Text style={[styles.groupCount, { color: currentTheme.textSecondary }]}>
                 {item.itemCount || 0} {t.items_lower}
               </Text>
             </View>
           </View>
 
-          {/* Right side - Action buttons */}
           <View style={styles.groupActions}>
-            {/* Active Toggle Button */}
             <TouchableOpacity
               style={[styles.actionBtn, { 
                 backgroundColor: item.active ? currentTheme.success : currentTheme.inactive 
@@ -311,14 +271,9 @@ const saveOrderToBackend = async (groups: DishGroup[]) => {
               onPress={() => toggleActive(item)}
               disabled={loading}
             >
-              <Ionicons 
-                name={item.active ? "eye" : "eye-off"} 
-                size={18} 
-                color="#fff" 
-              />
+              <Ionicons name={item.active ? "eye" : "eye-off"} size={18} color="#fff" />
             </TouchableOpacity>
 
-            {/* Edit Button */}
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: currentTheme.primary }]}
               onPress={() => openEditForm(item)}
@@ -327,7 +282,6 @@ const saveOrderToBackend = async (groups: DishGroup[]) => {
               <Ionicons name="pencil" size={18} color="#fff" />
             </TouchableOpacity>
 
-            {/* Delete Button */}
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: currentTheme.danger }]}
               onPress={() => handleDeleteGroup(item)}
@@ -336,162 +290,193 @@ const saveOrderToBackend = async (groups: DishGroup[]) => {
               <Ionicons name="trash" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </ScaleDecorator>
     );
-  };
+  }, [currentTheme, loading, t]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
-        <Text style={[styles.title, { color: currentTheme.text }]}>{t.dishGroupManagement}</Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: currentTheme.background }}>
+        <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
+          
+          {/* Header Section */}
+          <View>
+            <Text style={[styles.title, { color: currentTheme.text }]}>
+              {t.dishGroupManagement}
+            </Text>
 
-        {/* Drag Instruction */}
-        <Text style={[styles.dragHint, { color: currentTheme.textSecondary }]}>
-          👆 Long press on ☰ and drag to reorder groups
-        </Text>
+            <Text style={[styles.dragHint, { color: currentTheme.textSecondary }]}>
+              👆 Long press and drag to reorder groups
+            </Text>
 
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: currentTheme.secondary }]}
-          onPress={() => {
-            setFormActive(true);
-            setShowAddGroup(true);
-          }}
-          disabled={loading}
-        >
-          <Text style={styles.addButtonText}>{t.addNewGroup}</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.addButton, { backgroundColor: currentTheme.secondary }]}
+              onPress={() => {
+                setFormActive(true);
+                setShowAddGroup(true);
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.addButtonText}>{t.addNewGroup}</Text>
+            </TouchableOpacity>
+          </View>
 
-        {loading && <ActivityIndicator size="large" color={currentTheme.primary} />}
+          {/* Loading Indicator */}
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={currentTheme.primary} />
+            </View>
+          )}
 
-        {/* Draggable List */}
-        <DraggableFlatList
-          data={dishGroups}
-          onDragEnd={handleDragEnd}
-          keyExtractor={(item) => `group-${item.id}`}
-          renderItem={renderItem}
-          contentContainerStyle={styles.groupList}
-          showsVerticalScrollIndicator={false}
-          dragHitSlop={{ top: 10, bottom: 10, left: 50, right: 50 }}
-          activationDistance={5}
-          onDragBegin={() => setIsDragging(true)}
-        />
+          {/* Draggable List - FIXED VERSION */}
+          <View style={{ flex: 1, marginTop: 10 }}>
+            <DraggableFlatList
+              data={dishGroups}
+              onDragEnd={handleDragEnd}
+              keyExtractor={(item) => `group-${item.id}`}
+              renderItem={renderItem}
+              contentContainerStyle={{ 
+                paddingBottom: 20,
+                flexGrow: 1
+              }}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+              alwaysBounceVertical={true}
+              onDragBegin={() => setIsDragging(true)}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={{ color: currentTheme.textSecondary }}>
+                    No groups yet. Tap "Add New Group" to create one.
+                  </Text>
+                </View>
+              }
+            />
+          </View>
 
-        {/* Add Group Modal */}
-        <Modal visible={showAddGroup} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.addNewGroup}</Text>
-              
-              <TextInput
-                style={[styles.modalInput, { 
-                  backgroundColor: currentTheme.surface, 
-                  borderColor: currentTheme.border, 
-                  color: currentTheme.text 
-                }]}
-                placeholder={t.groupName}
-                placeholderTextColor={currentTheme.textSecondary}
-                value={newGroupName}
-                onChangeText={setNewGroupName}
-                editable={!loading}
-              />
-
-              <View style={styles.activeRow}>
-                <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
-                <Switch
-                  value={formActive}
-                  onValueChange={setFormActive}
-                  trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
-                  thumbColor="#fff"
+          {/* Add Group Modal */}
+          <Modal visible={showAddGroup} transparent animationType="slide">
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
+                <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.addNewGroup}</Text>
+                
+                <TextInput
+                  style={[styles.modalInput, { 
+                    backgroundColor: currentTheme.surface, 
+                    borderColor: currentTheme.border, 
+                    color: currentTheme.text 
+                  }]}
+                  placeholder={t.groupName}
+                  placeholderTextColor={currentTheme.textSecondary}
+                  value={newGroupName}
+                  onChangeText={setNewGroupName}
+                  editable={!loading}
                 />
-              </View>
 
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
-                  onPress={() => {
-                    setShowAddGroup(false);
-                    setNewGroupName('');
-                    setFormActive(true);
-                  }}
-                  disabled={loading}
-                >
-                  <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
-                  onPress={handleAddGroup}
-                  disabled={loading}
-                >
-                  {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>{t.save}</Text>}
-                </TouchableOpacity>
+                <View style={styles.activeRow}>
+                  <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
+                  <Switch
+                    value={formActive}
+                    onValueChange={setFormActive}
+                    trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
+                    onPress={() => {
+                      setShowAddGroup(false);
+                      setNewGroupName('');
+                      setFormActive(true);
+                    }}
+                    disabled={loading}
+                  >
+                    <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
+                    onPress={handleAddGroup}
+                    disabled={loading}
+                  >
+                    {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>{t.save}</Text>}
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        </Modal>
+          </Modal>
 
-        {/* Edit Group Modal */}
-        <Modal visible={showEditGroup} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.edit}</Text>
-              
-              <TextInput
-                style={[styles.modalInput, { 
-                  backgroundColor: currentTheme.surface, 
-                  borderColor: currentTheme.border, 
-                  color: currentTheme.text 
-                }]}
-                placeholder={t.groupName}
-                placeholderTextColor={currentTheme.textSecondary}
-                value={newGroupName}
-                onChangeText={setNewGroupName}
-                editable={!loading}
-              />
-
-              <View style={styles.activeRow}>
-                <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
-                <Switch
-                  value={formActive}
-                  onValueChange={setFormActive}
-                  trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
-                  thumbColor="#fff"
+          {/* Edit Group Modal */}
+          <Modal visible={showEditGroup} transparent animationType="slide">
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
+                <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.edit}</Text>
+                
+                <TextInput
+                  style={[styles.modalInput, { 
+                    backgroundColor: currentTheme.surface, 
+                    borderColor: currentTheme.border, 
+                    color: currentTheme.text 
+                  }]}
+                  placeholder={t.groupName}
+                  placeholderTextColor={currentTheme.textSecondary}
+                  value={newGroupName}
+                  onChangeText={setNewGroupName}
+                  editable={!loading}
                 />
-              </View>
 
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
-                  onPress={() => {
-                    setShowEditGroup(false);
-                    setEditingGroup(null);
-                    setNewGroupName('');
-                    setFormActive(true);
-                  }}
-                  disabled={loading}
-                >
-                  <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
-                  onPress={handleEditGroup}
-                  disabled={loading}
-                >
-                  {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>{t.update}</Text>}
-                </TouchableOpacity>
+                <View style={styles.activeRow}>
+                  <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
+                  <Switch
+                    value={formActive}
+                    onValueChange={setFormActive}
+                    trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
+                    onPress={() => {
+                      setShowEditGroup(false);
+                      setEditingGroup(null);
+                      setNewGroupName('');
+                      setFormActive(true);
+                    }}
+                    disabled={loading}
+                  >
+                    <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
+                    onPress={handleEditGroup}
+                    disabled={loading}
+                  >
+                    {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>{t.update}</Text>}
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        </Modal>
-      </View>
+          </Modal>
+        </View>
+      </SafeAreaView>
     </GestureHandlerRootView>
   );
 };
 
-// Updated styles
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 8, includeFontPadding: false },
+  container: { 
+    flex: 1, 
+    padding: 16 
+  },
+  title: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    marginBottom: 8, 
+    includeFontPadding: false 
+  },
   dragHint: { 
     fontSize: 12, 
     marginBottom: 12, 
@@ -512,8 +497,12 @@ const styles = StyleSheet.create({
     fontWeight: '600', 
     includeFontPadding: false 
   },
-  groupList: { 
-    paddingBottom: 20 
+  loadingContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -15 }, { translateY: -15 }],
+    zIndex: 1000,
   },
   groupCard: { 
     flexDirection: 'row', 
@@ -530,8 +519,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  dragHandle: {
-    padding: 8,
+  dragIcon: {
+    padding: 4,
     marginRight: 8,
   },
   groupNameContainer: {
@@ -558,6 +547,11 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  emptyContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOverlay: { 
     flex: 1, 

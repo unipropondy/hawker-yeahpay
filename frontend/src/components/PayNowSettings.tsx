@@ -105,12 +105,10 @@ const uploadImage = async (uri: string) => {
       type,
     } as any);
 
-    // ✅ FIX: Use full URL with /api prefix
-    const baseURL = __DEV__ 
-      ? 'http://192.168.1.4:5000/api' 
-      : 'https://hawkerfinalv-production.up.railway.app/api';
+    // ✅ ONLY RAILWAY URL - No development!
+    const baseURL = 'https://hawkerfinalv-production.up.railway.app/api';
       
-    console.log('📡 Environment:', __DEV__ ? 'Development' : 'Production');
+    console.log('📡 Environment: Production');
     console.log('📡 Sending to:', `${baseURL}/upload`);
 
     // Create a fresh axios instance for this upload
@@ -126,10 +124,10 @@ const uploadImage = async (uri: string) => {
 
     const imageUrl = response.data.imageUrl || response.data.imageUri;
     
-    // ✅ FIX: Ensure full URL for production
+    // ✅ Ensure full URL for production
     const fullImageUrl = imageUrl.startsWith('http') 
       ? imageUrl 
-      : `${baseURL.replace('/api', '')}${imageUrl}`;
+      : `https://hawkerfinalv-production.up.railway.app${imageUrl}`;
     
     console.log('✅ Image URL set:', fullImageUrl);
     setQrCodeUrl(fullImageUrl);
@@ -148,7 +146,6 @@ const uploadImage = async (uri: string) => {
       }
     });
 
-    // Better error messages
     let errorMsg = 'Failed to upload image';
     if (error.code === 'ECONNABORTED') {
       errorMsg = 'Upload timeout - please try again';
