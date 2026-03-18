@@ -6,9 +6,9 @@ import { CartItem } from '../types';
 
 interface CartSectionProps {
   cart: CartItem[];
-  increaseQuantity: (id: number) => void;
-  decreaseQuantity: (id: number) => void;
-  removeItem: (id: number) => void;
+   increaseQuantity: (id: number, price?: number) => void;  // ✅ Add price param
+  decreaseQuantity: (id: number, price?: number) => void;  // ✅ Add price param
+  removeItem: (id: number, price?: number) => void;  
   removeAllItems: () => void;  // ✅ New prop
   total: string;
   handleCheckout: () => void;
@@ -59,44 +59,81 @@ export const CartSection: React.FC<CartSectionProps> = ({
         </View>
         
         <ScrollView showsVerticalScrollIndicator={false} style={styles.cartItems}>
-          {cart.map(item => (
-            <View key={`cart-${item.id}`} style={[styles.cartItem, { borderBottomColor: theme.border }]}>
-              <View style={styles.cartItemRow}>
-                {/* ✅ Image removed - only item details */}
-                <View style={styles.cartItemDetails}>
-                  <Text style={[styles.cartItemQuantity, { color: theme.text }]}>{item.quantity}x</Text>
-                  <Text style={[styles.cartItemName, { color: theme.text }]} numberOfLines={2}>{item.name}</Text>
+          {cart.map(item => {
+            // ✅ Create unique key for open price items
+            const itemKey = item.isOpenPrice ? `${item.id}-${item.price}` : `${item.id}`;
+            
+            return (
+              <View key={itemKey} style={[styles.cartItem, { borderBottomColor: theme.border }]}>
+                <View style={styles.cartItemRow}>
+                  <View style={styles.cartItemDetails}>
+                    <Text style={[styles.cartItemQuantity, { color: theme.text }]}>{item.quantity}x</Text>
+                    <View style={styles.cartItemNameContainer}>
+                      <Text style={[styles.cartItemName, { color: theme.text }]} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                      {item.isOpenPrice && (
+                        <Text style={[styles.openPriceBadge, { color: theme.warning }]}>
+                          (Open)
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={[styles.cartItemPriceMobile, { color: theme.primary }]}>
+                    {formatPrice(item.price * item.quantity)}
+                  </Text>
                 </View>
-                <Text style={[styles.cartItemPriceMobile, { color: theme.primary }]}>
-                  {formatPrice(item.price * item.quantity)}
-                </Text>
-              </View>
-              
-              <View style={styles.cartItemControlsMobile}>
-                <View style={[styles.cartQuantityControls, { borderColor: theme.border }]}>
+                
+                <View style={styles.cartItemControlsMobile}>
+                  <View style={[styles.cartQuantityControls, { borderColor: theme.border }]}>
+                    <TouchableOpacity 
+                      style={[styles.cartQuantityBtn, { backgroundColor: theme.surface }]}
+                      onPress={() => {
+                        if (item.isOpenPrice) {
+                          // ✅ Pass price for open price items
+                          decreaseQuantity(item.id, item.price);
+                        } else {
+                          decreaseQuantity(item.id);
+                        }
+                      }}
+                    >
+                      <Text style={[styles.cartQuantityBtnText, { color: theme.text }]}>−</Text>
+                    </TouchableOpacity>
+                    
+                    <Text style={[styles.cartQuantityText, { color: theme.text }]}>{item.quantity}</Text>
+                    
+                    <TouchableOpacity 
+                      style={[styles.cartQuantityBtn, { backgroundColor: theme.surface }]}
+                      onPress={() => {
+                        if (item.isOpenPrice) {
+                          // ✅ Pass price for open price items
+                          increaseQuantity(item.id, item.price);
+                        } else {
+                          increaseQuantity(item.id);
+                        }
+                      }}
+                    >
+                      <Text style={[styles.cartQuantityBtnText, { color: theme.text }]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  
                   <TouchableOpacity 
-                    style={[styles.cartQuantityBtn, { backgroundColor: theme.surface }]}
-                    onPress={() => decreaseQuantity(item.id)}
+                    style={[styles.cartRemoveBtn, { backgroundColor: theme.danger + '20' }]}
+                    onPress={() => {
+                      if (item.isOpenPrice) {
+                        // ✅ Pass price for open price items
+                        removeItem(item.id, item.price);
+                      } else {
+                        removeItem(item.id);
+                      }
+                    }}
                   >
-                    <Text style={[styles.cartQuantityBtnText, { color: theme.text }]}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.cartQuantityText, { color: theme.text }]}>{item.quantity}</Text>
-                  <TouchableOpacity 
-                    style={[styles.cartQuantityBtn, { backgroundColor: theme.surface }]}
-                    onPress={() => increaseQuantity(item.id)}
-                  >
-                    <Text style={[styles.cartQuantityBtnText, { color: theme.text }]}>+</Text>
+                    <Text style={[styles.cartRemoveText, { color: theme.danger }]}>✕</Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity 
-                  style={[styles.cartRemoveBtn, { backgroundColor: theme.danger + '20' }]}
-                  onPress={() => removeItem(item.id)}
-                >
-                  <Text style={[styles.cartRemoveText, { color: theme.danger }]}>✕</Text>
-                </TouchableOpacity>
               </View>
-            </View>
-          ))}
+            );
+          })}
           
           {cart.length === 0 && (
             <View style={styles.emptyCart}>
@@ -123,36 +160,49 @@ export const CartSection: React.FC<CartSectionProps> = ({
         </View>
       </View>
     );
-  }
+}
 
   // Desktop/Tablet View
-  return (
-    <View style={[styles.cartContainer, { backgroundColor: theme.surface }]}>
-      <View style={[styles.cartHeader, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <Text style={[styles.cartTitle, { color: theme.text }]}>{t.cart}</Text>
-        <View style={styles.headerRight}>
-          <Text style={[styles.cartItemCount, { color: theme.textSecondary }]}>
-            {cart.length} {t.items}
-          </Text>
-          {cart.length > 0 && (
-            <TouchableOpacity 
-              style={[styles.removeAllBtn, { backgroundColor: theme.danger + '20' }]}
-              onPress={handleRemoveAll}
-            >
-              <Text style={[styles.removeAllText, { color: theme.danger }]}>🗑️</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+// Desktop/Tablet View
+return (
+  <View style={[styles.cartContainer, { backgroundColor: theme.surface }]}>
+    <View style={[styles.cartHeader, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+      <Text style={[styles.cartTitle, { color: theme.text }]}>{t.cart}</Text>
+      <View style={styles.headerRight}>
+        <Text style={[styles.cartItemCount, { color: theme.textSecondary }]}>
+          {cart.length} {t.items}
+        </Text>
+        {cart.length > 0 && (
+          <TouchableOpacity 
+            style={[styles.removeAllBtn, { backgroundColor: theme.danger + '20' }]}
+            onPress={handleRemoveAll}
+          >
+            <Text style={[styles.removeAllText, { color: theme.danger }]}>🗑️</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.cartItems}>
-        {cart.map(item => (
-          <View key={`cart-${item.id}`} style={[styles.cartItem, { borderBottomColor: theme.border }]}>
+    </View>
+    
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.cartItems}>
+      {cart.map(item => {
+        // ✅ Create unique key for open price items
+        const itemKey = item.isOpenPrice ? `${item.id}-${item.price}` : `cart-${item.id}`;
+        
+        return (
+          <View key={itemKey} style={[styles.cartItem, { borderBottomColor: theme.border }]}>
             <View style={styles.cartItemRow}>
-              {/* ✅ Image removed - only item details */}
               <View style={styles.cartItemDetails}>
                 <Text style={[styles.cartItemQuantity, { color: theme.text }]}>{item.quantity}x</Text>
-                <Text style={[styles.cartItemName, { color: theme.text }]} numberOfLines={2}>{item.name}</Text>
+                <View style={styles.cartItemNameContainer}>
+                  <Text style={[styles.cartItemName, { color: theme.text }]} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  {item.isOpenPrice && (
+                    <Text style={[styles.openPriceBadge, { color: theme.warning }]}>
+                      (Open)
+                    </Text>
+                  )}
+                </View>
               </View>
               <Text style={[styles.cartItemPrice, { color: theme.primary }]}>
                 {formatPrice(item.price * item.quantity)}
@@ -163,53 +213,78 @@ export const CartSection: React.FC<CartSectionProps> = ({
               <View style={[styles.cartQuantityControls, { borderColor: theme.border }]}>
                 <TouchableOpacity 
                   style={[styles.cartQuantityBtn, { backgroundColor: theme.surface }]}
-                  onPress={() => decreaseQuantity(item.id)}
+                  onPress={() => {
+                    if (item.isOpenPrice) {
+                      // ✅ Pass price for open price items
+                      decreaseQuantity(item.id, item.price);
+                    } else {
+                      decreaseQuantity(item.id);
+                    }
+                  }}
                 >
                   <Text style={[styles.cartQuantityBtnText, { color: theme.text }]}>−</Text>
                 </TouchableOpacity>
+                
                 <Text style={[styles.cartQuantityText, { color: theme.text }]}>{item.quantity}</Text>
+                
                 <TouchableOpacity 
                   style={[styles.cartQuantityBtn, { backgroundColor: theme.surface }]}
-                  onPress={() => increaseQuantity(item.id)}
+                  onPress={() => {
+                    if (item.isOpenPrice) {
+                      // ✅ Pass price for open price items
+                      increaseQuantity(item.id, item.price);
+                    } else {
+                      increaseQuantity(item.id);
+                    }
+                  }}
                 >
                   <Text style={[styles.cartQuantityBtnText, { color: theme.text }]}>+</Text>
                 </TouchableOpacity>
               </View>
+              
               <TouchableOpacity 
                 style={[styles.cartRemoveBtn, { backgroundColor: theme.danger + '20' }]}
-                onPress={() => removeItem(item.id)}
+                onPress={() => {
+                  if (item.isOpenPrice) {
+                    // ✅ Pass price for open price items
+                    removeItem(item.id, item.price);
+                  } else {
+                    removeItem(item.id);
+                  }
+                }}
               >
                 <Text style={[styles.cartRemoveText, { color: theme.danger }]}>✕</Text>
               </TouchableOpacity>
             </View>
           </View>
-        ))}
-        
-        {cart.length === 0 && (
-          <View style={styles.emptyCart}>
-            <Text style={[styles.emptyCartText, { color: theme.textSecondary }]}>{t.cartEmpty}</Text>
-            <Text style={[styles.emptyCartSubText, { color: theme.textSecondary }]}>{t.tapToAdd}</Text>
-          </View>
-        )}
-      </ScrollView>
-
-      <View style={[styles.cartFooter, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-        <View style={styles.totalRow}>
-          <Text style={[styles.chargeText, { color: theme.text }]}>{t.charge}</Text>
-          <Text style={[styles.totalAmount, { color: theme.primary }]}>{formatPrice(parseFloat(total))}</Text>
+        );
+      })}
+      
+      {cart.length === 0 && (
+        <View style={styles.emptyCart}>
+          <Text style={[styles.emptyCartText, { color: theme.textSecondary }]}>{t.cartEmpty}</Text>
+          <Text style={[styles.emptyCartSubText, { color: theme.textSecondary }]}>{t.tapToAdd}</Text>
         </View>
-        
-        <TouchableOpacity 
-          style={[styles.checkoutBtn, { backgroundColor: theme.primary }, cart.length === 0 && { backgroundColor: theme.inactive }]}
-          onPress={handleCheckout} disabled={cart.length === 0}
-        >
-          <Text style={styles.checkoutBtnText}>
-            {cart.length === 0 ? t.cartEmpty : t.checkout}
-          </Text>
-        </TouchableOpacity>
+      )}
+    </ScrollView>
+
+    <View style={[styles.cartFooter, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+      <View style={styles.totalRow}>
+        <Text style={[styles.chargeText, { color: theme.text }]}>{t.charge}</Text>
+        <Text style={[styles.totalAmount, { color: theme.primary }]}>{formatPrice(parseFloat(total))}</Text>
       </View>
+      
+      <TouchableOpacity 
+        style={[styles.checkoutBtn, { backgroundColor: theme.primary }, cart.length === 0 && { backgroundColor: theme.inactive }]}
+        onPress={handleCheckout} disabled={cart.length === 0}
+      >
+        <Text style={styles.checkoutBtnText}>
+          {cart.length === 0 ? t.cartEmpty : t.checkout}
+        </Text>
+      </TouchableOpacity>
     </View>
-  );
+  </View>
+);
 };
 
 // ✅ Updated styles
@@ -392,6 +467,16 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
+  cartItemNameContainer: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 4,
+},
+openPriceBadge: {
+  fontSize: 10,
+  fontStyle: 'italic',
+},
   checkoutBtnText: { 
     color: '#ffffff', 
     fontSize: 13, 

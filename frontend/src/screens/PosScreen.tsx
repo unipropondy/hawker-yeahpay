@@ -95,7 +95,7 @@ const [loading, setLoading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
   const [profileTab, setProfileTab] = useState<string>('theme');
   const [profileMode, setProfileMode] = useState<string>('full');
-
+const hasCheckedDrawer = useRef<boolean>(false);
 const { width, height } = useWindowDimensions();
 const [selectedOutlet, setSelectedOutlet] = useState<any>(null);
 const [outletInfo, setOutletInfo] = useState<any>(null);
@@ -372,6 +372,9 @@ const [selectedBillStyle, setSelectedBillStyle] = useState<string>('professional
 const [showStyleSelector, setShowStyleSelector] = useState<boolean>(false);
 const [showPayNowPayment, setShowPayNowPayment] = useState(false);
 const [showDrawerLogs, setShowDrawerLogs] = useState(false);
+const lastCheckTime = useRef<number>(0);
+const CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const STORAGE_KEY = 'last_drawer_check';
 const [payNowQrUrl, setPayNowQrUrl] = useState('');
 // ===== SIMPLE HANDLERS =====
 const openStartPicker = () => {
@@ -1927,12 +1930,47 @@ const handleCashPayment = async (): Promise<void> => {
   const balance = cashPaid - totalAmount;
   setBalanceAmount(balance);
   
+  // ========== 🔥 CHECK FOR OPEN DRAWERS (ONCE) ==========
+  // Add this ref at top of component: const hasCheckedDrawer = useRef(false);
+  if (!hasCheckedDrawer.current) {
+    try {
+      console.log('🔍 Checking for open drawers (one-time)...');
+      const response = await API.get('/cash-drawer/check-open');
+      const openDrawers = response.data.openDrawers || [];
+      
+      // Mark as checked (even if no open drawers)
+      hasCheckedDrawer.current = true;
+      
+      // Show alerts if any drawers open > 30 seconds
+      openDrawers.forEach((drawer: any) => {
+        if (drawer.CurrentDuration > 30) {
+          Alert.alert(
+            '⚠️ Cash Drawer Open',
+            `Drawer opened ${Math.floor(drawer.CurrentDuration)} seconds ago!\nPlease close it.`,
+            [
+              {
+                text: 'Close Now',
+                onPress: async () => {
+                  await API.post('/cash-drawer/close');
+                }
+              },
+              { text: 'OK', style: 'cancel' }
+            ]
+          );
+        }
+      });
+      
+    } catch (error) {
+      console.log('❌ Drawer check error:', error);
+      // Even on error, mark as checked to prevent retries
+      hasCheckedDrawer.current = true;
+    }
+  }
   
-   // ========== 🔥 NEW CODE START ==========
-  // ✅ STEP 1: TRY TO OPEN CASH DRAWER (SILENT)
+  // ========== 🔥 OPEN CASH DRAWER ==========
   const drawerOpened = await UniversalPrinter.openCashDrawer();
   
-  // ✅ STEP 2: LOG TO DATABASE (ONLY IF OPENED)
+  // ========== 🔥 LOG TO DATABASE ==========
   let drawerLogId = null;
   if (drawerOpened) {
     try {
@@ -1947,11 +1985,12 @@ const handleCashPayment = async (): Promise<void> => {
       console.log('⚠️ Drawer log failed, but drawer opened');
     }
   }
+  
   try {
-    // ✅ STEP 1: GET OUTLET ID
+    // ✅ GET OUTLET ID
     const outletId = await AsyncStorage.getItem('selectedOutletId');
     
-    // ✅ STEP 2: ADD outletId TO saleData
+    // ✅ CREATE SALE DATA
     const saleData = {
       total: totalAmount,
       cashPaid: cashPaid,
@@ -1965,11 +2004,11 @@ const handleCashPayment = async (): Promise<void> => {
       })),
       change: balance,
       cashier: user?.username || 'Admin',
-      outletId: outletId,  // ← ADD THIS!
-       drawerLogId: drawerLogId 
+      outletId: outletId,
+      drawerLogId: drawerLogId 
     };
 
-    console.log('💰 Sale data with outlet:', saleData); // Debug
+    console.log('💰 Sale data with outlet:', saleData);
 
     const response = await API.post('/sales', saleData);
     console.log('✅ Sale saved:', response.data);
@@ -1982,11 +2021,12 @@ const handleCashPayment = async (): Promise<void> => {
       items: response.data.items || response.data.ItemsJson || [],
       change: balance,
       cashPaid: cashPaid,
-      outletId: outletId  // ← Store for pending sale
+      outletId: outletId
     };
     
     setSalesHistory(prev => [newSale, ...prev]);
-      // ========== 🔥 UPDATE DRAWER LOG WITH SALE ID ==========
+    
+    // ========== 🔥 UPDATE DRAWER LOG WITH SALE ID ==========
     if (drawerLogId) {
       try {
         await API.put(`/cash-drawer/${drawerLogId}`, {
@@ -1994,69 +2034,30 @@ const handleCashPayment = async (): Promise<void> => {
           totalAmount: totalAmount
         });
       } catch (updateError) {
-        // Silent fail - not important
+        // Silent fail
       }
     }
    
-      setShowCashModal(false);
-      setSelectedPayment(null);
-      setCashAmount('');
-      
-      setPendingSaleData({
-        ...saleData,
-        id: newSale.id,
-        change: balance,
-        cashPaid: cashPaid,
-        userId: user?.id,
-        outletId: outletId  // ← Important for bill printing!
-      });
-      setShowBillPrompt(true);
-      
+    setShowCashModal(false);
+    setSelectedPayment(null);
+    setCashAmount('');
     
+    setPendingSaleData({
+      ...saleData,
+      id: newSale.id,
+      change: balance,
+      cashPaid: cashPaid,
+      userId: user?.id,
+      outletId: outletId
+    });
+    setShowBillPrompt(true);
     
   } catch (error: any) {
     console.log('❌ Cash payment error:', error);
     Alert.alert('Error', 'Payment failed');
   }
 };
-useEffect(() => {
-  if (!user?.id) return;
-  
-  // Check for open drawers every 10 seconds
-  const interval = setInterval(async () => {
-    try {
-      const response = await API.get('/cash-drawer/check-open');
-      const openDrawers = response.data.openDrawers || [];
-      
-      openDrawers.forEach((drawer: any) => {
-        if (drawer.CurrentDuration > 30) {
-          // Show reminder
-          Alert.alert(
-            '⚠️ Cash Drawer Open',
-            `Drawer opened ${Math.floor(drawer.CurrentDuration)} seconds ago!\nPlease close it.`,
-            [
-              {
-                text: 'Close Now',
-                onPress: async () => {
-                  await API.post('/cash-drawer/close');
-                }
-              },
-              {
-                text: 'OK',
-                style: 'cancel'
-              }
-            ]
-          );
-        }
-      });
-      
-    } catch (error) {
-      // Silent fail
-    }
-  }, 10000); // Every 10 seconds
-  
-  return () => clearInterval(interval);
-}, [user?.id]);
+
 const loadSalesSummary = useCallback(async () => {
   try {
     let url = '/sales/summary';

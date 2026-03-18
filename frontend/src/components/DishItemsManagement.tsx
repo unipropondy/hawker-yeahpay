@@ -763,7 +763,7 @@ useEffect(() => {
     {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
   </TouchableOpacity>
   <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
-    Open Price (Customer enters amount)
+    Open Price 
   </Text>
 </View>
                   {/* Image upload section */}
@@ -935,7 +935,7 @@ useEffect(() => {
                     {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
                   </TouchableOpacity>
                   <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
-                    Open Price (Customer enters amount)
+                    Open Price 
                   </Text>
                 </View>
 

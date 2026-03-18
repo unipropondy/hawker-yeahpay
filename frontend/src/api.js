@@ -14,7 +14,7 @@ export const setNavigationCallback = (callback) => {
 
 const getBaseURL = () => {
   if (__DEV__) {
-    return 'http://192.168.0.102:5000/api';
+    return 'https://hawkerfinalv-production.up.railway.app/api';
   } else {
     // Production URL
     return 'https://hawkerfinalv-production.up.railway.app/api';

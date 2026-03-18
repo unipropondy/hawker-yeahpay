@@ -10,6 +10,7 @@ export interface CartItem {
   originalName?: string;
   originalCategory?: string;
   displayCategory?: string;
+  isOpenPrice?: boolean; 
 }
 
 export interface MenuItem {

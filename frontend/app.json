@@ -2,7 +2,7 @@
   "expo": {
     "name": "UNIPRO HAWKER SYSTEM",
     "slug": "unipro-pos-new",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/unipro-hawker.png",
     "userInterfaceStyle": "light",
