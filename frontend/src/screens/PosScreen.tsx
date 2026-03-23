@@ -19,7 +19,8 @@ import { useDataLoader } from '../hooks/useDataLoader';
 import API, { uploadAPI } from '../api';
 import { useLicenseCheck } from '../hooks/useLicenseCheck';
 import PrinterManager from '../components/PrinterManager';
-
+// At the top with other imports
+import DiscountInput from '../components/DiscountInput';
  // ✅ Correct path
  import { handleApiError, showSuccess } from '../utils/errorHandler';
 import { DishGroupManagement } from '../components/DishGroupManagement';
@@ -99,11 +100,26 @@ const hasCheckedDrawer = useRef<boolean>(false);
 const { width, height } = useWindowDimensions();
 const [selectedOutlet, setSelectedOutlet] = useState<any>(null);
 const [outletInfo, setOutletInfo] = useState<any>(null);
+// Add these state variables
+const [discountEnabled, setDiscountEnabled] = useState(false);
+const [showDiscountModal, setShowDiscountModal] = useState(false);
+const [discountAmount, setDiscountAmount] = useState(0);
+const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+const [discountValue, setDiscountValue] = useState(0);
+const [discountedTotal, setDiscountedTotal] = useState<number | undefined>(undefined);
   const [showHomeMenu, setShowHomeMenu] = useState<boolean>(false);
   const [priceModal, setPriceModal] = useState({
   visible: false,
   item: null as any,
   price: ''
+});
+const [discountInfo, setDiscountInfo] = useState({
+    applied: false,
+    type: 'percentage' as 'percentage' | 'fixed',
+    value: 0,
+    amount: 0,
+    originalTotal: 0,
+    finalTotal: 0
 });
  const [state, setState] = useState<any[]>([]); 
 const { currencySymbol } = useCurrency();
@@ -445,8 +461,18 @@ const openEndPicker = () => {
   setShowPicker(true);
 };
 const removeAllItems = () => {
-  setCart([]);  // Clears entire cart
+    setCart([]);
+    // ✅ Reset discount when cart empty
+    setDiscountInfo(prev => ({
+        ...prev,
+        applied: false,
+        amount: 0,
+        originalTotal: 0,
+        finalTotal: 0
+    }));
 };
+
+
 // Add these refs at the top of your component
 const loadingPaymentModes = useRef(false);
 const paymentModesLoaded = useRef(false);
@@ -500,6 +526,35 @@ const loadPaymentModes = async (force = false) => {
   } finally {
     loadingPaymentModes.current = false;
   }
+};
+useEffect(() => {
+    const discountMode = userPaymentModes.find(m => m.id === 'discount');
+    setDiscountEnabled(discountMode?.isActive || false);
+    
+    // Reset discount when disabled
+    if (!discountMode?.isActive) {
+        setDiscountInfo({
+            applied: false,
+            type: 'percentage',
+            value: 0,
+            amount: 0,
+            originalTotal: 0,
+            finalTotal: 0
+        });
+    }
+}, [userPaymentModes]);
+
+
+// ============ CALCULATE FINAL TOTAL (With Discount) ============
+const calculateFinalTotal = (): number => {
+    const original = calculateOriginalTotal();
+    
+    // If discount applied, use discountInfo
+    if (discountInfo.applied) {
+        return discountInfo.finalTotal;
+    }
+    
+    return original;
 };
 
 // Add helper functions if missing
@@ -936,69 +991,85 @@ useEffect(() => {
     }
   }
 }, [dishGroups]);
-
+const calculateOriginalTotal = useCallback((): number => {
+    return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+}, [cart]);
   // Load dish items from database
  // Load dish items from database
 const loadingItems = useRef(false);
 const itemsLoaded = useRef(false);
 
 const loadDishItems = async (force = false) => {
-  // 🛑 If already loaded and not forcing, skip
   if (itemsLoaded.current && !force) {
-    console.log('⏭️ Dish items already loaded PERMANENTLY, skipping');
+    console.log('⏭️ Dish items already loaded, skipping');
     return;
   }
   
-  // 🛑 If already loading, skip duplicate
   if (loadingItems.current) {
-    console.log('⏳ Dish items already loading, skipping duplicate');
+    console.log('⏳ Dish items already loading');
     return;
   }
 
   try {
     loadingItems.current = true;
     
-    // ✅ STEP 1: GET OUTLET ID
     const outletId = await AsyncStorage.getItem('selectedOutletId');
     
-    // ✅ STEP 2: CHECK IF OUTLET ID EXISTS
     if (!outletId && user?.role !== 'admin') {
-      console.log('⚠️ No outlet selected - cannot load dish items');
+      console.log('⚠️ No outlet selected');
       return;
     }
     
     console.log(`📦 Loading dish items for outlet: ${outletId}`);
     
-    // ✅ STEP 3: ADD outletId TO API CALL
     const response = await API.get(`/dishitems?outletId=${outletId}`);
-    console.log('Raw items response:', response.data);
+    console.log('✅ Raw items response length:', response.data?.length);
+    
+    // ✅ DEBUG: Check first item for IsFavourite
+    if (response.data && response.data.length > 0) {
+      console.log('🔍 First item in response:', JSON.stringify(response.data[0], null, 2));
+      console.log('🔍 IsFavourite in response:', response.data[0].IsFavourite);
+    }
     
     const baseURL = 'https://hawkerfinalv-production.up.railway.app';
     
-    const items = (response.data || []).map((item: any) => ({
-      id: item.Id || item.id,
-      name: item.Name || item.name,
-      price: parseFloat(item.Price || item.price || 0),
-      categoryId: item.CategoryId?.toString(),
-      categoryName: item.DisplayCategory || item.OriginalCategory || 'Unknown',
-      category: item.DisplayCategory || item.OriginalCategory || 'Unknown',
-      imageUri: item.imageUri || item.ImageUrl 
-        ? `${baseURL}${item.imageUri || item.ImageUrl}`
-        : null,
-      originalName: item.OriginalName || item.originalName || item.name,
-      originalCategory: item.OriginalCategory || item.originalCategory,
-      displayCategory: item.DisplayCategory || item.displayCategory,
-      isActive: item.IsActive ?? true,
-      isOpenPrice: item.IsOpenPrice === true || item.isOpenPrice === true,
-    }));
+    const items = (response.data || []).map((item: any) => {
+      const newItem = {
+        id: item.Id || item.id,
+        name: item.Name || item.name,
+        price: parseFloat(item.Price || item.price || 0),
+        categoryId: item.CategoryId?.toString(),
+        categoryName: item.DisplayCategory || item.OriginalCategory || 'Unknown',
+        category: item.DisplayCategory || item.OriginalCategory || 'Unknown',
+        imageUri: item.imageUri || item.ImageUrl 
+          ? `${baseURL}${item.imageUri || item.ImageUrl}`
+          : null,
+        originalName: item.OriginalName || item.originalName || item.name,
+        originalCategory: item.OriginalCategory || item.originalCategory,
+        displayCategory: item.DisplayCategory || item.displayCategory,
+        isActive: item.IsActive ?? true,
+        isOpenPrice: item.IsOpenPrice === true || item.isOpenPrice === true,
+        isFavourite: item.IsFavourite === true || item.isFavourite === true,
+      };
+      
+      // ✅ DEBUG: Log if this item is favourite
+      if (newItem.isFavourite) {
+        console.log(`⭐ Favourite item found: ${newItem.name}`);
+      }
+      
+      return newItem;
+    });
     
-    console.log(`📊 Items loaded for outlet ${outletId}:`, items.length);
+    console.log(`📊 Items loaded: ${items.length}`);
     
-    // ✅ Mark as loaded BEFORE setting state
+    // ✅ Count favourites
+    const favCount = items.filter(i => i.isFavourite === true).length;
+    console.log(`⭐ Favourite items count: ${favCount}`);
+    
     itemsLoaded.current = true;
     setMenuItems(items);
     
-    // ✅ Update category counts
+    // Update category counts...
     const newCounts: Record<string, number> = {};
     items.forEach((item: any) => {
       const categoryId = item.categoryId;
@@ -1007,16 +1078,12 @@ const loadDishItems = async (force = false) => {
       }
     });
     
-    // Update dish groups with new counts
     setDishGroups(prev => {
       const needsUpdate = prev.some(group => 
         group.itemCount !== (newCounts[group.id?.toString()] || 0)
       );
       
-      if (!needsUpdate) {
-        console.log('⏭️ Category counts unchanged, skipping update');
-        return prev;
-      }
+      if (!needsUpdate) return prev;
       
       console.log('📊 Updating category counts:', newCounts);
       return prev.map(group => ({
@@ -1029,7 +1096,6 @@ const loadDishItems = async (force = false) => {
     console.log('❌ Error loading items:', error);
     itemsLoaded.current = false;
     
-    // Show user-friendly error
     const errorMessage = error.response?.data?.error || 
                         error.message || 
                         'Failed to load menu items';
@@ -1236,20 +1302,35 @@ const categoryItems = useMemo(() => {
   if (!t || !activeCategory) return [];
   
   console.log(`🎯 Filtering items for category: ${activeCategory}`);
+  console.log(`📦 Total menuItems: ${menuItems.length}`);
+  console.log(`⭐ Favourite items in menu: ${menuItems.filter(i => i.isFavourite === true).length}`);
   
-  // Filter items for current category - NO SORTING!
+  // ✅ SPECIAL HANDLING FOR FAVOURITES CATEGORY
+  if (activeCategory === 'Favourites') {
+    const favouriteItems = menuItems.filter(item => item.isFavourite === true);
+    console.log(`⭐ Found ${favouriteItems.length} favourite items`);
+    return favouriteItems;
+  }
+  
+  // Normal categories - filter by displayCategory
   const items = menuItems.filter(item => 
     item.displayCategory === activeCategory
   );
   
-  console.log(`📦 Found ${items.length} items in original order`);
-  
+  console.log(`📦 Found ${items.length} items in ${activeCategory}`);
   return items;
 }, [activeCategory, menuItems, language]);
 useEffect(() => {
   console.log('🎯 Active category:', activeCategory);
   console.log('📦 Items order:', categoryItems.map(i => i.name));
 }, [activeCategory, categoryItems]);
+useEffect(() => {
+    console.log('🛒 Cart changed, items:', cart.length);
+    
+    if (discountInfo.applied) {
+        recalculateDiscount(cart);
+    }
+}, [cart, discountInfo.applied]);
   const totalPages = Math.ceil(categoryItems.length / itemsPerPage);
   
   const currentItems = useMemo(() => {
@@ -1274,10 +1355,43 @@ useEffect(() => {
       setCurrentPage(currentPage - 1);
     }
   };
+const handleApplyDiscount = (type: 'percentage' | 'fixed', value: number, calculatedAmount: number) => {
+    const originalTotal = calculateOriginalTotal();
+    
+    let finalTotal = originalTotal - calculatedAmount;
+    if (finalTotal < 0) finalTotal = 0;
+    
+    setDiscountInfo({
+        applied: true,
+        type: type,
+        value: value,
+        amount: calculatedAmount,
+        originalTotal: originalTotal,
+        finalTotal: finalTotal
+    });
+    
+    console.log('✅ Discount applied:', { type, value, amount: calculatedAmount, original: originalTotal, final: finalTotal });
+};
 
-  const calculateTotal = (): string => {
+const handleRemoveDiscount = () => {
+    setDiscountInfo({
+        applied: false,
+        type: 'percentage',
+        value: 0,
+        amount: 0,
+        originalTotal: calculateOriginalTotal(),
+        finalTotal: calculateOriginalTotal()
+    });
+    
+    console.log('🗑️ Discount removed');
+};
+// Update calculateTotal to show discounted amount
+const calculateTotal = (): string => {
+    if (discountInfo.applied) {
+        return discountInfo.finalTotal.toFixed(2);
+    }
     return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2);
-  };
+};
 
  // In PosScreen.tsx - Replace your addToCart function
 
@@ -1489,16 +1603,13 @@ useEffect(() => {
 // INCREASE QUANTITY - Updated for Open Price
 // ============================================
 const increaseQuantity = (itemId: number, itemPrice?: number): void => {
-    setCart(prevCart => 
-        prevCart.map(item => {
-            // Check if this is the item to increase
+    setCart(prevCart => {
+        const newCart = prevCart.map(item => {
             let isMatch = false;
             
             if (item.isOpenPrice && itemPrice !== undefined) {
-                // Open price item: match by id AND price
                 isMatch = (item.id === itemId && item.price === itemPrice);
             } else if (!item.isOpenPrice) {
-                // Normal item: match by id only
                 isMatch = (item.id === itemId);
             }
             
@@ -1506,10 +1617,14 @@ const increaseQuantity = (itemId: number, itemPrice?: number): void => {
                 return {...item, quantity: item.quantity + 1};
             }
             return item;
-        })
-    );
+        });
+        
+        // ✅ IMMEDIATELY recalculate discount
+        setTimeout(() => recalculateDiscount(newCart), 0);
+        
+        return newCart;
+    });
 };
-
 // ============================================
 // DECREASE QUANTITY - Updated for Open Price
 // ============================================
@@ -1518,7 +1633,6 @@ const decreaseQuantity = (itemId: number, itemPrice?: number): void => {
         const newCart = [];
         
         for (const item of prevCart) {
-            // Check if this is the item to decrease
             let isMatch = false;
             
             if (item.isOpenPrice && itemPrice !== undefined) {
@@ -1529,28 +1643,56 @@ const decreaseQuantity = (itemId: number, itemPrice?: number): void => {
             
             if (isMatch) {
                 if (item.quantity === 1) {
-                    // Remove item if quantity becomes 0
-                    console.log(`🗑️ Removing item: ${item.name} (price: ${item.price})`);
-                    continue; // Skip adding to newCart
+                    continue; // Remove item
                 } else {
-                    // Decrease quantity
                     newCart.push({...item, quantity: item.quantity - 1});
                 }
             } else {
-                // Keep other items
                 newCart.push(item);
             }
         }
         
-        console.log('📦 Cart after decrease:', newCart.map(i => ({
-            name: i.name,
-            price: i.price,
-            quantity: i.quantity
-        })));
+        // ✅ IMMEDIATELY recalculate discount
+        setTimeout(() => recalculateDiscount(newCart), 0);
         
         return newCart;
     });
 };
+const recalculateDiscount = useCallback((newCart: any[]) => {
+    if (!discountInfo.applied) return;
+    
+    const newOriginalTotal = newCart.reduce((sum, item) => 
+        sum + (item.price * item.quantity), 0
+    );
+    
+    let newDiscountAmount = 0;
+    
+    if (discountInfo.type === 'percentage') {
+        newDiscountAmount = (newOriginalTotal * discountInfo.value) / 100;
+        // Max 100% discount
+        if (newDiscountAmount > newOriginalTotal) {
+            newDiscountAmount = newOriginalTotal;
+        }
+    } else {
+        newDiscountAmount = Math.min(discountInfo.value, newOriginalTotal);
+    }
+    
+    const newFinalTotal = newOriginalTotal - newDiscountAmount;
+    
+    setDiscountInfo(prev => ({
+        ...prev,
+        amount: newDiscountAmount,
+        originalTotal: newOriginalTotal,
+        finalTotal: newFinalTotal
+    }));
+    
+    console.log('🔄 Discount recalculated:', {
+        newOriginal: newOriginalTotal,
+        discountAmount: newDiscountAmount,
+        newFinal: newFinalTotal
+    });
+}, [discountInfo.applied, discountInfo.type, discountInfo.value]);
+
 
 // ============================================
 // REMOVE ITEM - Updated for Open Price
@@ -1559,20 +1701,15 @@ const removeItem = (itemId: number, itemPrice?: number): void => {
     setCart(prevCart => {
         const newCart = prevCart.filter(item => {
             if (item.isOpenPrice && itemPrice !== undefined) {
-                // Open price: remove specific price variant
                 return !(item.id === itemId && item.price === itemPrice);
             } else if (!item.isOpenPrice) {
-                // Normal item: remove all with this id
                 return item.id !== itemId;
             }
-            return true; // Keep others
+            return true;
         });
         
-        console.log('🗑️ Item removed. New cart:', newCart.map(i => ({
-            name: i.name,
-            price: i.price,
-            quantity: i.quantity
-        })));
+        // ✅ IMMEDIATELY recalculate discount
+        setTimeout(() => recalculateDiscount(newCart), 0);
         
         return newCart;
     });
@@ -1658,20 +1795,33 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
     setBalanceAmount(0);
     return;
   }
-   // ✅ Handle UPI payment - FIXED
+  
+  // ✅ Handle UPI payment
   if (payment.id === 'upi' || payment.name === 'UPI') {
     console.log('💰 UPI selected, amount:', totalAmount);
-    setShowPaymentModal(false);     // Close payment modal
-    setShowUPIPayment(true);        // Open UPI modal
+    console.log('💰 UPI Discount info:', {
+      applied: discountInfo.applied,
+      type: discountInfo.type,
+      value: discountInfo.value,
+      amount: discountInfo.amount
+    });
+    setShowPaymentModal(false);
+    setShowUPIPayment(true);
     return;
   }
-    if (payment.id === 'paynow' || payment.name === 'PayNow') {
-    console.log('💰 PayNow selected, checking QR...');
+  
+  if (payment.id === 'paynow' || payment.name === 'PayNow') {
+    console.log('💰 PayNow selected, amount:', totalAmount);
+    console.log('💰 PayNow Discount info:', {
+      applied: discountInfo.applied,
+      type: discountInfo.type,
+      value: discountInfo.value,
+      amount: discountInfo.amount
+    });
     
     try {
-      setProcessingPayment(true);  // Show loading
+      setProcessingPayment(true);
       
-      // ✅ Force reload QR from API
       const response = await API.get(`/user/paynow/${user?.id}`);
       const freshQrUrl = response.data.qrCodeUrl || '';
       
@@ -1686,10 +1836,7 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
         return;
       }
       
-      // ✅ Update state with fresh URL
       setPayNowQrUrl(freshQrUrl);
-      
-      // ✅ Close payment modal and open PayNow modal
       setShowPaymentModal(false);
       setShowPayNowPayment(true);
       setProcessingPayment(false);
@@ -1703,13 +1850,13 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
     return;
   }
   
-  // ✅ Other payment methods (Card, etc.)
+  // ✅ Other payment methods (Card, CDC, etc.) WITH DISCOUNT
   setProcessingPayment(true);
   setProcessingPaymentId(payment.id);
   setSelectedPayment(payment);
   
   try {
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
     
     const saleData = {
       total: totalAmount,
@@ -1721,8 +1868,22 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
         category: item.category || item.displayCategory || 'Uncategorized',
         displayCategory: item.displayCategory || item.category
       })),
-      cashier: user?.username || 'Admin'
+      cashier: user?.username || 'Admin',
+      outletId: outletId,
+      
+      // ✅✅✅ ADD DISCOUNT FIELDS ✅✅✅
+      discountType: discountInfo.type,
+      discountValue: discountInfo.value,
+      discountAmount: discountInfo.amount
     };
+    
+    console.log('💰 Card/Other sale with discount:', {
+      total: saleData.total,
+      paymentMethod: saleData.paymentMethod,
+      discountType: saleData.discountType,
+      discountValue: saleData.discountValue,
+      discountAmount: saleData.discountAmount
+    });
     
     const response = await API.post('/sales', saleData);
     
@@ -1731,7 +1892,8 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
       total: response.data.total || response.data.Total,
       paymentMethod: response.data.paymentMethod || response.data.PaymentMethod,
       date: response.data.date || response.data.SaleDate,
-      items: response.data.items || response.data.ItemsJson || []
+      items: response.data.items || response.data.ItemsJson || [],
+      discount: response.data.discount || null
     };
     
     setSalesHistory(prev => [newSale, ...prev]);
@@ -1744,16 +1906,21 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
       setProcessingPaymentId(null);
       setSelectedPayment(null);
       
-      // Show Bill Prompt
       setPendingSaleData({
         ...saleData,
-        id: newSale.id
+        id: newSale.id,
+        discount: {
+          type: discountInfo.type,
+          value: discountInfo.value,
+          amount: discountInfo.amount
+        }
       });
       setShowBillPrompt(true);
       
     }, 1500);
     
   } catch (error: any) {
+    console.log('❌ Payment error:', error);
     Alert.alert('Error', 'Payment failed');
     setProcessingPayment(false);
     setProcessingPaymentId(null);
@@ -1768,8 +1935,14 @@ const handlePayNowSuccess = async () => {
     
     const totalAmount = parseFloat(calculateTotal());
     console.log('💰 PayNow - Total amount:', totalAmount);
+    console.log('💰 PayNow - Discount info:', {
+      applied: discountInfo.applied,
+      type: discountInfo.type,
+      value: discountInfo.value,
+      amount: discountInfo.amount
+    });
     
-    // ✅ STEP 2: ADD outletId TO saleData
+    // ✅ STEP 2: ADD discount fields TO saleData
     const saleData = {
       total: totalAmount,
       paymentMethod: 'PayNow',
@@ -1781,26 +1954,41 @@ const handlePayNowSuccess = async () => {
         displayCategory: item.displayCategory || item.category
       })),
       cashier: user?.username || 'Admin',
-      outletId: outletId  // ← ADD THIS!
+      outletId: outletId,
+      
+      // ✅✅✅ ADD DISCOUNT FIELDS ✅✅✅
+      discountType: discountInfo.type,
+      discountValue: discountInfo.value,
+      discountAmount: discountInfo.amount
     };
     
-    console.log('📦 PayNow - Sale data prepared');
+    console.log('📦 PayNow - Sale data prepared:', {
+      total: saleData.total,
+      discountType: saleData.discountType,
+      discountValue: saleData.discountValue,
+      discountAmount: saleData.discountAmount
+    });
 
     const response = await API.post('/sales', saleData);
     console.log('✅ PayNow - API Response:', response.data);
     
-    // ✅ STEP 3: STORE outletId IN PENDING SALE
+    // ✅ STEP 3: STORE outletId AND discount IN PENDING SALE
     setPendingSaleData({
       ...saleData,
       id: response.data.id,
-      outletId: outletId  // ← Important for bill printing!
+      outletId: outletId,
+      discount: {
+        type: discountInfo.type,
+        value: discountInfo.value,
+        amount: discountInfo.amount
+      }
     });
     
     setShowPayNowPayment(false);
     setCart([]);
     setShowBillPrompt(true);
     
-    console.log('✅ PayNow - Success, bill prompt shown');
+    console.log('✅ PayNow - Success, bill prompt shown with discount');
     
   } catch (error: any) {
     console.log('❌ PayNow error:', {
@@ -1816,15 +2004,21 @@ const handleUPISuccess = async () => {
     console.log('🔍 DEBUG START ==========');
     console.log('1️⃣ Cart before any operation:', JSON.stringify(cart, null, 2));
     console.log('2️⃣ calculateTotal() result:', calculateTotal());
+    console.log('3️⃣ Discount info:', {
+      applied: discountInfo.applied,
+      type: discountInfo.type,
+      value: discountInfo.value,
+      amount: discountInfo.amount
+    });
     
     // ✅ STEP 1: GET OUTLET ID
     const outletId = await AsyncStorage.getItem('selectedOutletId');
     console.log('📍 Outlet ID:', outletId);
     
     const totalAmount = parseFloat(calculateTotal());
-    console.log('3️⃣ Parsed totalAmount:', totalAmount);
+    console.log('4️⃣ Parsed totalAmount:', totalAmount);
     
-    // ✅ STEP 2: ADD outletId TO saleData
+    // ✅ STEP 2: ADD discount fields to saleData
     const saleData = {
       total: totalAmount,
       paymentMethod: 'UPI',
@@ -1836,11 +2030,21 @@ const handleUPISuccess = async () => {
         displayCategory: item.displayCategory || item.category
       })),
       cashier: user?.username || 'Admin',
-      outletId: outletId  // ← ADD THIS!
+      outletId: outletId,
+      
+      // ✅✅✅ CRITICAL: ADD DISCOUNT FIELDS ✅✅✅
+      discountType: discountInfo.type,
+      discountValue: discountInfo.value,
+      discountAmount: discountInfo.amount
     };
     
-    console.log('4️⃣ Sale data prepared:', JSON.stringify(saleData, null, 2));
-    console.log('5️⃣ Items count:', saleData.items.length);
+    console.log('5️⃣ Sale data prepared:', JSON.stringify(saleData, null, 2));
+    console.log('6️⃣ Discount in sale data:', {
+      discountType: saleData.discountType,
+      discountValue: saleData.discountValue,
+      discountAmount: saleData.discountAmount
+    });
+    console.log('7️⃣ Items count:', saleData.items.length);
     
     if (saleData.items.length === 0) {
       console.log('❌ No items in cart!');
@@ -1849,21 +2053,31 @@ const handleUPISuccess = async () => {
     }
     
     const response = await API.post('/sales', saleData);
-    console.log('6️⃣ API Response:', response.data);
+    console.log('8️⃣ API Response:', response.data);
     
     setPendingSaleData({
       ...saleData,
       id: response.data.id,
-      outletId: outletId  // ← Store for bill printing
+      outletId: outletId,
+      discount: {
+        type: discountInfo.type,
+        value: discountInfo.value,
+        amount: discountInfo.amount
+      }
     });
     
-    console.log('7️⃣ Pending sale data set with ID:', response.data.id);
+    console.log('9️⃣ Pending sale data set with ID:', response.data.id);
+    console.log('🔟 Discount saved in pending sale:', {
+      type: discountInfo.type,
+      value: discountInfo.value,
+      amount: discountInfo.amount
+    });
     
     setShowUPIPayment(false);
     setCart([]);
     setShowBillPrompt(true);
     
-    console.log('8️⃣ All done, bill prompt should show total:', totalAmount);
+    console.log('✅ All done, bill prompt should show total:', totalAmount);
     console.log('🔍 DEBUG END ==========');
     
   } catch (error: any) {
@@ -1877,35 +2091,7 @@ const handleUPISuccess = async () => {
 };
 // In PosScreen.tsx - Update handlePrintBill
 
-const handlePrintBill = async () => {
-  if (!pendingSaleData || !user?.id) {
-    console.log('❌ No pending sale data or user id');
-    return;
-  }
 
-  console.log('🖨️ handlePrintBill called with:', pendingSaleData);
-  
-  try {
-    // ✅ Use UniversalPrinter.smartPrint for direct print
-    const printed = await UniversalPrinter.smartPrint(
-      pendingSaleData,
-      user.id,
-      t
-    );
-    
-    if (printed) {
-      console.log('✅ Print completed, cleaning up...');
-      setShowBillPrompt(false);
-      setPendingSaleData(null);
-      setCart([]);
-    }
-    // If not printed, smartPrint already handles fallback
-    
-  } catch (error) {
-    console.log('❌ Print error:', error);
-    Alert.alert('Error', 'Failed to print bill');
-  }
-};
 // Keep skip handler same
 const handleSkipBill = () => {
   setShowBillPrompt(false);
@@ -1931,17 +2117,14 @@ const handleCashPayment = async (): Promise<void> => {
   setBalanceAmount(balance);
   
   // ========== 🔥 CHECK FOR OPEN DRAWERS (ONCE) ==========
-  // Add this ref at top of component: const hasCheckedDrawer = useRef(false);
   if (!hasCheckedDrawer.current) {
     try {
       console.log('🔍 Checking for open drawers (one-time)...');
       const response = await API.get('/cash-drawer/check-open');
       const openDrawers = response.data.openDrawers || [];
       
-      // Mark as checked (even if no open drawers)
       hasCheckedDrawer.current = true;
       
-      // Show alerts if any drawers open > 30 seconds
       openDrawers.forEach((drawer: any) => {
         if (drawer.CurrentDuration > 30) {
           Alert.alert(
@@ -1962,7 +2145,6 @@ const handleCashPayment = async (): Promise<void> => {
       
     } catch (error) {
       console.log('❌ Drawer check error:', error);
-      // Even on error, mark as checked to prevent retries
       hasCheckedDrawer.current = true;
     }
   }
@@ -1990,7 +2172,7 @@ const handleCashPayment = async (): Promise<void> => {
     // ✅ GET OUTLET ID
     const outletId = await AsyncStorage.getItem('selectedOutletId');
     
-    // ✅ CREATE SALE DATA
+    // ✅✅✅ CREATE SALE DATA WITH DISCOUNT FIELDS ✅✅✅
     const saleData = {
       total: totalAmount,
       cashPaid: cashPaid,
@@ -2005,13 +2187,24 @@ const handleCashPayment = async (): Promise<void> => {
       change: balance,
       cashier: user?.username || 'Admin',
       outletId: outletId,
-      drawerLogId: drawerLogId 
+      drawerLogId: drawerLogId,
+      
+      // ✅✅✅ CRITICAL: ADD DISCOUNT FIELDS ✅✅✅
+      discountType: discountInfo.type,
+      discountValue: discountInfo.value,
+      discountAmount: discountInfo.amount
     };
 
-    console.log('💰 Sale data with outlet:', saleData);
+    console.log('💰 Cash Sale with discount:', {
+      total: saleData.total,
+      discountType: saleData.discountType,
+      discountValue: saleData.discountValue,
+      discountAmount: saleData.discountAmount,
+      discountApplied: discountInfo.applied
+    });
 
     const response = await API.post('/sales', saleData);
-    console.log('✅ Sale saved:', response.data);
+    console.log('✅ Sale saved with discount:', response.data);
     
     const newSale = {
       id: response.data.id || response.data.Id,
@@ -2021,7 +2214,8 @@ const handleCashPayment = async (): Promise<void> => {
       items: response.data.items || response.data.ItemsJson || [],
       change: balance,
       cashPaid: cashPaid,
-      outletId: outletId
+      outletId: outletId,
+      discount: response.data.discount || null
     };
     
     setSalesHistory(prev => [newSale, ...prev]);
@@ -2048,7 +2242,12 @@ const handleCashPayment = async (): Promise<void> => {
       change: balance,
       cashPaid: cashPaid,
       userId: user?.id,
-      outletId: outletId
+      outletId: outletId,
+      discount: {
+        type: discountInfo.type,
+        value: discountInfo.value,
+        amount: discountInfo.amount
+      }
     });
     setShowBillPrompt(true);
     
@@ -2232,18 +2431,25 @@ const paymentOptions = useMemo(() => {
   
   if (!userPaymentModes || userPaymentModes.length === 0) {
     console.log('⚠️ No payment modes available - using defaults');
-    
-    // ✅ Return default modes if nothing configured
-  
+    return [];
   }
   
-  // Filter only active modes
-  const activeModes = userPaymentModes.filter(mode => mode.isActive === true);
+  // Filter only active modes AND EXCLUDE DISCOUNT
+  const activeModes = userPaymentModes.filter(mode => 
+    mode.isActive === true && mode.id !== 'discount'
+  );
   
-  console.log('✅ Active modes:', activeModes.map(m => m.name));
+  console.log('✅ Active payment modes (discount hidden):', activeModes.map(m => m.name));
   
   // Sort by order
   return activeModes.sort((a, b) => (a.order || 0) - (b.order || 0));
+}, [userPaymentModes]);
+
+// ✅ Separate discountEnabled state for cart button
+useEffect(() => {
+  // Check if discount mode is active
+  const discountMode = userPaymentModes.find(m => m.id === 'discount');
+  setDiscountEnabled(discountMode?.isActive || false);
 }, [userPaymentModes]);
 // In PosScreen.tsx - Add this useEffect
 useEffect(() => {
@@ -2611,6 +2817,9 @@ const handlePriceSubmit = () => {
   addToCart(priceModal.item, price);
   setPriceModal({ visible: false, item: null, price: '' });  // ✅ Using priceModal
 };
+const calculateTotalWithoutDiscount = (): string => {
+    return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2);
+};
 const checkPrinterStatus = async () => {
   try {
     const SunmiPrinter = require('react-native-sunmi-inner-printer');
@@ -2627,6 +2836,56 @@ const checkPrinterStatus = async () => {
     }
   } catch (error) {
     console.log('❌ Status check failed:', error);
+  }
+};
+const handlePrintBill = async () => {
+  if (!pendingSaleData || !user?.id) {
+    console.log('❌ No pending sale data or user id');
+    return;
+  }
+
+  console.log('🖨️ handlePrintBill called with:', pendingSaleData);
+  
+  // ✅ Get outlet ID from storage
+  const outletId = await AsyncStorage.getItem('selectedOutletId');
+  
+  // ✅ Create discount info object
+  const discountData = discountInfo.applied ? {
+    applied: discountInfo.applied,
+    type: discountInfo.type,
+    value: discountInfo.value,
+    amount: discountInfo.amount
+  } : undefined;
+  
+  try {
+    // ✅ Pass outletId instead of user.id
+    const printed = await UniversalPrinter.smartPrint(
+      pendingSaleData,
+      outletId,  // ← CHANGE THIS: from user.id to outletId
+      t,
+      discountData
+    );
+    
+    if (printed) {
+      console.log('✅ Print completed, cleaning up...');
+      setShowBillPrompt(false);
+      setPendingSaleData(null);
+      setCart([]);
+      
+      // ✅ Reset discount after printing
+      setDiscountInfo({
+        applied: false,
+        type: 'percentage',
+        value: 0,
+        amount: 0,
+        originalTotal: 0,
+        finalTotal: 0
+      });
+    }
+    
+  } catch (error) {
+    console.log('❌ Print error:', error);
+    Alert.alert('Error', 'Failed to print bill');
   }
 };
 const testSunmiConnection = async () => {
@@ -3355,7 +3614,28 @@ const renderCashModal = () => (
             t={t}
             theme={currentTheme}
             formatPrice={formatPrice} 
+             discountEnabled={discountEnabled}
+    onDiscountPress={() => setShowDiscountModal(true)}
+    discountApplied={discountInfo.applied}
+    discountAmount={discountInfo.amount}
+    discountedTotal={discountInfo.finalTotal}
+    discountType={discountInfo.type}
+    discountValue={discountInfo.value}
+    originalTotal={discountInfo.originalTotal}
+    
+    // ✅ NEW: Remove discount function
+    onRemoveDiscount={handleRemoveDiscount}
           />
+          <DiscountInput
+    visible={showDiscountModal}
+    onClose={() => setShowDiscountModal(false)}
+    onApplyDiscount={handleApplyDiscount}
+    currentTotal={parseFloat(calculateTotalWithoutDiscount())}  // Original total
+    theme={currentTheme}
+    t={t}
+    formatPrice={formatPrice}
+/>
+
         </View>
         )}
       </View>
@@ -3455,6 +3735,8 @@ const renderCashModal = () => (
   isMobile={isMobile}
   formatPrice={formatPrice}
   userId={user?.id} 
+   outletInfo={outletInfo} 
+   userRole={user?.role}  
 />
 <PayModeSettings
   visible={showPayModeSettings}
@@ -3481,16 +3763,17 @@ const renderCashModal = () => (
   visible={showCompanySettings}
   onClose={() => setShowCompanySettings(false)}
   onSave={async (settings) => {
-    // Convert to string when saving
-    const clientId = String(user?.clientId || user?.id || '');
+    // ✅ Use outletId instead of userId
+    const clientId = String(outletInfo?.id || user?.clientId || user?.id || '');
     await BillPDFGenerator.saveSettings(settings, clientId);
     Alert.alert('✅ Success', 'Company settings saved!');
     setShowCompanySettings(false);
   }}
   theme={currentTheme}
   t={t}
-  clientId={String(user?.clientId || user?.id || '')}
-  userShopName={user?.shopName}
+  clientId={String(outletInfo?.id || user?.clientId || user?.id || '')}
+  userShopName={outletInfo?.name || user?.shopName}  // ✅ Use outlet name
+  defaultCashier={user?.username}
 />
 {/* UPI Payment Modal */}
 <UPIQRPayment
@@ -3680,6 +3963,7 @@ const renderCashModal = () => (
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   container: { 
     flex: 1,

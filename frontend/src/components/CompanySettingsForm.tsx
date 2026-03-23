@@ -1,7 +1,7 @@
-// components/CompanySettingsForm.tsx - UPDATED with Currency Context
+// components/CompanySettingsForm.tsx - WITH LOGO SUPPORT ✅
 
 import React, { useState, useEffect } from 'react';
-import { Platform, StatusBar } from 'react-native';
+import { Platform, StatusBar, Image } from 'react-native';
 import {
   View,
   Text,
@@ -15,8 +15,10 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import BillPDFGenerator from './BillPDFGenerator';
-import { useCurrency } from '../context/CurrencyContext';  // ✅ Add this import
+import { useCurrency } from '../context/CurrencyContext';
+import API, { uploadAPI } from '../api';
 
 interface CompanySettings {
   name: string;
@@ -28,6 +30,10 @@ interface CompanySettings {
   cashierName: string;
   currency: string;
   currencySymbol: string;
+  companyLogo?: string;
+  halalLogo?: string;
+  showCompanyLogo?: boolean;
+  showHalalLogo?: boolean;
 }
 
 interface Props {
@@ -51,7 +57,6 @@ const CompanySettingsForm: React.FC<Props> = ({
   userShopName,
   defaultCashier
 }) => {
-  // ✅ Add currency context
   const { refreshCurrency } = useCurrency();
   
   const [settings, setSettings] = useState<CompanySettings>({
@@ -64,10 +69,16 @@ const CompanySettingsForm: React.FC<Props> = ({
     cashierName: defaultCashier || '',
     currency: 'SGD',
     currencySymbol: '$',
+    companyLogo: '',
+    halalLogo: '',
+    showCompanyLogo: true,
+    showHalalLogo: true,
   });
   
   const [enableGST, setEnableGST] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingCompanyLogo, setUploadingCompanyLogo] = useState(false);
+  const [uploadingHalalLogo, setUploadingHalalLogo] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -101,11 +112,82 @@ const CompanySettingsForm: React.FC<Props> = ({
           cashierName: savedSettings.cashierName || defaultCashier || '',
           currency: savedSettings.currency || 'SGD',
           currencySymbol: savedSettings.currencySymbol || '$',
+          companyLogo: savedSettings.companyLogo || '',
+          halalLogo: savedSettings.halalLogo || '',
+          showCompanyLogo: savedSettings.showCompanyLogo !== false,
+          showHalalLogo: savedSettings.showHalalLogo !== false,
         });
         setEnableGST(savedSettings.gstPercentage > 0);
       }
     } catch (error) {
       console.log('Error loading settings:', error);
+    }
+  };
+
+  // ✅ Upload logo function
+  const uploadLogo = async (imageUri: string, type: 'company' | 'halal') => {
+    try {
+      const formData = new FormData();
+      formData.append('image', {
+        uri: imageUri,
+        name: `${type}-logo-${Date.now()}.jpg`,
+        type: 'image/jpeg',
+      } as any);
+
+      const response = await uploadAPI.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const imageUrl = response.data.imageUrl || response.data.imageUri;
+      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://hawkerfinalv-production.up.railway.app${imageUrl}`;
+      
+      if (type === 'company') {
+        setSettings(prev => ({ ...prev, companyLogo: fullUrl }));
+      } else {
+        setSettings(prev => ({ ...prev, halalLogo: fullUrl }));
+      }
+      
+      return fullUrl;
+    } catch (error) {
+      console.log('Upload error:', error);
+      throw error;
+    }
+  };
+
+  // ✅ Pick image function
+  const pickImage = async (type: 'company' | 'halal') => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        if (type === 'company') {
+          setUploadingCompanyLogo(true);
+          await uploadLogo(result.assets[0].uri, 'company');
+          setUploadingCompanyLogo(false);
+        } else {
+          setUploadingHalalLogo(true);
+          await uploadLogo(result.assets[0].uri, 'halal');
+          setUploadingHalalLogo(false);
+        }
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to upload image');
+      if (type === 'company') setUploadingCompanyLogo(false);
+      else setUploadingHalalLogo(false);
+    }
+  };
+
+  // ✅ Remove logo function
+  const removeLogo = (type: 'company' | 'halal') => {
+    if (type === 'company') {
+      setSettings(prev => ({ ...prev, companyLogo: '' }));
+    } else {
+      setSettings(prev => ({ ...prev, halalLogo: '' }));
     }
   };
 
@@ -126,9 +208,7 @@ const CompanySettingsForm: React.FC<Props> = ({
       const success = await BillPDFGenerator.saveSettings(finalSettings, clientId);
       
       if (success) {
-        // ✅ Refresh currency in all components!
         await refreshCurrency();
-        
         onSave(finalSettings);
         Alert.alert(t.success, 'Settings saved successfully');
         onClose();
@@ -142,7 +222,6 @@ const CompanySettingsForm: React.FC<Props> = ({
     }
   };
 
-  // ✅ Add currency options for quick selection
   const currencyOptions = [
     { code: 'SGD', symbol: '$', name: 'Singapore Dollar' },
     { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
@@ -196,6 +275,140 @@ const CompanySettingsForm: React.FC<Props> = ({
               editable={!saving}
             />
 
+            {/* ========== LOGO SECTION ========== */}
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                🖼️ Bill Logo Settings
+              </Text>
+              <Text style={[styles.sectionHint, { color: theme.textSecondary }]}>
+                Logos will appear on bill receipts
+              </Text>
+            </View>
+
+            {/* Company Logo Toggle */}
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchLeft}>
+                  <Ionicons name="business" size={24} color={theme.primary} />
+                  <Text style={[styles.switchLabel, { color: theme.text }]}>
+                    Show Company Logo
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.showCompanyLogo}
+                  onValueChange={(val) => setSettings(prev => ({ ...prev, showCompanyLogo: val }))}
+                  trackColor={{ false: theme.inactive, true: theme.success }}
+                  thumbColor="#fff"
+                  disabled={saving}
+                />
+              </View>
+              
+              {settings.showCompanyLogo && (
+                <View style={styles.logoUploadContainer}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>
+                    Company Logo (Left Side)
+                  </Text>
+                  
+                  {settings.companyLogo ? (
+                    <View style={styles.logoPreviewContainer}>
+                      <Image 
+                        source={{ uri: settings.companyLogo }} 
+                        style={styles.logoPreview}
+                        resizeMode="contain"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeLogoButton}
+                        onPress={() => removeLogo('company')}
+                      >
+                        <Ionicons name="close-circle" size={24} color={theme.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.uploadButton, { backgroundColor: theme.primary }]}
+                      onPress={() => pickImage('company')}
+                      disabled={uploadingCompanyLogo || saving}
+                    >
+                      {uploadingCompanyLogo ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <Ionicons name="cloud-upload" size={24} color="#fff" />
+                          <Text style={styles.uploadButtonText}>Upload Company Logo</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  <Text style={[styles.hint, { color: theme.textSecondary }]}>
+                    Recommended: 150x150px PNG with transparent background
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Halal Logo Toggle */}
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchLeft}>
+                  <Ionicons name="restaurant" size={24} color={theme.primary} />
+                  <Text style={[styles.switchLabel, { color: theme.text }]}>
+                    Show Halal Logo
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.showHalalLogo}
+                  onValueChange={(val) => setSettings(prev => ({ ...prev, showHalalLogo: val }))}
+                  trackColor={{ false: theme.inactive, true: theme.success }}
+                  thumbColor="#fff"
+                  disabled={saving}
+                />
+              </View>
+              
+              {settings.showHalalLogo && (
+                <View style={styles.logoUploadContainer}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>
+                    Halal Logo (Right Side)
+                  </Text>
+                  
+                  {settings.halalLogo ? (
+                    <View style={styles.logoPreviewContainer}>
+                      <Image 
+                        source={{ uri: settings.halalLogo }} 
+                        style={styles.logoPreview}
+                        resizeMode="contain"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeLogoButton}
+                        onPress={() => removeLogo('halal')}
+                      >
+                        <Ionicons name="close-circle" size={24} color={theme.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.uploadButton, { backgroundColor: theme.primary }]}
+                      onPress={() => pickImage('halal')}
+                      disabled={uploadingHalalLogo || saving}
+                    >
+                      {uploadingHalalLogo ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <Ionicons name="cloud-upload" size={24} color="#fff" />
+                          <Text style={styles.uploadButtonText}>Upload Halal Logo</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  <Text style={[styles.hint, { color: theme.textSecondary }]}>
+                    Recommended: 80x80px PNG with transparent background
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* ========== END LOGO SECTION ========== */}
+
             {/* Currency Quick Selection */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>
               Quick Currency Select
@@ -227,7 +440,7 @@ const CompanySettingsForm: React.FC<Props> = ({
               ))}
             </ScrollView>
 
-            {/* Currency Code - TextInput */}
+            {/* Currency Code */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>
               Currency Code *
             </Text>
@@ -242,7 +455,6 @@ const CompanySettingsForm: React.FC<Props> = ({
                 const upperText = text.toUpperCase();
                 let symbol = settings.currencySymbol;
                 
-                // Auto-set common symbols based on currency code
                 if (upperText === 'SGD') symbol = '$';
                 else if (upperText === 'MYR') symbol = 'RM';
                 else if (upperText === 'INR') symbol = '₹';
@@ -269,7 +481,7 @@ const CompanySettingsForm: React.FC<Props> = ({
               editable={!saving}
             />
 
-            {/* Currency Symbol - TextInput */}
+            {/* Currency Symbol */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>
               Currency Symbol
             </Text>
@@ -409,7 +621,6 @@ const CompanySettingsForm: React.FC<Props> = ({
   );
 };
 
-// ✅ Add new styles
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
@@ -421,7 +632,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '90%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '85%',
     borderRadius: 20,
     padding: 20,
   },
@@ -501,7 +712,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  // ✅ New styles for currency chips
   currencyScroll: {
     flexDirection: 'row',
     marginBottom: 16,
@@ -519,6 +729,67 @@ const styles = StyleSheet.create({
   currencyChipText: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  // ✅ New logo styles
+  sectionHeader: {
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  sectionHint: {
+    fontSize: 12,
+  },
+  card: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  switchLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  logoUploadContainer: {
+    marginTop: 12,
+  },
+  logoPreviewContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logoPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+  },
+  removeLogoButton: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 2,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  uploadButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

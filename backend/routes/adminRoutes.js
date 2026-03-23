@@ -514,7 +514,112 @@ router.post('/create-shop', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// backend/routes/adminRoutes.js - ADD THIS ENDPOINT
 
+// ============================================
+// SET VOID PASSWORD FOR OUTLET
+// ============================================
+// POST set void password
+router.post('/set-void-password/:outletId', authenticateToken, async (req, res) => {
+    try {
+        // Only owner or admin can set void password
+        if (req.user.role !== 'admin' && req.user.role !== 'owner') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const { outletId } = req.params;
+        const { voidPassword, enabled } = req.body;
+        
+        // ✅ Get pool here
+        const pool = getPool();
+
+        // If owner, verify they own this outlet
+        if (req.user.role === 'owner') {
+            const checkOutlet = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .input('ownerId', sql.Int, req.user.id)
+                .query('SELECT Id FROM Outlets WHERE Id = @outletId AND OwnerId = @ownerId');
+            
+            if (checkOutlet.recordset.length === 0) {
+                return res.status(403).json({ error: 'Access denied to this outlet' });
+            }
+        }
+
+        const bcrypt = require('bcryptjs');
+        let hashedPassword = null;
+        
+        if (voidPassword) {
+            const salt = await bcrypt.genSalt(10);
+            hashedPassword = await bcrypt.hash(voidPassword, salt);
+        }
+
+        // Update or insert void password
+        await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .input('voidPassword', sql.NVarChar, hashedPassword)
+            .input('enabled', sql.Bit, enabled !== undefined ? enabled : (voidPassword ? 1 : 0))
+            .query(`
+                UPDATE Outlets 
+                SET VoidPassword = @voidPassword,
+                    VoidPasswordEnabled = @enabled
+                WHERE Id = @outletId
+            `);
+
+        res.json({ 
+            success: true, 
+            message: 'Void password updated successfully' 
+        });
+
+    } catch (err) {
+        console.error('❌ Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================
+// GET VOID PASSWORD STATUS
+// ============================================
+// GET void password status
+router.get('/void-password-status/:outletId', authenticateToken, async (req, res) => {
+    try {
+        const { outletId } = req.params;
+        
+        // ✅ Get pool here, not at top level
+        const pool = getPool();
+        
+        // Verify access
+        if (req.user.role === 'owner') {
+            const checkOutlet = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .input('ownerId', sql.Int, req.user.id)
+                .query('SELECT Id FROM Outlets WHERE Id = @outletId AND OwnerId = @ownerId');
+            
+            if (checkOutlet.recordset.length === 0 && req.user.role !== 'admin') {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        }
+
+        const result = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query(`
+                SELECT 
+                    CASE WHEN VoidPassword IS NOT NULL THEN 1 ELSE 0 END as HasPassword,
+                    ISNULL(VoidPasswordEnabled, 0) as Enabled
+                FROM Outlets 
+                WHERE Id = @outletId
+            `);
+
+        res.json({ 
+            success: true, 
+            hasPassword: result.recordset[0]?.HasPassword === 1,
+            enabled: result.recordset[0]?.Enabled === 1
+        });
+
+    } catch (err) {
+        console.error('❌ Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // ============================================
 // 4️⃣ TOGGLE USER ACTIVE STATUS
 // ============================================

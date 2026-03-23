@@ -1,4 +1,4 @@
-// components/BillPDFGenerator.ts - SINGAPORE GST INCLUSIVE ✅
+// components/BillPDFGenerator.ts - WITH DISCOUNT SUPPORT ✅
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -15,6 +15,18 @@ interface CompanySettings {
   cashierName: string;
   currency: string;
   currencySymbol: string;
+   companyLogo?: string;        // ✅ ADD THIS
+  halalLogo?: string;          // ✅ ADD THIS
+  showCompanyLogo?: boolean;   // ✅ ADD THIS
+  showHalalLogo?: boolean; 
+}
+
+// ✅ DISCOUNT INFO INTERFACE
+interface DiscountInfo {
+  applied: boolean;
+  type: 'percentage' | 'fixed';
+  value: number;
+  amount: number;
 }
 
 class BillPDFGenerator {
@@ -37,14 +49,18 @@ class BillPDFGenerator {
           cashierName: settings.CashierName || '',
           currency: settings.Currency || 'SGD',
           currencySymbol: settings.CurrencySymbol || '$',
+          // ✅ ADD LOGO FIELDS
+          companyLogo: settings.CompanyLogoUrl || '',
+          halalLogo: settings.HalalLogoUrl || '',
+          showCompanyLogo: settings.ShowCompanyLogo !== false,
+          showHalalLogo: settings.ShowHalalLogo !== false,
         };
       }
       return this.getDefaultSettings();
     } catch (error) {
       return this.getDefaultSettings();
     }
-  }
-
+}
   private static getDefaultSettings(): CompanySettings {
     return {
       name: '',
@@ -58,6 +74,7 @@ class BillPDFGenerator {
       currencySymbol: '$',
     };
   }
+  
   static async saveSettings(settings: CompanySettings, userId?: string | number): Promise<boolean> {
     try {
       if (!userId) return false;
@@ -71,7 +88,12 @@ class BillPDFGenerator {
         Email: settings.email,
         CashierName: settings.cashierName,
         Currency: settings.currency,
-        CurrencySymbol: settings.currencySymbol
+        CurrencySymbol: settings.currencySymbol,
+        // ✅ ADD LOGO FIELDS
+        CompanyLogoUrl: settings.companyLogo || '',
+        HalalLogoUrl: settings.halalLogo || '',
+        ShowCompanyLogo: settings.showCompanyLogo !== false ? 1 : 0,
+        ShowHalalLogo: settings.showHalalLogo !== false ? 1 : 0
       };
       
       const response = await API.post(`/company-settings/${userId}`, dbSettings);
@@ -81,9 +103,9 @@ class BillPDFGenerator {
       console.log('❌ Error saving settings:', error);
       return false;
     }
-  }
-  // ✅ GENERATE HTML WITH SINGAPORE GST INCLUSIVE
-  static async generateHTML(saleData: any, userId?: string | number): Promise<string> {
+}
+  // ✅ GENERATE HTML WITH DISCOUNT SUPPORT
+  static async generateHTML(saleData: any, userId?: string | number, discountInfo?: DiscountInfo): Promise<string> {
     const company = await this.loadSettings(userId);
     
     const date = new Date();
@@ -93,24 +115,33 @@ class BillPDFGenerator {
     const hasGST = company.gstPercentage > 0;
     const gstRate = company.gstPercentage || 9;
     
-    // Total with GST included
-    const grandTotal = saleData.total; // This already includes GST
+    // Total with GST included (this is the final total after discount)
+    const finalTotal = saleData.total;
     
-    // Calculate GST component (back calculation)
-    // If total includes 9% GST, then GST = total × (9/109)
-    const gstAmount = hasGST ? grandTotal * (gstRate / (100 + gstRate)) : 0;
-    const amountWithoutGST = hasGST ? grandTotal - gstAmount : grandTotal;
+    // Calculate GST component (back calculation from final total)
+    const gstAmount = hasGST ? finalTotal * (gstRate / (100 + gstRate)) : 0;
+    const amountWithoutGST = hasGST ? finalTotal - gstAmount : finalTotal;
     
     const currencySymbol = company.currencySymbol || '$';
-
+    
+    // ✅ DISCOUNT INFO
+    const hasDiscount = discountInfo?.applied && discountInfo.amount > 0;
+    const originalTotal = hasDiscount ? finalTotal + discountInfo.amount : finalTotal;
+    
+    // ✅ LOGO URLs
+    const companyLogoUrl = company.companyLogo || '';
+    const halalLogoUrl = company.halalLogo || '';
+    const showCompanyLogo = company.showCompanyLogo !== false;
+    const showHalalLogo = company.showHalalLogo !== false;
+    
     // Generate items HTML
     const itemsHTML = saleData.items.map((item: any) => `
-      <tr>
+       <tr>
         <td class="item-name">${item.name}</td>
         <td class="item-qty">${item.quantity}</td>
         <td class="item-price">${currencySymbol}${item.price.toFixed(2)}</td>
         <td class="item-total">${currencySymbol}${(item.price * item.quantity).toFixed(2)}</td>
-      </tr>
+       </tr>
     `).join('');
 
     return `
@@ -132,7 +163,6 @@ class BillPDFGenerator {
             margin: 0;
           }
           
-         
           .receipt {
             width: 72mm;
             max-width: 72mm;
@@ -141,16 +171,35 @@ class BillPDFGenerator {
             margin: 0 auto;
           }
           
-         
-          .header {
-            text-align: center;
+          /* ✅ LOGO HEADER STYLES */
+          .logo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 4mm;
             border-bottom: 2px solid #000;
             padding-bottom: 2mm;
           }
           
+          .company-logo {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+          }
+          
+          .halal-logo {
+            width: 35px;
+            height: 35px;
+            object-fit: contain;
+          }
+          
+          .shop-info {
+            text-align: center;
+            flex: 1;
+          }
+          
           .shop-name {
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 800;
             text-transform: uppercase;
             margin-bottom: 2mm;
@@ -172,7 +221,13 @@ class BillPDFGenerator {
             margin: 2mm 0;
           }
           
-         
+          .contact {
+            font-size: 9px;
+            font-weight: 400;
+            line-height: 1.3;
+            margin-bottom: 1mm;
+          }
+          
           .bill-details {
             margin-bottom: 4mm;
             padding: 2mm;
@@ -194,7 +249,6 @@ class BillPDFGenerator {
             font-weight: 400;
           }
           
-        
           .items-table {
             width: 100%;
             border-collapse: collapse;
@@ -245,7 +299,56 @@ class BillPDFGenerator {
             font-weight: 700;
           }
           
-        
+          /* ✅ DISCOUNT SECTION STYLES */
+          .discount-section {
+            margin-bottom: 4mm;
+            padding: 2mm;
+            border: 1px solid #0b0a0a;
+            background: #ffffff;
+          }
+          
+          .discount-title {
+            font-size: 11px;
+            font-weight: 800;
+            color: #0e0e0e;
+            margin-bottom: 2mm;
+            text-align: center;
+          }
+          
+          .discount-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+            font-size: 11px;
+          }
+          
+          .discount-label {
+            font-weight: 700;
+            color: #070707;
+          }
+          
+          .discount-value {
+            font-weight: 700;
+            color: #0d0d0d;
+          }
+          
+          .original-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+            font-size: 11px;
+            text-decoration: line-through;
+            color: #888;
+          }
+          
+          .original-label {
+            font-weight: 700;
+          }
+          
+          .original-value {
+            font-weight: 700;
+          }
+          
           .totals {
             margin-bottom: 4mm;
             padding: 2mm;
@@ -286,7 +389,6 @@ class BillPDFGenerator {
             color: #000;
           }
           
-         
           .payment-info {
             margin-bottom: 4mm;
             padding: 2mm;
@@ -309,7 +411,6 @@ class BillPDFGenerator {
             font-weight: 700;
           }
           
-          
           .footer {
             text-align: center;
             padding-top: 3mm;
@@ -322,34 +423,38 @@ class BillPDFGenerator {
             margin-bottom: 2mm;
           }
           
-          .contact {
-            font-size: 9px;
-            font-weight: 400;
-            line-height: 1.3;
-            margin-bottom: 1mm;
+          .copyright {
+            font-size: 8px;
+            font-weight: 800;      
+            color: #000000;
+            margin-top: 2mm;
           }
-          
- 
-.copyright {
-  font-size: 8px;
-  font-weight: 800;      
-  color: #000000;
-  margin-top: 2mm;
-}
         </style>
       </head>
       <body>
         <div class="receipt">
           
-          
-          <div class="header">
-            <div class="shop-name">${company.name || 'POS SYSTEM'}</div>
-            <div class="shop-address">${company.address}</div>
-            ${company.gstNo ? `<div class="gst-no">GST: ${company.gstNo}</div>` : ''}
-            <div class="contact">${company.phone ? `📞 ${company.phone}` : ''} ${company.email ? `📧 ${company.email}` : ''}</div>
+          <!-- ✅ HEADER WITH LOGOS (Left: Company Logo, Right: Halal Logo) -->
+          <div class="logo-header">
+            ${showCompanyLogo && companyLogoUrl ? 
+              `<img src="${companyLogoUrl}" class="company-logo" alt="Company Logo" />` : 
+              '<div style="width:40px"></div>'
+            }
+            
+            <div class="shop-info">
+              <div class="shop-name">${company.name || 'POS SYSTEM'}</div>
+              <div class="shop-address">${company.address}</div>
+              ${company.gstNo ? `<div class="gst-no">GST: ${company.gstNo}</div>` : ''}
+              <div class="contact">${company.phone ? `📞 ${company.phone}` : ''} ${company.email ? `📧 ${company.email}` : ''}</div>
+            </div>
+            
+            ${showHalalLogo && halalLogoUrl ? 
+              `<img src="${halalLogoUrl}" class="halal-logo" alt="Halal Logo" />` : 
+              '<div style="width:35px"></div>'
+            }
           </div>
           
-        
+          <!-- Bill Details -->
           <div class="bill-details">
             <div class="detail-row">
               <span class="detail-label">Bill No:</span>
@@ -367,7 +472,7 @@ class BillPDFGenerator {
             ` : ''}
           </div>
           
-         
+          <!-- Items Table -->
           <table class="items-table">
             <thead>
               <tr>
@@ -382,6 +487,24 @@ class BillPDFGenerator {
             </tbody>
           </table>
           
+          <!-- ✅ DISCOUNT SECTION (if discount applied) -->
+          ${hasDiscount ? `
+          <div class="discount-section">
+            <div class="discount-title">🏷️ DISCOUNT APPLIED</div>
+            <div class="original-row">
+              <span class="original-label">Original Total:</span>
+              <span class="original-value">${currencySymbol}${originalTotal.toFixed(2)}</span>
+            </div>
+            <div class="discount-row">
+              <span class="discount-label">
+                Discount (${discountInfo?.type === 'percentage' ? `${discountInfo?.value}%` : 'Fixed'}):
+              </span>
+              <span class="discount-value">-${currencySymbol}${discountInfo?.amount.toFixed(2)}</span>
+            </div>
+          </div>
+          ` : ''}
+          
+          <!-- Totals -->
           <div class="totals">
             <div class="total-row">
               <span class="total-label">Sub Total (without GST):</span>
@@ -395,10 +518,11 @@ class BillPDFGenerator {
             ` : ''}
             <div class="grand-total">
               <span class="grand-label">GRAND TOTAL (incl GST):</span>
-              <span class="grand-value">${currencySymbol}${grandTotal.toFixed(2)}</span>
+              <span class="grand-value">${currencySymbol}${finalTotal.toFixed(2)}</span>
             </div>
           </div>
-     
+          
+          <!-- Payment Info -->
           <div class="payment-info">
             <div class="payment-row">
               <span class="payment-label">Payment:</span>
@@ -416,7 +540,7 @@ class BillPDFGenerator {
             ` : ''}
           </div>
           
-        
+          <!-- Footer -->
           <div class="footer">
             <div class="thankyou">THANK YOU! COME AGAIN!</div>
             <div class="copyright">UNIPRO SOFTWARES SG PTE LTD</div>
@@ -428,9 +552,10 @@ class BillPDFGenerator {
     `;
   }
 
-  static async generatePDF(saleData: any, userId?: string | number): Promise<string> {
+  // ✅ Updated generatePDF with discount support
+  static async generatePDF(saleData: any, userId?: string | number, discountInfo?: DiscountInfo): Promise<string> {
     try {
-      const html = await this.generateHTML(saleData, userId);
+      const html = await this.generateHTML(saleData, userId, discountInfo);
       
       const { uri } = await Print.printToFileAsync({
         html: html,
@@ -444,9 +569,10 @@ class BillPDFGenerator {
     }
   }
 
-  static async downloadPDF(saleData: any, userId?: string | number): Promise<void> {
+  // ✅ Updated downloadPDF with discount support
+  static async downloadPDF(saleData: any, userId?: string | number, discountInfo?: DiscountInfo): Promise<void> {
     try {
-      const pdfUri = await this.generatePDF(saleData, userId);
+      const pdfUri = await this.generatePDF(saleData, userId, discountInfo);
       
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(pdfUri, {

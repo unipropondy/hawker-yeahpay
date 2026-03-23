@@ -1,5 +1,5 @@
 // src/components/DishGroupManagement.tsx
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ interface DishGroup {
   itemCount: number;
   active: boolean;
   order?: number;
+  isDynamic?: boolean;  // ✅ NEW: Mark dynamic groups like Favourites
 }
 
 interface DishGroupManagementProps {
@@ -57,10 +58,25 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Add Group
+  // ✅ Filter groups for display (hide empty Favourites)
+  const displayGroups = dishGroups.filter(group => {
+    // Hide Favourites if it has 0 items AND is dynamic
+    if (group.name === 'Favourites' && group.itemCount === 0 && group.isDynamic) {
+      return false;
+    }
+    return true;
+  });
+
+  // Add Group - Prevent manual creation of Favourites
   const handleAddGroup = async (): Promise<void> => {
     if (!newGroupName.trim()) {
       Alert.alert(t.error, 'Please enter group name');
+      return;
+    }
+
+    // ✅ Prevent manual creation of Favourites group
+    if (newGroupName.trim().toLowerCase() === 'favourites') {
+      Alert.alert('Error', 'Favourites group is automatically managed');
       return;
     }
 
@@ -76,11 +92,17 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
         name: response.data.Name,
         itemCount: 0,
         active: response.data.active ?? formActive,
+        isDynamic: false,  // ✅ Manual groups are not dynamic
       };
 
       const updatedGroups = [...dishGroups, newGroup];
       setDishGroups(updatedGroups);
-      setCategories([...categories, newGroupName.trim()]);
+      
+      // ✅ Update categories (include Favourites only if it has items)
+      const updatedCategories = updatedGroups
+        .filter(g => g.active !== false && (g.name !== 'Favourites' || g.itemCount > 0))
+        .map(g => g.name);
+      setCategories(updatedCategories);
       
       setNewGroupName('');
       setFormActive(true);
@@ -98,6 +120,12 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
 
   const handleEditGroup = async (): Promise<void> => {
     if (!editingGroup || !newGroupName.trim()) return;
+    
+    // ✅ Prevent editing Favourites group name
+    if (editingGroup.name === 'Favourites') {
+      Alert.alert('Error', 'Favourites group cannot be edited');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -116,9 +144,10 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
       
       setDishGroups(updatedGroups);
 
-      const updatedCategories = categories.map(cat =>
-        cat === oldName ? newGroupName.trim() : cat
-      );
+      // ✅ Update categories (preserve Favourites if it has items)
+      const updatedCategories = updatedGroups
+        .filter(g => g.active !== false && (g.name !== 'Favourites' || g.itemCount > 0))
+        .map(g => g.name);
       setCategories(updatedCategories);
 
       if (oldName === categories[0]) {
@@ -140,6 +169,12 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   };
 
   const toggleActive = async (group: DishGroup) => {
+    // ✅ Prevent deactivating Favourites
+    if (group.name === 'Favourites') {
+      Alert.alert('Error', 'Favourites group cannot be deactivated');
+      return;
+    }
+    
     setLoading(true);
     try {
       const newActiveState = !group.active;
@@ -153,6 +188,13 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
         g.id === group.id ? { ...g, active: newActiveState } : g
       );
       setDishGroups(updatedGroups);
+      
+      // ✅ Update categories display
+      const updatedCategories = updatedGroups
+        .filter(g => g.active !== false && (g.name !== 'Favourites' || g.itemCount > 0))
+        .map(g => g.name);
+      setCategories(updatedCategories);
+      
       onGroupUpdate();
       
     } catch (error) {
@@ -163,6 +205,12 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   };
 
   const handleDeleteGroup = (group: DishGroup): void => {
+    // ✅ Prevent deleting Favourites group
+    if (group.name === 'Favourites') {
+      Alert.alert('Error', 'Favourites group cannot be deleted');
+      return;
+    }
+    
     Alert.alert(
       t.delete,
       `${t.confirmDelete} "${group.name}"? ${t.thisWillDelete}`,
@@ -177,7 +225,9 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
               await API.delete(`/dishgroups/${group.id}`);
 
               const updatedGroups = dishGroups.filter(g => g.id !== group.id);
-              const updatedCategories = categories.filter(cat => cat !== group.name);
+              const updatedCategories = updatedGroups
+                .filter(g => g.active !== false && (g.name !== 'Favourites' || g.itemCount > 0))
+                .map(g => g.name);
 
               setDishGroups(updatedGroups);
               setCategories(updatedCategories);
@@ -202,10 +252,13 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
 
   const saveOrderToBackend = async (groups: DishGroup[]) => {
     try {
-      const orderData = groups.map((group, index) => ({
-        id: group.id,
-        order: index
-      }));
+      // ✅ Filter out dynamic groups from order saving? Or keep them at bottom
+      const orderData = groups
+        .filter(g => g.name !== 'Favourites') // Favourites always at bottom?
+        .map((group, index) => ({
+          id: group.id,
+          order: index
+        }));
       
       await API.post('/dishgroups/update-order', { groups: orderData });
       
@@ -215,13 +268,27 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   };
 
   const handleDragEnd = async ({ data }: { data: DishGroup[] }) => {
-    setDishGroups(data);
-    await saveOrderToBackend(data);
+    // ✅ Ensure Favourites stays at bottom if it exists
+    const favourites = data.find(g => g.name === 'Favourites');
+    const otherGroups = data.filter(g => g.name !== 'Favourites');
+    
+    let finalData = otherGroups;
+    if (favourites && favourites.itemCount > 0) {
+      finalData = [...otherGroups, favourites];
+    }
+    
+    setDishGroups(finalData);
+    await saveOrderToBackend(finalData);
     setIsDragging(false);
     onGroupUpdate();
   };
 
   const openEditForm = (group: DishGroup) => {
+    // ✅ Prevent editing Favourites
+    if (group.name === 'Favourites') {
+      Alert.alert('Info', 'Favourites group is automatically managed');
+      return;
+    }
     setEditingGroup(group);
     setNewGroupName(group.name);
     setFormActive(group.active);
@@ -229,11 +296,14 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   };
 
   const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<DishGroup>) => {
+    // ✅ Disable drag for Favourites
+    const canDrag = item.name !== 'Favourites';
+    
     return (
       <ScaleDecorator>
         <TouchableOpacity
           activeOpacity={1}
-          onLongPress={!loading ? drag : null}
+          onLongPress={!loading && canDrag ? drag : null}
           delayLongPress={200}
           style={[
             styles.groupCard,
@@ -242,20 +312,21 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
               borderColor: currentTheme.border,
               opacity: item.active ? 1 : 0.6,
               transform: [{ scale: isActive ? 1.02 : 1 }],
+              ...(item.name === 'Favourites' && styles.favouritesGroup)
             }
           ]}
         >
           <View style={styles.groupInfo}>
             <Ionicons 
-              name="menu" 
+              name={item.name === 'Favourites' ? "star" : "menu"} 
               size={24} 
-              color={isActive ? currentTheme.primary : currentTheme.textSecondary} 
+              color={item.name === 'Favourites' ? currentTheme.warning : (isActive ? currentTheme.primary : currentTheme.textSecondary)} 
               style={styles.dragIcon}
             />
             
             <View style={styles.groupNameContainer}>
               <Text style={[styles.groupName, { color: currentTheme.text }]}>
-                {item.name}
+                {item.name} {item.name === 'Favourites' && '⭐'}
               </Text>
               <Text style={[styles.groupCount, { color: currentTheme.textSecondary }]}>
                 {item.itemCount || 0} {t.items_lower}
@@ -264,31 +335,36 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
           </View>
 
           <View style={styles.groupActions}>
-            <TouchableOpacity
-              style={[styles.actionBtn, { 
-                backgroundColor: item.active ? currentTheme.success : currentTheme.inactive 
-              }]}
-              onPress={() => toggleActive(item)}
-              disabled={loading}
-            >
-              <Ionicons name={item.active ? "eye" : "eye-off"} size={18} color="#fff" />
-            </TouchableOpacity>
+            {/* ✅ Hide actions for Favourites */}
+            {item.name !== 'Favourites' && (
+              <>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { 
+                    backgroundColor: item.active ? currentTheme.success : currentTheme.inactive 
+                  }]}
+                  onPress={() => toggleActive(item)}
+                  disabled={loading}
+                >
+                  <Ionicons name={item.active ? "eye" : "eye-off"} size={18} color="#fff" />
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: currentTheme.primary }]}
-              onPress={() => openEditForm(item)}
-              disabled={loading}
-            >
-              <Ionicons name="pencil" size={18} color="#fff" />
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: currentTheme.primary }]}
+                  onPress={() => openEditForm(item)}
+                  disabled={loading}
+                >
+                  <Ionicons name="pencil" size={18} color="#fff" />
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: currentTheme.danger }]}
-              onPress={() => handleDeleteGroup(item)}
-              disabled={loading}
-            >
-              <Ionicons name="trash" size={18} color="#fff" />
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: currentTheme.danger }]}
+                  onPress={() => handleDeleteGroup(item)}
+                  disabled={loading}
+                >
+                  <Ionicons name="trash" size={18} color="#fff" />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </ScaleDecorator>
@@ -329,10 +405,10 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
             </View>
           )}
 
-          {/* Draggable List - FIXED VERSION */}
+          {/* Draggable List */}
           <View style={{ flex: 1, marginTop: 10 }}>
             <DraggableFlatList
-              data={dishGroups}
+              data={displayGroups}
               onDragEnd={handleDragEnd}
               keyExtractor={(item) => `group-${item.id}`}
               renderItem={renderItem}
@@ -514,6 +590,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     minHeight: 70,
   },
+  favouritesGroup: {
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    borderColor: '#FFC107',
+  },
   groupInfo: { 
     flex: 1,
     flexDirection: 'row',
@@ -620,3 +700,5 @@ const styles = StyleSheet.create({
     includeFontPadding: false 
   },
 });
+
+export default DishGroupManagement;

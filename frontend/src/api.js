@@ -14,16 +14,16 @@ export const setNavigationCallback = (callback) => {
 
 const getBaseURL = () => {
   if (__DEV__) {
-    return 'https://hawkerfinalv-production.up.railway.app/api';
+    return 'https://uniprohawker-production.up.railway.app/api';
   } else {
     // Production URL
-    return 'https://hawkerfinalv-production.up.railway.app/api';
+    return 'https://uniprohawker-production.up.railway.app/api';
   }
 };
 // Before login, test connection
 const testAPI = async () => {
   try {
-    const url = process.env.EXPO_PUBLIC_API_URL || 'https://hawkerfinalv-production.up.railway.app/api';
+    const url = process.env.EXPO_PUBLIC_API_URL || 'https://uniprohawker-production.up.railway.app/api';
     console.log('🔍 Testing API URL:', url);
     
     const response = await fetch(`${url}/test`);

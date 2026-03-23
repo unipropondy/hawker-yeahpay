@@ -23,6 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadAPI } from '../api';
 import { useCurrency } from '../context/CurrencyContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 interface MenuItem {
   id: number;
   name: string;
@@ -35,7 +36,8 @@ interface MenuItem {
   originalCategory?: string;
   displayCategory?: string;
   isActive?: boolean;
-  isOpenPrice?: boolean;  // ✅ NEW FIELD
+  isOpenPrice?: boolean;
+  isFavourite?: boolean;  // ✅ NEW
 }
 
 interface DishGroup {
@@ -85,15 +87,16 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
   const [showAddDish, setShowAddDish] = useState(false);
   const [showEditDish, setShowEditDish] = useState(false);
   const [editingDish, setEditingDish] = useState<MenuItem | null>(null);
-  const [isOpenPrice, setIsOpenPrice] = useState(false);  // ✅ NEW STATE
-  
+  const [isOpenPrice, setIsOpenPrice] = useState(false);
+  const [isFavourite, setIsFavourite] = useState(false);  // ✅ NEW
   const [newDish, setNewDish] = useState<any>({
     name: '',
     price: '',
     category: '',
     imageUri: null,
     isActive: true,
-    isOpenPrice: false,  // ✅ NEW FIELD
+    isOpenPrice: false,
+    isFavourite: false  // ✅ NEW
   });
   
   const [loading, setLoading] = useState(false);
@@ -103,7 +106,6 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
   // DERIVED DATA
   // ============================================
   
-  // Sort groups by DisplayOrder (from drag & drop)
   const sortedGroups = React.useMemo(() => {
     return [...dishGroups]
       .filter(g => g.active !== false)
@@ -111,22 +113,49 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
   }, [dishGroups]);
 
   // Get items for selected group ONLY
-  const groupItems = React.useMemo(() => {
-    if (!selectedGroup) return [];
+const groupItems = React.useMemo(() => {
+    if (!selectedGroup) {
+        console.log('⚠️ groupItems: No selected group');
+        return [];
+    }
     
-    return menuItems
-      .filter(item => 
+    console.log(`🎯 groupItems: selectedGroup.name = "${selectedGroup.name}"`);
+    console.log(`🎯 groupItems: selectedGroup.id = ${selectedGroup.id}`);
+    console.log(`🎯 groupItems: menuItems length = ${menuItems.length}`);
+    console.log(`⭐ groupItems: favourite items in menu = ${menuItems.filter(i => i.isFavourite === true).length}`);
+    
+    // ✅ If selected group is Favourites, show all favourite items
+    if (selectedGroup.name === 'Favourites') {
+        const favouriteItems = menuItems.filter(item => item.isFavourite === true);
+        console.log(`⭐ Favourites group: Found ${favouriteItems.length} favourite items`);
+        return favouriteItems.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    
+    // ✅ Normal category - filter by category name/id
+    const filtered = menuItems.filter(item => 
         item.categoryId === selectedGroup.id.toString() || 
         item.displayCategory === selectedGroup.name ||
         item.category === selectedGroup.name
-      )
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [menuItems, selectedGroup]);
+    );
+    
+    console.log(`📦 ${selectedGroup.name}: Found ${filtered.length} items`);
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
+}, [menuItems, selectedGroup]);
 
   // ============================================
   // EFFECTS
   // ============================================
-  
+  useEffect(() => {
+    console.log('📋 All groups in sortedGroups:', sortedGroups.map(g => ({ id: g.id, name: g.name })));
+    
+    // Find Favourites in groups
+    const favouritesGroup = sortedGroups.find(g => g.name === 'Favourites');
+    if (favouritesGroup) {
+        console.log(`⭐ Found Favourites group: ID ${favouritesGroup.id}, Name: ${favouritesGroup.name}, ItemCount: ${favouritesGroup.itemCount}`);
+    } else {
+        console.log('❌ Favourites group NOT found in sortedGroups');
+    }
+}, [sortedGroups]);
   useEffect(() => {
     if (sortedGroups.length > 0 && !selectedGroup) {
       setSelectedGroup(sortedGroups[0]);
@@ -141,36 +170,35 @@ export const DishItemsManagement: React.FC<DishItemsManagementProps> = ({
       }));
     }
   }, [selectedGroup, showAddDish]);
-// In DishItemsManagement.tsx - Add useEffect to check outlet
 
-useEffect(() => {
-  const checkOutlet = async () => {
-    const outletId = await AsyncStorage.getItem('selectedOutletId');
-    if (!outletId) {
-      Alert.alert(
-        'No Outlet Selected',
-        'Please select an outlet first',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Close modal or navigate back
-              setShowAddDish(false);
+  useEffect(() => {
+    const checkOutlet = async () => {
+      const outletId = await AsyncStorage.getItem('selectedOutletId');
+      if (!outletId) {
+        Alert.alert(
+          'No Outlet Selected',
+          'Please select an outlet first',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setShowAddDish(false);
+              }
             }
-          }
-        ]
-      );
+          ]
+        );
+      }
+    };
+    
+    if (showAddDish) {
+      checkOutlet();
     }
-  };
+  }, [showAddDish]);
   
-  if (showAddDish) {
-    checkOutlet();
-  }
-}, [showAddDish]);
-  // ✅ Reset isOpenPrice when form closes
   useEffect(() => {
     if (!showAddDish && !showEditDish) {
       setIsOpenPrice(false);
+      setIsFavourite(false);  // ✅ NEW
     }
   }, [showAddDish, showEditDish]);
 
@@ -197,7 +225,6 @@ useEffect(() => {
       return false;
     }
 
-    // ✅ Only validate price if NOT open price
     if (!isOpenPrice) {
       const price = parseFloat(newDish.price);
       if (isNaN(price) || price <= 0) {
@@ -231,16 +258,20 @@ useEffect(() => {
       imageUri: null,
       isActive: true,
       isOpenPrice: false,
+      isFavourite: false  // ✅ NEW
     });
-    setIsOpenPrice(false);  // ✅ Reset checkbox
+    setIsOpenPrice(false);
+    setIsFavourite(false);  // ✅ NEW
     setCategoryError(false);
     setShowAddDish(true);
   };
-// Add this near your other useEffects
-useEffect(() => {
-  console.log('🔄 isOpenPrice changed to:', isOpenPrice);
-  console.log('📦 newDish price:', newDish.price);
-}, [isOpenPrice, newDish.price]);
+
+  useEffect(() => {
+    console.log('🔄 isOpenPrice changed to:', isOpenPrice);
+    console.log('🔄 isFavourite changed to:', isFavourite);
+    console.log('📦 newDish price:', newDish.price);
+  }, [isOpenPrice, isFavourite, newDish.price]);
+
   const handleAddDish = async (): Promise<void> => {
     if (!validateDishForm() || !selectedGroup) return;
 
@@ -248,10 +279,8 @@ useEffect(() => {
     setCategoryError(false);
     
     try {
-      // ✅ STEP 1: GET OUTLET ID FROM STORAGE
       const outletId = await AsyncStorage.getItem('selectedOutletId');
       
-      // ✅ STEP 2: CHECK IF OUTLET EXISTS
       if (!outletId) {
         Alert.alert(
           'Outlet Required',
@@ -268,22 +297,20 @@ useEffect(() => {
       }
       
       console.log('📍 Adding dish for outlet:', outletId);
+      console.log('⭐ Is favourite:', isFavourite);
       
       const formData = new FormData();
       formData.append('name', newDish.name.trim());
       
-      // ✅ If open price, send price as 0
       const priceValue = isOpenPrice ? '0' : newDish.price;
       formData.append('price', priceValue);
       formData.append('isOpenPrice', isOpenPrice ? 'true' : 'false');
       formData.append('isActive', newDish.isActive ? 'true' : 'false');
-      
+      formData.append('isFavourite', isFavourite ? 'true' : 'false');  // ✅ NEW
       formData.append('category', selectedGroup.id.toString());
       formData.append('originalName', newDish.name.trim());
       formData.append('originalCategory', selectedGroup.name);
       formData.append('displayCategory', selectedGroup.name);
-      
-      // ✅ STEP 3: ADD OUTLET ID TO FORM DATA
       formData.append('outletId', outletId);
 
       if (newDish.imageUri) {
@@ -299,8 +326,7 @@ useEffect(() => {
       }
 
       const response = await uploadAPI.post('/dishitems', formData, {
-        headers: { 'Content-Type': 'multipart/form-data',
-    'X-Outlet-Id': outletId   },
+        headers: { 'Content-Type': 'multipart/form-data', 'X-Outlet-Id': outletId },
       });
 
       const baseURL = __DEV__ 
@@ -332,7 +358,8 @@ useEffect(() => {
         originalCategory: selectedGroup.name,
         isActive: newDish.isActive,
         isOpenPrice: isOpenPrice,
-        outletId: parseInt(outletId)  // ✅ Store outlet ID in item
+        isFavourite: isFavourite,  // ✅ NEW
+        outletId: parseInt(outletId)
       };
   
       setMenuItems([...menuItems, newItem]);
@@ -349,7 +376,8 @@ useEffect(() => {
       setRefreshKey(prev => prev + 1);  
 
       Alert.alert('✅ Success', 
-        isOpenPrice ? 'Open price item added' : 'Item added successfully'
+        isOpenPrice ? 'Open price item added' : 
+        isFavourite ? '⭐ Added to Favourites!' : 'Item added successfully'
       );
       
     } catch (error: any) {
@@ -362,13 +390,13 @@ useEffect(() => {
       setLoading(false);
     }
   };
+
   const handleEditDish = async (): Promise<void> => {
     if (!editingDish || !selectedGroup) return;
     
     setLoading(true);
     
     try {
-      // ✅ STEP 1: GET OUTLET ID FROM STORAGE
       const outletId = await AsyncStorage.getItem('selectedOutletId');
       
       if (!outletId) {
@@ -377,6 +405,8 @@ useEffect(() => {
         return;
       }
       
+      console.log('✏️ Editing dish, isFavourite:', isFavourite);
+      
       const formData = new FormData();
       formData.append('name', newDish.name.trim());
       
@@ -384,12 +414,11 @@ useEffect(() => {
       formData.append('price', priceValue);
       formData.append('isOpenPrice', isOpenPrice ? 'true' : 'false'); 
       formData.append('isActive', newDish.isActive ? 'true' : 'false');
+      formData.append('isFavourite', isFavourite ? 'true' : 'false');  // ✅ NEW
       formData.append('category', selectedGroup.id.toString());
       formData.append('originalName', newDish.name.trim());
       formData.append('originalCategory', selectedGroup.name);
       formData.append('displayCategory', selectedGroup.name);
-      
-      // ✅ STEP 2: ADD OUTLET ID TO FORM DATA
       formData.append('outletId', outletId);
 
       if (newDish.imageUri && newDish.imageUri !== editingDish.imageUri) {
@@ -405,8 +434,7 @@ useEffect(() => {
       }
 
       const response = await uploadAPI.put(`/dishitems/${editingDish.id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data',
-    'X-Outlet-Id': outletId  },
+        headers: { 'Content-Type': 'multipart/form-data', 'X-Outlet-Id': outletId },
       });
 
       const baseURL = __DEV__ 
@@ -439,7 +467,8 @@ useEffect(() => {
         originalCategory: selectedGroup.name,
         isActive: newDish.isActive,
         isOpenPrice: isOpenPrice,
-        outletId: parseInt(outletId)  // ✅ Update outlet ID
+        isFavourite: isFavourite,  // ✅ NEW
+        outletId: parseInt(outletId)
       };
 
       const updatedItems = menuItems.map(item =>
@@ -450,7 +479,9 @@ useEffect(() => {
       setShowEditDish(false);
       onItemUpdate();
       
-      Alert.alert('✅ Success', 'Item updated successfully');
+      Alert.alert('✅ Success', 
+        isFavourite ? '⭐ Updated to Favourites!' : 'Item updated successfully'
+      );
       
     } catch (error: any) {
       console.log('❌ Edit error:', {
@@ -462,6 +493,7 @@ useEffect(() => {
       setLoading(false);
     }
   };
+
   const toggleActive = async (item: MenuItem) => {
     setLoading(true);
     try {
@@ -485,6 +517,7 @@ useEffect(() => {
         displayCategory: item.displayCategory || categoryName,
         isActive: newActiveState,
         isOpenPrice: item.isOpenPrice || false,
+        isFavourite: item.isFavourite || false,  // ✅ NEW
       });
 
       const updatedItems = menuItems.map(i => 
@@ -499,7 +532,26 @@ useEffect(() => {
       setLoading(false);
     }
   };
-
+useEffect(() => {
+    if (selectedGroup) {
+        console.log(`🔄🔄🔄 selectedGroup CHANGED to: ${selectedGroup.name}, ID: ${selectedGroup.id}`);
+        console.log(`🔄🔄🔄 menuItems length: ${menuItems.length}`);
+        console.log(`🔄🔄🔄 Favourite items count: ${menuItems.filter(i => i.isFavourite).length}`);
+    }
+}, [selectedGroup]);
+useEffect(() => {
+    console.log('📋 All groups in sortedGroups:', sortedGroups.map(g => ({ id: g.id, name: g.name, itemCount: g.itemCount })));
+    
+    // ✅ Auto-select Favourites if it has items
+    const favouritesGroup = sortedGroups.find(g => g.name === 'Favourites');
+    if (favouritesGroup && favouritesGroup.itemCount > 0) {
+        console.log(`⭐ Auto-selecting Favourites group: ${favouritesGroup.name} (${favouritesGroup.itemCount} items)`);
+        setSelectedGroup(favouritesGroup);
+    } else if (sortedGroups.length > 0 && !selectedGroup) {
+        // Otherwise select first group
+        setSelectedGroup(sortedGroups[0]);
+    }
+}, [sortedGroups]);
   const handleDeleteDish = (dish: MenuItem): void => {
     Alert.alert(
       t.delete,
@@ -538,7 +590,6 @@ useEffect(() => {
     );
   };
 
-  // ✅ Show open price badge in item list
   const renderOpenPriceBadge = (item: MenuItem) => {
     if (item.isOpenPrice) {
       return (
@@ -552,44 +603,65 @@ useEffect(() => {
     return null;
   };
 
+  // ✅ NEW: Render favourite badge
+  const renderFavouriteBadge = (item: MenuItem) => {
+    if (item.isFavourite) {
+      return (
+        <View style={[styles.favouriteBadge, { backgroundColor: currentTheme.warning + '20' }]}>
+          <Ionicons name="star" size={12} color={currentTheme.warning} />
+          <Text style={[styles.favouriteBadgeText, { color: currentTheme.warning }]}>
+            Favourite
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
       <Text style={[styles.title, { color: currentTheme.text }]}>{t.dishItems}</Text>
 
       {/* GROUP CHIPS */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.groupsScroll}
-        contentContainerStyle={styles.groupsContainer}
-      >
-        {sortedGroups.map((group) => (
-          <TouchableOpacity
+      {/* GROUP CHIPS */}
+<ScrollView 
+    horizontal 
+    showsHorizontalScrollIndicator={false}
+    style={styles.groupsScroll}
+    contentContainerStyle={styles.groupsContainer}
+>
+    {sortedGroups.map((group) => (
+        <TouchableOpacity
             key={`group-${group.id}`}
             style={[
-              styles.groupChip,
-              {
-                backgroundColor: selectedGroup?.id === group.id 
-                  ? currentTheme.primary 
-                  : currentTheme.surface,
-                borderColor: currentTheme.border
-              }
+                styles.groupChip,
+                {
+                    backgroundColor: selectedGroup?.id === group.id 
+                        ? currentTheme.primary 
+                        : currentTheme.surface,
+                    borderColor: currentTheme.border
+                }
             ]}
-            onPress={() => setSelectedGroup(group)}
-          >
+            onPress={() => {
+                console.log(`🖱️ CLICKED on group: "${group.name}", ID: ${group.id}`);
+                console.log(`🖱️ Current selectedGroup before: ${selectedGroup?.name}`);
+                setSelectedGroup(group);
+                console.log(`🖱️ Set selectedGroup to: ${group.name}`);
+            }}
+        >
             <Text style={[
-              styles.groupChipText,
-              { 
-                color: selectedGroup?.id === group.id 
-                  ? '#ffffff' 
-                  : currentTheme.text 
-              }
+                styles.groupChipText,
+                { 
+                    color: selectedGroup?.id === group.id 
+                        ? '#ffffff' 
+                        : currentTheme.text 
+                }
             ]}>
-              {group.name} ({group.itemCount || 0})
+                {group.name} ({group.itemCount || 0})
             </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+        </TouchableOpacity>
+    ))}
+</ScrollView>
 
       {selectedGroup && (
         <View style={[styles.groupInfo, { backgroundColor: currentTheme.surface }]}>
@@ -647,6 +719,7 @@ useEffect(() => {
                     {item.name}
                   </Text>
                   {renderOpenPriceBadge(item)}
+                  {renderFavouriteBadge(item)}
                 </View>
                 <Text style={[styles.dishCategory, { color: currentTheme.textSecondary }]} numberOfLines={1}>
                   {item.displayCategory || item.category}
@@ -683,8 +756,10 @@ useEffect(() => {
                       imageUri: item.imageUri,
                       isActive: item.isActive ?? true,
                       isOpenPrice: item.isOpenPrice || false,
+                      isFavourite: item.isFavourite || false,  // ✅ NEW
                     });
-                    setIsOpenPrice(item.isOpenPrice || false); 
+                    setIsOpenPrice(item.isOpenPrice || false);
+                    setIsFavourite(item.isFavourite || false);  // ✅ NEW
                     setCategoryError(false);
                     setShowEditDish(true);
                   }}
@@ -707,362 +782,418 @@ useEffect(() => {
       </ScrollView>
 
       {/* ADD DISH MODAL */}
-      <Modal visible={showAddDish} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.keyboardView}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 50 : 0}
-            >
-              <ScrollView 
-                contentContainerStyle={styles.scrollContainer}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={true}
+      {/* ADD DISH MODAL */}
+<Modal visible={showAddDish} transparent animationType="slide">
+  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+    <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 50 : 0}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+        >
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
+            <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+              Add Item to {selectedGroup?.name}
+            </Text>
+
+            {/* READONLY CATEGORY FIELD */}
+            <View style={[styles.readonlyField, { backgroundColor: currentTheme.surface }]}>
+              <Text style={[styles.readonlyLabel, { color: currentTheme.textSecondary }]}>
+                Category:
+              </Text>
+              <Text style={[styles.readonlyValue, { color: currentTheme.primary }]}>
+                {selectedGroup?.name}
+              </Text>
+            </View>
+
+            {/* OPEN PRICE CHECKBOX */}
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkbox,
+                  { 
+                    backgroundColor: isOpenPrice ? currentTheme.primary : 'transparent',
+                    borderColor: currentTheme.border
+                  }
+                ]}
+                onPress={() => {
+                  setIsOpenPrice(prev => !prev);
+                  if (!isOpenPrice) {
+                    setNewDish(current => ({ ...current, price: '' }));
+                  }
+                }}
               >
-                <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
-                  <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                    Add Item to {selectedGroup?.name}
-                  </Text>
+                {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
+              </TouchableOpacity>
+              <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
+                Open Price 
+              </Text>
+            </View>
 
-                  {/* READONLY CATEGORY FIELD */}
-                  <View style={[styles.readonlyField, { backgroundColor: currentTheme.surface }]}>
-                    <Text style={[styles.readonlyLabel, { color: currentTheme.textSecondary }]}>
-                      Category:
-                    </Text>
-                    <Text style={[styles.readonlyValue, { color: currentTheme.primary }]}>
-                      {selectedGroup?.name}
-                    </Text>
-                  </View>
+            {/* FAVOURITE CHECKBOX */}
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkbox,
+                  { 
+                    backgroundColor: isFavourite ? currentTheme.primary : 'transparent',
+                    borderColor: currentTheme.border
+                  }
+                ]}
+                onPress={() => {
+                  const newValue = !isFavourite;
+                  setIsFavourite(newValue);
+                  setNewDish({ ...newDish, isFavourite: newValue });
+                }}
+              >
+                {isFavourite && <Ionicons name="star" size={16} color="#fff" />}
+              </TouchableOpacity>
+              <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
+                ⭐ Add to Favourites
+              </Text>
+            </View>
+            <Text style={[styles.favouriteHint, { color: currentTheme.textSecondary }]}>
+              Item will appear in Favourites category automatically
+            </Text>
 
-                  {/* ✅ OPEN PRICE CHECKBOX */}
-                 <View style={styles.checkboxRow}>
-  <TouchableOpacity
-    style={[
-      styles.checkbox,
-      { 
-        backgroundColor: isOpenPrice ? currentTheme.primary : 'transparent',
-        borderColor: currentTheme.border
-      }
-    ]}
-    onPress={() => {
-      // ✅ FIXED: Use functional update
-      setIsOpenPrice(prev => {
-        const newValue = !prev;
-        console.log('📝 Checkbox toggled to:', newValue);
-        
-        if (newValue) {
-          // Clear price when becoming open price
-          setNewDish(current => ({ ...current, price: '' }));
-        }
-        
-        return newValue;
-      });
-    }}
-  >
-    {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
-  </TouchableOpacity>
-  <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
-    Open Price 
-  </Text>
-</View>
-                  {/* Image upload section */}
-                  <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishImage}</Text>
-                  <View style={styles.imageUploadContainer}>
-                    {newDish.imageUri ? (
-                      <View style={styles.imagePreviewContainer}>
-                        <Image source={{ uri: newDish.imageUri }} style={styles.imagePreview} />
-                        <TouchableOpacity
-                          style={styles.removeImageButton}
-                          onPress={() => setNewDish({ ...newDish, imageUri: null })}
-                        >
-                          <Text style={styles.removeImageText}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <View style={[styles.imagePlaceholder, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border }]}>
-                        <Text style={styles.imagePlaceholderText}>📸</Text>
-                        <Text style={[styles.imagePlaceholderSubText, { color: currentTheme.textSecondary }]}>{t.noImage}</Text>
-                      </View>
-                    )}
-
-                    <View style={styles.imageButtonsContainer}>
-                      <TouchableOpacity
-                        style={[styles.imageButton, styles.galleryButton, { backgroundColor: currentTheme.secondary }]}
-                        onPress={() => pickImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
-                        disabled={imageUploading || loading}
-                      >
-                        {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
-                          <>
-                            <Text style={styles.imageButtonIcon}>🖼️</Text>
-                            <Text style={styles.imageButtonText}>{t.gallery}</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.imageButton, styles.cameraButton, { backgroundColor: currentTheme.primary }]}
-                        onPress={() => captureImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
-                        disabled={imageUploading || loading}
-                      >
-                        {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
-                          <>
-                            <Text style={styles.imageButtonIcon}>📷</Text>
-                            <Text style={styles.imageButtonText}>{t.camera}</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishName} *</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
-                    placeholder={t.dishName}
-                    placeholderTextColor={currentTheme.textSecondary}
-                    value={newDish.name}
-                    onChangeText={(text) => setNewDish({ ...newDish, name: text })}
-                    editable={!loading}
-                  />
-
-                  {/* ✅ PRICE FIELD - Hidden when open price checked */}
-{!isOpenPrice && (
-  <>
-    <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
-    <TextInput
-      style={[styles.modalInput, { 
-        backgroundColor: currentTheme.surface, 
-        borderColor: currentTheme.border, 
-        color: currentTheme.text 
-      }]}
-      placeholder="0.00"
-      placeholderTextColor={currentTheme.textSecondary}
-      keyboardType="numeric"
-      value={newDish.price}
-      onChangeText={(text) => setNewDish({ ...newDish, price: text })}
-      editable={!loading}
-    />
-  </>
-)}
-
-
-                  {/* Active Switch */}
-                  <View style={styles.activeRow}>
-                    <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
-                    <Switch
-                      value={newDish.isActive}
-                      onValueChange={(value) => setNewDish({ ...newDish, isActive: value })}
-                      trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
-                      thumbColor="#fff"
-                    />
-                  </View>
-
-                  {/* Buttons */}
-                  <View style={styles.modalButtons}>
-                    <TouchableOpacity
-                      style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
-                      onPress={() => {
-                        setShowAddDish(false);
-                        setNewDish({ 
-                          name: '', 
-                          price: '', 
-                          category: '',
-                          imageUri: null, 
-                          isActive: true,
-                          isOpenPrice: false
-                        });
-                        setIsOpenPrice(false);
-                      }}
-                      disabled={loading}
-                    >
-                      <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
-                      onPress={handleAddDish}
-                      disabled={loading}
-                    >
-                      {loading ? <ActivityIndicator size="small" color="#fff" /> : 
-                        <Text style={styles.saveBtnText}>{t.save}</Text>}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* EDIT DISH MODAL */}
-      <Modal visible={showEditDish} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalOverlay}>
-            <ScrollView 
-              contentContainerStyle={styles.scrollContainer}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={true}
-            >
-              <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
-                <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.edit}</Text>
-
-                <View style={[styles.readonlyField, { backgroundColor: currentTheme.surface }]}>
-                  <Text style={[styles.readonlyLabel, { color: currentTheme.textSecondary }]}>
-                    Category:
-                  </Text>
-                  <Text style={[styles.readonlyValue, { color: currentTheme.primary }]}>
-                    {selectedGroup?.name}
-                  </Text>
-                </View>
-
-                {/* ✅ OPEN PRICE CHECKBOX in Edit */}
-                <View style={styles.checkboxRow}>
+            {/* Image upload section */}
+            <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishImage}</Text>
+            <View style={styles.imageUploadContainer}>
+              {newDish.imageUri ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: newDish.imageUri }} style={styles.imagePreview} />
                   <TouchableOpacity
-                    style={[
-                      styles.checkbox,
-                      { 
-                        backgroundColor: isOpenPrice ? currentTheme.primary : 'transparent',
-                        borderColor: currentTheme.border
-                      }
-                    ]}
-                    onPress={() => {
-                      setIsOpenPrice(!isOpenPrice);
-                      if (!isOpenPrice) {
-                        setNewDish({ ...newDish, price: '' });
-                      }
-                    }}
+                    style={styles.removeImageButton}
+                    onPress={() => setNewDish({ ...newDish, imageUri: null })}
                   >
-                    {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
+                    <Text style={styles.removeImageText}>✕</Text>
                   </TouchableOpacity>
-                  <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
-                    Open Price 
-                  </Text>
                 </View>
+              ) : (
+                <View style={[styles.imagePlaceholder, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border }]}>
+                  <Text style={styles.imagePlaceholderText}>📸</Text>
+                  <Text style={[styles.imagePlaceholderSubText, { color: currentTheme.textSecondary }]}>{t.noImage}</Text>
+                </View>
+              )}
 
-                <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishImage}</Text>
-                <View style={styles.imageUploadContainer}>
-                  {newDish.imageUri ? (
-                    <View style={styles.imagePreviewContainer}>
-                      <Image source={{ uri: newDish.imageUri }} style={styles.imagePreview} />
-                      <TouchableOpacity
-                        style={styles.removeImageButton}
-                        onPress={() => setNewDish({ ...newDish, imageUri: null })}
-                      >
-                        <Text style={styles.removeImageText}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View style={[styles.imagePlaceholder, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border }]}>
-                      <Text style={styles.imagePlaceholderText}>📸</Text>
-                      <Text style={[styles.imagePlaceholderSubText, { color: currentTheme.textSecondary }]}>{t.noImage}</Text>
-                    </View>
+              <View style={styles.imageButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.imageButton, styles.galleryButton, { backgroundColor: currentTheme.secondary }]}
+                  onPress={() => pickImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
+                  disabled={imageUploading || loading}
+                >
+                  {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
+                    <>
+                      <Text style={styles.imageButtonIcon}>🖼️</Text>
+                      <Text style={styles.imageButtonText}>{t.gallery}</Text>
+                    </>
                   )}
+                </TouchableOpacity>
 
-                  <View style={styles.imageButtonsContainer}>
-                    <TouchableOpacity
-                      style={[styles.imageButton, styles.galleryButton, { backgroundColor: currentTheme.secondary }]}
-                      onPress={() => pickImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
-                      disabled={imageUploading || loading}
-                    >
-                      {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
-                        <>
-                          <Text style={styles.imageButtonIcon}>🖼️</Text>
-                          <Text style={styles.imageButtonText}>{t.gallery}</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.imageButton, styles.cameraButton, { backgroundColor: currentTheme.primary }]}
+                  onPress={() => captureImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
+                  disabled={imageUploading || loading}
+                >
+                  {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
+                    <>
+                      <Text style={styles.imageButtonIcon}>📷</Text>
+                      <Text style={styles.imageButtonText}>{t.camera}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
 
-                    <TouchableOpacity
-                      style={[styles.imageButton, styles.cameraButton, { backgroundColor: currentTheme.primary }]}
-                      onPress={() => captureImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
-                      disabled={imageUploading || loading}
-                    >
-                      {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
-                        <>
-                          <Text style={styles.imageButtonIcon}>📷</Text>
-                          <Text style={styles.imageButtonText}>{t.camera}</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
+            <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishName} *</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
+              placeholder={t.dishName}
+              placeholderTextColor={currentTheme.textSecondary}
+              value={newDish.name}
+              onChangeText={(text) => setNewDish({ ...newDish, name: text })}
+              editable={!loading}
+            />
 
-                <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishName} *</Text>
+            {/* PRICE FIELD - Hidden when open price checked */}
+            {!isOpenPrice && (
+              <>
+                <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
                 <TextInput
-                  style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
-                  placeholder={t.dishName}
+                  style={[styles.modalInput, { 
+                    backgroundColor: currentTheme.surface, 
+                    borderColor: currentTheme.border, 
+                    color: currentTheme.text 
+                  }]}
+                  placeholder="0.00"
                   placeholderTextColor={currentTheme.textSecondary}
-                  value={newDish.name}
-                  onChangeText={(text) => setNewDish({ ...newDish, name: text })}
+                  keyboardType="numeric"
+                  value={newDish.price}
+                  onChangeText={(text) => setNewDish({ ...newDish, price: text })}
                   editable={!loading}
                 />
+              </>
+            )}
 
-                {/* ✅ PRICE FIELD - Hidden for open price */}
-                {!isOpenPrice && (
-                  <>
-                    <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
-                    <TextInput
-                      style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
-                      placeholder="0.00"
-                      placeholderTextColor={currentTheme.textSecondary}
-                      keyboardType="numeric"
-                      value={newDish.price}
-                      onChangeText={(text) => setNewDish({ ...newDish, price: text })}
-                      editable={!loading}
-                    />
-                  </>
-                )}
+            {/* Active Switch */}
+            <View style={styles.activeRow}>
+              <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
+              <Switch
+                value={newDish.isActive}
+                onValueChange={(value) => setNewDish({ ...newDish, isActive: value })}
+                trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
+                thumbColor="#fff"
+              />
+            </View>
 
-                <View style={styles.activeRow}>
-                  <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
-                  <Switch
-                    value={newDish.isActive}
-                    onValueChange={(value) => setNewDish({ ...newDish, isActive: value })}
-                    trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
-                    thumbColor="#fff"
-                  />
-                </View>
-
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
-                    onPress={() => {
-                      setShowEditDish(false);
-                      setEditingDish(null);
-                      setNewDish({ 
-                        name: '', 
-                        price: '', 
-                        category: '', 
-                        imageUri: null, 
-                        isActive: true,
-                        isOpenPrice: false
-                      });
-                      setIsOpenPrice(false);
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
-                    onPress={handleEditDish}
-                    disabled={loading}
-                  >
-                    {loading ? <ActivityIndicator size="small" color="#fff" /> : 
-                      <Text style={styles.saveBtnText}>{t.update}</Text>}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </ScrollView>
+            {/* Buttons */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
+                onPress={() => {
+                  setShowAddDish(false);
+                  setNewDish({ 
+                    name: '', 
+                    price: '', 
+                    category: '',
+                    imageUri: null, 
+                    isActive: true,
+                    isOpenPrice: false,
+                    isFavourite: false
+                  });
+                  setIsOpenPrice(false);
+                  setIsFavourite(false);
+                }}
+                disabled={loading}
+              >
+                <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
+                onPress={handleAddDish}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator size="small" color="#fff" /> : 
+                  <Text style={styles.saveBtnText}>{t.save}</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
+  </TouchableWithoutFeedback>
+</Modal>
+      {/* EDIT DISH MODAL */}
+      {/* EDIT DISH MODAL */}
+<Modal visible={showEditDish} transparent animationType="slide">
+  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+    <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 50 : 0}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+        >
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
+            <Text style={[styles.modalTitle, { color: currentTheme.text }]}>{t.edit}</Text>
+
+            <View style={[styles.readonlyField, { backgroundColor: currentTheme.surface }]}>
+              <Text style={[styles.readonlyLabel, { color: currentTheme.textSecondary }]}>
+                Category:
+              </Text>
+              <Text style={[styles.readonlyValue, { color: currentTheme.primary }]}>
+                {selectedGroup?.name}
+              </Text>
+            </View>
+
+            {/* OPEN PRICE CHECKBOX in Edit */}
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkbox,
+                  { 
+                    backgroundColor: isOpenPrice ? currentTheme.primary : 'transparent',
+                    borderColor: currentTheme.border
+                  }
+                ]}
+                onPress={() => {
+                  setIsOpenPrice(!isOpenPrice);
+                  if (!isOpenPrice) {
+                    setNewDish({ ...newDish, price: '' });
+                  }
+                }}
+              >
+                {isOpenPrice && <Ionicons name="checkmark" size={18} color="#fff" />}
+              </TouchableOpacity>
+              <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
+                Open Price 
+              </Text>
+            </View>
+
+            {/* FAVOURITE CHECKBOX in Edit */}
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkbox,
+                  { 
+                    backgroundColor: isFavourite ? currentTheme.primary : 'transparent',
+                    borderColor: currentTheme.border
+                  }
+                ]}
+                onPress={() => {
+                  const newValue = !isFavourite;
+                  setIsFavourite(newValue);
+                  setNewDish({ ...newDish, isFavourite: newValue });
+                }}
+              >
+                {isFavourite && <Ionicons name="star" size={16} color="#fff" />}
+              </TouchableOpacity>
+              <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
+                ⭐ Add to Favourites
+              </Text>
+            </View>
+            <Text style={[styles.favouriteHint, { color: currentTheme.textSecondary }]}>
+              Item will appear in Favourites category automatically
+            </Text>
+
+            {/* Image upload section */}
+            <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishImage}</Text>
+            <View style={styles.imageUploadContainer}>
+              {newDish.imageUri ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: newDish.imageUri }} style={styles.imagePreview} />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => setNewDish({ ...newDish, imageUri: null })}
+                  >
+                    <Text style={styles.removeImageText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={[styles.imagePlaceholder, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border }]}>
+                  <Text style={styles.imagePlaceholderText}>📸</Text>
+                  <Text style={[styles.imagePlaceholderSubText, { color: currentTheme.textSecondary }]}>{t.noImage}</Text>
+                </View>
+              )}
+
+              <View style={styles.imageButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.imageButton, styles.galleryButton, { backgroundColor: currentTheme.secondary }]}
+                  onPress={() => pickImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
+                  disabled={imageUploading || loading}
+                >
+                  {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
+                    <>
+                      <Text style={styles.imageButtonIcon}>🖼️</Text>
+                      <Text style={styles.imageButtonText}>{t.gallery}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.imageButton, styles.cameraButton, { backgroundColor: currentTheme.primary }]}
+                  onPress={() => captureImage((uri) => setNewDish({ ...newDish, imageUri: uri }))}
+                  disabled={imageUploading || loading}
+                >
+                  {imageUploading ? <ActivityIndicator size="small" color="#fff" /> : (
+                    <>
+                      <Text style={styles.imageButtonIcon}>📷</Text>
+                      <Text style={styles.imageButtonText}>{t.camera}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.dishName} *</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
+              placeholder={t.dishName}
+              placeholderTextColor={currentTheme.textSecondary}
+              value={newDish.name}
+              onChangeText={(text) => setNewDish({ ...newDish, name: text })}
+              editable={!loading}
+            />
+
+            {/* PRICE FIELD - Hidden for open price */}
+            {!isOpenPrice && (
+              <>
+                <Text style={[styles.modalLabel, { color: currentTheme.text }]}>{t.price} *</Text>
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, color: currentTheme.text }]}
+                  placeholder="0.00"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  keyboardType="numeric"
+                  value={newDish.price}
+                  onChangeText={(text) => setNewDish({ ...newDish, price: text })}
+                  editable={!loading}
+                />
+              </>
+            )}
+
+            <View style={styles.activeRow}>
+              <Text style={[styles.activeLabel, { color: currentTheme.text }]}>Active</Text>
+              <Switch
+                value={newDish.isActive}
+                onValueChange={(value) => setNewDish({ ...newDish, isActive: value })}
+                trackColor={{ false: currentTheme.inactive, true: currentTheme.success }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: currentTheme.surface }]}
+                onPress={() => {
+                  setShowEditDish(false);
+                  setEditingDish(null);
+                  setNewDish({ 
+                    name: '', 
+                    price: '', 
+                    category: '', 
+                    imageUri: null, 
+                    isActive: true,
+                    isOpenPrice: false,
+                    isFavourite: false
+                  });
+                  setIsOpenPrice(false);
+                  setIsFavourite(false);
+                }}
+                disabled={loading}
+              >
+                <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>{t.cancel}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.saveBtn, { backgroundColor: currentTheme.primary }]}
+                onPress={handleEditDish}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator size="small" color="#fff" /> : 
+                  <Text style={styles.saveBtnText}>{t.update}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
+  </TouchableWithoutFeedback>
+</Modal>
     </View>
   );
 };
 
-// Styles - Add new styles
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
@@ -1106,14 +1237,14 @@ const styles = StyleSheet.create({
   dishThumbnailPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   dishThumbnailText: { fontSize: 22 },
   dishInfo: { flex: 1, marginRight: 8 },
-  dishNameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  dishNameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4, gap: 4 },
   dishName: { fontSize: 13, fontWeight: '400', flex: 1 },
   dishCategory: { fontSize: 13, color: '#666' },
   dishPrice: { fontSize: 16, fontWeight: '700', marginRight: 12 },
   dishActions: { flexDirection: 'row', gap: 4, width: 86, justifyContent: 'flex-end' },
   actionBtn: { width: 27, height: 32, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
   
-  // ✅ NEW STYLES for Open Price
+  // Checkbox styles
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1133,18 +1264,35 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
+  favouriteHint: {
+    fontSize: 11,
+    marginBottom: 16,
+    marginLeft: 34,
+    fontStyle: 'italic',
+  },
   openPriceBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
-    marginLeft: 8,
   },
   openPriceBadgeText: {
     fontSize: 10,
     fontWeight: '600',
   },
+  favouriteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 4,
+  },
+  favouriteBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
   
-  // Existing styles
+  // Modal styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', padding: 16 },
   modalContent: { borderRadius: 16, padding: 20, width: '100%' },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, textAlign: 'center' },

@@ -32,9 +32,73 @@ const getEffectiveOutletId = async (req) => {
     // Admin or fallback
     return null;
 };
-
 // ============================================
-// GET all dish groups (UPDATED with OutletId)
+// ✅ NEW: Ensure Favourites group exists with correct count
+// ============================================
+const ensureFavouritesGroupExists = async (outletId) => {
+    try {
+        const pool = getPool();
+        
+        // Get actual count of favourite items from DishItem table
+        const countResult = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query(`
+                SELECT COUNT(*) as FavouriteCount 
+                FROM DishItem 
+                WHERE OutletId = @outletId AND IsFavourite = 1
+            `);
+        
+        const favouriteCount = countResult.recordset[0].FavouriteCount;
+        
+        // Check if Favourites group exists
+        const groupResult = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query("SELECT Id, ItemCount FROM DishGroup WHERE Name = 'Favourites' AND OutletId = @outletId");
+        
+        if (groupResult.recordset.length === 0) {
+            // Create Favourites group if it doesn't exist and there are favourite items
+            if (favouriteCount > 0) {
+                const maxOrderResult = await pool.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('SELECT ISNULL(MAX(DisplayOrder), -1) + 1 as NextOrder FROM DishGroup WHERE OutletId = @outletId');
+                
+                await pool.request()
+                    .input('name', sql.NVarChar, 'Favourites')
+                    .input('active', sql.Bit, true)
+                    .input('outletId', sql.Int, outletId)
+                    .input('order', sql.Int, maxOrderResult.recordset[0].NextOrder)
+                    .input('itemCount', sql.Int, favouriteCount)
+                    .query(`
+                        INSERT INTO DishGroup (Name, IsActive, OutletId, DisplayOrder, ItemCount) 
+                        VALUES (@name, @active, @outletId, @order, @itemCount)
+                    `);
+                
+                console.log(`✅ Created Favourites group with ${favouriteCount} items for outlet ${outletId}`);
+            }
+        } else {
+            // Update existing group count
+            const currentCount = groupResult.recordset[0].ItemCount || 0;
+            if (currentCount !== favouriteCount) {
+                await pool.request()
+                    .input('outletId', sql.Int, outletId)
+                    .input('count', sql.Int, favouriteCount)
+                    .query(`
+                        UPDATE DishGroup 
+                        SET ItemCount = @count 
+                        WHERE Name = 'Favourites' AND OutletId = @outletId
+                    `);
+                console.log(`✅ Updated Favourites count from ${currentCount} to ${favouriteCount} for outlet ${outletId}`);
+            }
+        }
+        
+        return favouriteCount;
+    } catch (err) {
+        console.error('❌ Error ensuring Favourites group:', err);
+        return 0;
+    }
+};
+// ============================================
+// GET all dish groups (UPDATED - Hide empty Favourites)
 // ============================================
 const getAllGroups = async (req, res) => {
     try {
@@ -45,6 +109,9 @@ const getAllGroups = async (req, res) => {
         }
         
         const pool = getPool();
+        
+        // ✅ Ensure Favourites group has correct count
+        await ensureFavouritesGroupExists(outletId);
         
         const result = await pool.request()
             .input('outletId', sql.Int, outletId)
@@ -58,11 +125,23 @@ const getAllGroups = async (req, res) => {
                     OutletId
                 FROM DishGroup 
                 WHERE OutletId = @outletId 
-                ORDER BY DisplayOrder, Name
+                ORDER BY 
+                    CASE WHEN Name = 'Favourites' THEN 999999 ELSE DisplayOrder END,
+                    Name
             `);
         
-        console.log(`✅ ${req.user.role} ${req.user.id} fetched ${result.recordset.length} groups for outlet ${outletId}`);
-        res.json(result.recordset);
+        // ✅ Filter: Hide Favourites only if it has 0 items AND is not the only group
+        // (But we already updated count, so ItemCount should be accurate)
+        const filteredGroups = result.recordset.filter(group => {
+            if (group.Name === 'Favourites' && group.ItemCount === 0) {
+                return false; // Hide empty Favourites
+            }
+            return true;
+        });
+        
+        console.log(`✅ ${req.user.role} ${req.user.id} fetched ${filteredGroups.length} groups for outlet ${outletId}`);
+        console.log(`⭐ Favourites group has ${result.recordset.find(g => g.Name === 'Favourites')?.ItemCount || 0} items`);
+        res.json(filteredGroups);
     } catch (err) {
         console.error('Error getting groups:', err);
         res.status(500).json({ error: err.message });
@@ -100,7 +179,7 @@ const getGroupById = async (req, res) => {
 };
 
 // ============================================
-// CREATE new dish group (UPDATED)
+// CREATE new dish group (UPDATED - Prevent manual Favourites)
 // ============================================
 const createGroup = async (req, res) => {
     try {
@@ -109,6 +188,11 @@ const createGroup = async (req, res) => {
         
         if (!outletId) {
             return res.status(400).json({ error: 'Outlet ID required' });
+        }
+        
+        // ✅ Prevent manual creation of Favourites group
+        if (name && name.toLowerCase() === 'favourites') {
+            return res.status(403).json({ error: 'Favourites group is automatically managed' });
         }
         
         const pool = getPool();
@@ -141,7 +225,7 @@ const createGroup = async (req, res) => {
 };
 
 // ============================================
-// UPDATE dish group (UPDATED)
+// UPDATE dish group (UPDATED - Prevent editing Favourites)
 // ============================================
 const updateGroup = async (req, res) => {
     try {
@@ -156,6 +240,16 @@ const updateGroup = async (req, res) => {
         console.log('🔄 Updating group:', { id, name, active, outletId });
         
         const pool = getPool();
+        
+        // ✅ Check if this is Favourites group
+        const checkGroup = await pool.request()
+            .input('id', sql.Int, id)
+            .input('outletId', sql.Int, outletId)
+            .query('SELECT Name FROM DishGroup WHERE Id = @id AND OutletId = @outletId');
+        
+        if (checkGroup.recordset.length > 0 && checkGroup.recordset[0].Name === 'Favourites') {
+            return res.status(403).json({ error: 'Favourites group cannot be edited' });
+        }
         
         const transaction = pool.transaction();
         await transaction.begin();
@@ -220,7 +314,7 @@ const updateGroup = async (req, res) => {
 };
 
 // ============================================
-// DELETE dish group (UPDATED)
+// DELETE dish group (UPDATED - Prevent deleting Favourites)
 // ============================================
 const deleteGroup = async (req, res) => {
     try {
@@ -232,6 +326,16 @@ const deleteGroup = async (req, res) => {
         }
         
         const pool = getPool();
+        
+        // ✅ Check if this is Favourites group
+        const checkGroup = await pool.request()
+            .input('id', sql.Int, id)
+            .input('outletId', sql.Int, outletId)
+            .query('SELECT Name FROM DishGroup WHERE Id = @id AND OutletId = @outletId');
+        
+        if (checkGroup.recordset.length > 0 && checkGroup.recordset[0].Name === 'Favourites') {
+            return res.status(403).json({ error: 'Favourites group cannot be deleted' });
+        }
         
         const transaction = pool.transaction();
         await transaction.begin();
@@ -285,7 +389,7 @@ const deleteGroup = async (req, res) => {
 };
 
 // ============================================
-// UPDATE group order (UPDATED)
+// UPDATE group order (UPDATED - Favourites always at bottom)
 // ============================================
 const updateGroupOrder = async (req, res) => {
     try {
@@ -302,11 +406,23 @@ const updateGroupOrder = async (req, res) => {
         
         const pool = getPool();
         
+        // ✅ Get Favourites group ID if exists
+        const favouritesResult = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query("SELECT Id FROM DishGroup WHERE Name = 'Favourites' AND OutletId = @outletId");
+        
+        const favouritesId = favouritesResult.recordset[0]?.Id;
+        
         const transaction = pool.transaction();
         await transaction.begin();
         
         try {
             for (const group of groups) {
+                // ✅ Skip Favourites from order update (keep at bottom)
+                if (favouritesId && group.id === favouritesId) {
+                    continue;
+                }
+                
                 // Verify group belongs to outlet
                 const checkResult = await transaction.request()
                     .input('id', sql.Int, group.id)
@@ -320,6 +436,18 @@ const updateGroupOrder = async (req, res) => {
                 await transaction.request()
                     .input('id', sql.Int, group.id)
                     .input('order', sql.Int, group.order)
+                    .query('UPDATE DishGroup SET DisplayOrder = @order WHERE Id = @id');
+            }
+            
+            // ✅ Ensure Favourites has highest order (at bottom)
+            if (favouritesId) {
+                const maxOrderResult = await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('SELECT ISNULL(MAX(DisplayOrder), -1) + 1 as MaxOrder FROM DishGroup WHERE OutletId = @outletId AND Name != \'Favourites\'');
+                
+                await transaction.request()
+                    .input('id', sql.Int, favouritesId)
+                    .input('order', sql.Int, maxOrderResult.recordset[0].MaxOrder)
                     .query('UPDATE DishGroup SET DisplayOrder = @order WHERE Id = @id');
             }
             
@@ -337,11 +465,94 @@ const updateGroupOrder = async (req, res) => {
     }
 };
 
+// ============================================
+// ✅ NEW: Auto-create Favourites group (called from dishItem)
+// ============================================
+const ensureFavouritesGroup = async (outletId) => {
+    try {
+        const pool = getPool();
+        
+        // Check if Favourites group exists
+        const result = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query("SELECT Id FROM DishGroup WHERE Name = 'Favourites' AND OutletId = @outletId");
+        
+        if (result.recordset.length === 0) {
+            // Create Favourites group
+            const maxOrderResult = await pool.request()
+                .input('outletId', sql.Int, outletId)
+                .query('SELECT ISNULL(MAX(DisplayOrder), -1) + 1 as NextOrder FROM DishGroup WHERE OutletId = @outletId');
+            
+            const insertResult = await pool.request()
+                .input('name', sql.NVarChar, 'Favourites')
+                .input('active', sql.Bit, true)
+                .input('outletId', sql.Int, outletId)
+                .input('order', sql.Int, maxOrderResult.recordset[0].NextOrder)
+                .query(`
+                    INSERT INTO DishGroup (Name, IsActive, OutletId, DisplayOrder) 
+                    OUTPUT INSERTED.Id
+                    VALUES (@name, @active, @outletId, @order)
+                `);
+            
+            console.log(`✅ Auto-created Favourites group for outlet ${outletId}`);
+            return insertResult.recordset[0].Id;
+        }
+        
+        return result.recordset[0].Id;
+    } catch (err) {
+        console.error('❌ Error creating Favourites group:', err);
+        return null;
+    }
+};
+
+// ============================================
+// ✅ NEW: Update Favourites item count
+// ============================================
+const updateFavouritesCount = async (outletId, delta) => {
+    try {
+        const pool = getPool();
+        
+        // Get actual count from DishItem table (more reliable)
+        const countResult = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query(`
+                SELECT COUNT(*) as FavouriteCount 
+                FROM DishItem 
+                WHERE OutletId = @outletId AND IsFavourite = 1
+            `);
+        
+        const actualCount = countResult.recordset[0].FavouriteCount;
+        
+        // Update DishGroup with actual count
+        await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .input('count', sql.Int, actualCount)
+            .query(`
+                UPDATE DishGroup 
+                SET ItemCount = @count 
+                WHERE Name = 'Favourites' AND OutletId = @outletId
+            `);
+        
+        console.log(`✅ Updated Favourites count for outlet ${outletId}: ${actualCount} items (delta: ${delta})`);
+        
+        // If count became 0, we can optionally delete the group
+        // But we keep it for now (will be hidden in getAllGroups)
+        
+        return actualCount;
+    } catch (err) {
+        console.error('❌ Error updating Favourites count:', err);
+        return 0;
+    }
+};
+
 module.exports = {
     getAllGroups,
     getGroupById,
     createGroup,
     updateGroup,
     deleteGroup,
-    updateGroupOrder
+    updateGroupOrder,
+    ensureFavouritesGroup,    // ✅ NEW
+    ensureFavouritesGroupExists, 
+    updateFavouritesCount     // ✅ NEW
 };

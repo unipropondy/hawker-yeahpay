@@ -78,7 +78,7 @@ router.use(authenticateToken);
 router.use(getEffectiveOutletId);
 
 // ============================================
-// GET company settings (UPDATED)
+// GET company settings (WITH LOGOS)
 // ============================================
 router.get('/:targetId', authenticateToken, async (req, res) => {
     try {
@@ -91,15 +91,19 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
             .query(`
                 SELECT 
                     o.OutletName as ShopName,
-                    ISNULL(c.CompanyName, '') as CompanyName,
-                    ISNULL(c.Address, '') as Address,
-                    ISNULL(c.GSTNo, '') as GSTNo,
-                    ISNULL(c.GSTPercentage, 9) as GSTPercentage,
-                    ISNULL(c.Phone, '') as Phone,
-                    ISNULL(c.Email, '') as Email,
-                    ISNULL(c.CashierName, '') as CashierName,
-                    ISNULL(c.Currency, 'SGD') as Currency,
-                    ISNULL(c.CurrencySymbol, '$') as CurrencySymbol
+                    c.CompanyName,
+                    c.Address,
+                    c.GSTNo,
+                    c.GSTPercentage,
+                    c.Phone,
+                    c.Email,
+                    c.CashierName,
+                    c.Currency,
+                    c.CurrencySymbol,
+                    c.CompanyLogoUrl,
+                    c.HalalLogoUrl,
+                    c.ShowCompanyLogo,
+                    c.ShowHalalLogo
                 FROM Outlets o
                 LEFT JOIN CompanySettings c ON o.Id = c.OutletId
                 WHERE o.Id = @outletId
@@ -112,15 +116,19 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
         const row = result.recordset[0];
         
         const settings = {
-            CompanyName: row.CompanyName,
-            Address: row.Address,
-            GSTNo: row.GSTNo,
-            GSTPercentage: row.GSTPercentage,
-            Phone: row.Phone,
-            Email: row.Email,
-            CashierName: row.CashierName,
-            Currency: row.Currency,
-            CurrencySymbol: row.CurrencySymbol
+            CompanyName: row.CompanyName || '',
+            Address: row.Address || '',
+            GSTNo: row.GSTNo || '',
+            GSTPercentage: row.GSTPercentage || 9,
+            Phone: row.Phone || '',
+            Email: row.Email || '',
+            CashierName: row.CashierName || '',
+            Currency: row.Currency || 'SGD',
+            CurrencySymbol: row.CurrencySymbol || '$',
+            CompanyLogoUrl: row.CompanyLogoUrl || '',
+            HalalLogoUrl: row.HalalLogoUrl || '',
+            ShowCompanyLogo: row.ShowCompanyLogo !== undefined ? row.ShowCompanyLogo : 1,
+            ShowHalalLogo: row.ShowHalalLogo !== undefined ? row.ShowHalalLogo : 1
         };
         
         console.log(`✅ ${req.user.role} ${req.user.id} fetched settings for outlet ${outletId}`);
@@ -135,9 +143,8 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 // ============================================
-// POST (create/update) company settings (UPDATED)
+// POST (create/update) company settings (WITH LOGOS)
 // ============================================
 router.post('/:targetId', authenticateToken, async (req, res) => {
     try {
@@ -150,14 +157,18 @@ router.post('/:targetId', authenticateToken, async (req, res) => {
             Email, 
             CashierName,
             Currency,
-            CurrencySymbol
+            CurrencySymbol,
+            CompanyLogoUrl,      // ✅ ADD
+            HalalLogoUrl,        // ✅ ADD
+            ShowCompanyLogo,     // ✅ ADD
+            ShowHalalLogo        // ✅ ADD
         } = req.body;
         
         const outletId = req.outletId;
         
         const pool = getPool();
         
-        // ✅ Save using OutletId only (UserId can be NULL)
+        // ✅ Save with logo fields
         await pool.request()
             .input('outletId', sql.Int, outletId)
             .input('companyName', sql.NVarChar, CompanyName || '')
@@ -169,6 +180,10 @@ router.post('/:targetId', authenticateToken, async (req, res) => {
             .input('cashierName', sql.NVarChar, CashierName || '')
             .input('currency', sql.NVarChar, Currency || 'SGD')
             .input('currencySymbol', sql.NVarChar, CurrencySymbol || '$')
+            .input('companyLogoUrl', sql.NVarChar, CompanyLogoUrl || null)
+            .input('halalLogoUrl', sql.NVarChar, HalalLogoUrl || null)
+            .input('showCompanyLogo', sql.Bit, ShowCompanyLogo !== false ? 1 : 0)
+            .input('showHalalLogo', sql.Bit, ShowHalalLogo !== false ? 1 : 0)
             .query(`
                 MERGE INTO CompanySettings AS target
                 USING (SELECT @outletId AS OutletId) AS source
@@ -183,10 +198,14 @@ router.post('/:targetId', authenticateToken, async (req, res) => {
                         Email = @email,
                         CashierName = @cashierName,
                         Currency = @currency,
-                        CurrencySymbol = @currencySymbol
+                        CurrencySymbol = @currencySymbol,
+                        CompanyLogoUrl = @companyLogoUrl,
+                        HalalLogoUrl = @halalLogoUrl,
+                        ShowCompanyLogo = @showCompanyLogo,
+                        ShowHalalLogo = @showHalalLogo
                 WHEN NOT MATCHED THEN
-                    INSERT (OutletId, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol)
-                    VALUES (@outletId, @companyName, @address, @gstNo, @gstPercentage, @phone, @email, @cashierName, @currency, @currencySymbol);
+                    INSERT (OutletId, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol, CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo)
+                    VALUES (@outletId, @companyName, @address, @gstNo, @gstPercentage, @phone, @email, @cashierName, @currency, @currencySymbol, @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo);
             `);
         
         console.log(`✅ ${req.user.role} ${req.user.id} saved settings for outlet ${outletId}`);

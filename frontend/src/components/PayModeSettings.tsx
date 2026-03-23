@@ -75,9 +75,56 @@ const PayModeSettings: React.FC<PayModeSettingsProps> = ({
       loadPaymentModes();
       loadUPIId();
       loadPayNowQR();
+      ensureDiscountMode();
     }
   }, [visible, userId]);
-
+const ensureDiscountMode = async () => {
+    try {
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        const targetId = outletId || userId;
+        
+        const response = await API.get(`/user/payment-modes/${targetId}`);
+        let modes = response.data.paymentModes || [];
+        
+        // Check if discount mode exists
+        const discountExists = modes.some((m: any) => 
+            m.id === 'discount' || (typeof m === 'string' && m === 'discount')
+        );
+        
+        if (!discountExists) {
+            console.log('➕ Adding discount mode');
+            
+            // Add discount mode
+            const discountMode = {
+                id: 'discount',
+                name: 'Discount',
+                icon: '🏷️',
+                description: 'Apply discount to total',
+                isActive: false,
+                order: modes.length
+            };
+            
+            if (typeof modes[0] === 'string') {
+                // If modes are strings, convert all to objects first
+                const convertedModes = modes.map((m: string, idx: number) => ({
+                    id: m,
+                    name: getModeName(m),
+                    icon: getModeIcon(m),
+                    description: getModeDescription(m),
+                    isActive: true,
+                    order: idx
+                }));
+                convertedModes.push(discountMode);
+                setPaymentModes(convertedModes);
+            } else {
+                // Already objects
+                setPaymentModes([...modes, discountMode]);
+            }
+        }
+    } catch (error) {
+        console.log('❌ Error ensuring discount mode:', error);
+    }
+};
   const loadPayNowQR = async (force?: boolean) => {
     if (force) {
       console.log('🔄 Force reloading PayNow QR...');

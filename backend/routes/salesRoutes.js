@@ -7,7 +7,8 @@ const {
     getSales,
     getSalesSummary,
     getSalesByCategory,
-    getCategoryItems
+    getCategoryItems,
+    voidSale 
 } = require('../controllers/salesController');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -117,5 +118,5 @@ router.get('/by-category', getSalesByCategory);
 
 // GET /api/sales/category/:category?filter=today - Items in category
 router.get('/category/:category', getCategoryItems);
-
+router.post('/void', voidSale);
 module.exports = router;
