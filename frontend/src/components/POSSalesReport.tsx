@@ -1,12 +1,14 @@
 // components/POSSalesReport.tsx - COMPLETE WITH DISCOUNT SUMMARY & VOID SUPPORT ✅
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, TextInput } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, TextInput,Switch  } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import API from '../api';
 import UniversalPrinter from './UniversalPrinter';  
 import { Ionicons } from '@expo/vector-icons';
 import VoidPasswordSettings from './VoidPasswordSettings';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import CashDrawerLogs from './CashDrawerLogs'; 
 interface CategorySummary {
   totalRevenue: number;
   totalTransactions: number;
@@ -94,6 +96,8 @@ const [showVoidedTab, setShowVoidedTab] = useState(false);
 const prevShowVoidedTabRef = useRef(showVoidedTab);
 const prevShowVoidedCategoriesTabRef = useRef(showVoidedCategoriesTab);
 const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== showVoidedCategoriesTab;
+const [showCashDrawerLogs, setShowCashDrawerLogs] = useState(false);
+const [cashDrawerToggle, setCashDrawerToggle] = useState(false);
   // ✅ Summary with discount fields
   const [summary, setSummary] = useState({
     totalSales: 0,
@@ -140,7 +144,30 @@ const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== sh
       year: 'numeric'
     });
   };
-  
+  useEffect(() => {
+  const loadToggleState = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('cashDrawerToggle');
+      if (saved !== null) {
+        setCashDrawerToggle(saved === 'true');
+      }
+    } catch (error) {
+      console.log('Error loading toggle state:', error);
+    }
+  };
+  loadToggleState();
+}, []);
+
+// Add function to save toggle state
+const saveToggleState = async (value: boolean) => {
+  try {
+    await AsyncStorage.setItem('cashDrawerToggle', value.toString());
+    setCashDrawerToggle(value);
+  } catch (error) {
+    console.log('Error saving toggle state:', error);
+  }
+};
+
   // ============ LOAD FUNCTIONS ============
   const loadOverviewData = useCallback(async () => {
   if (loadingRef.current) return;
@@ -150,14 +177,11 @@ const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== sh
 
   try {
     const filterValue = selectedFilter?.toLowerCase() || 'today';
-    
-    // ✅ Determine which status to fetch
     const statusParam = showVoidedTab ? 'voided' : 'completed';
     
     let summaryUrl = '/sales/summary';
     let salesUrl = '/sales';
     
-    // ✅ Add status parameter to URLs
     if (filterValue === 'custom') {
       const start = startDate.toISOString().split('T')[0];
       const end = endDate.toISOString().split('T')[0];
@@ -185,11 +209,26 @@ const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== sh
         paymentBreakdown: summaryRes.data.paymentBreakdown || {}
       });
       
-      // ✅ Store in appropriate array based on tab
+      // ✅ FORMAT SALES WITH INVOICE NUMBER
+      const formattedSales = (salesRes.data || []).map((sale: any) => ({
+        id: sale.id || sale.Id,
+        total: sale.total || sale.Total || 0,
+        paymentMethod: sale.paymentMethod || sale.PaymentMethod || '',
+        date: sale.date || sale.SaleDate || new Date(),
+        invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber || '', // ✅ ADD THIS
+        items: sale.items || sale.ItemsJson || [],
+        status: sale.status || sale.Status,
+        voidReason: sale.voidReason,
+        voidedAt: sale.voidedAt,
+        voidedBy: sale.voidedBy,
+        discount: sale.discount || null
+      }));
+      
+      // ✅ Store formatted data
       if (showVoidedTab) {
-        setVoidedSales(salesRes.data || []);
+        setVoidedSales(formattedSales);
       } else {
-        setSalesHistory(salesRes.data || []);
+        setSalesHistory(formattedSales);
       }
     }
     
@@ -199,8 +238,7 @@ const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== sh
     loadingRef.current = false;
     if (isMounted.current) setLoading(false);
   }
-}, [selectedFilter, startDate, endDate, showVoidedTab]); // ✅ Add showVoidedTab as dependency
-
+}, [selectedFilter, startDate, endDate, showVoidedTab]);
 const loadCategoryData = useCallback(async () => {
   if (loadingRef.current) return;
   
@@ -441,6 +479,7 @@ const loadCategoryItems = useCallback(async (category: string) => {
       if (!grouped[trans.saleId]) {
         grouped[trans.saleId] = {
           id: trans.saleId,
+          invoiceNumber: trans.invoiceNumber || '', 
           date: trans.saleDate,
           items: [],
           total: 0
@@ -666,12 +705,40 @@ useEffect(() => {
       <Ionicons name="key-outline" size={18} color="#fff" />
       <Text style={styles.voidPasswordBtnText}>Void Password</Text>
     </TouchableOpacity>
+    
   )}
-  
+    
   <TouchableOpacity onPress={onClose} style={styles.closeButton}>
     <Text style={[styles.closeText, { color: theme.text }]}>✕</Text>
   </TouchableOpacity>
 </View>
+{userRole === 'owner' && (
+    <TouchableOpacity 
+      style={[
+        styles.cashDrawerBtn, 
+        { backgroundColor: cashDrawerToggle ? theme.success : theme.surface }
+      ]}
+      onPress={() => {
+        if (cashDrawerToggle) {
+          setShowCashDrawerLogs(true);
+        }
+      }}
+    >
+      <View style={styles.cashDrawerToggleContainer}>
+        <Ionicons name="cash-outline" size={18} color={cashDrawerToggle ? '#fff' : theme.text} />
+        <Switch
+          value={cashDrawerToggle}
+          onValueChange={saveToggleState}
+          trackColor={{ false: theme.inactive, true: theme.success }}
+          thumbColor="#fff"
+          style={styles.cashDrawerSwitch}
+        />
+        <Text style={[styles.cashDrawerText, { color: cashDrawerToggle ? '#fff' : theme.text }]}>
+          Cash Drawer Logs
+        </Text>
+      </View>
+    </TouchableOpacity>
+  )}
 
           {/* Tab Switcher */}
 {/* Tab Switcher */}
@@ -911,6 +978,9 @@ useEffect(() => {
     ]}>
       <View style={styles.saleHeader}>
         <View style={styles.saleHeaderLeft}>
+           <Text style={[styles.invoiceNumber, { color: theme.primary, fontWeight: '700' }]}>
+                        📄 {sale.invoiceNumber || 'No Invoice'}
+                    </Text>
           <Text style={[styles.saleDate, { color: theme.textSecondary }]}>
             {new Date(sale.date).toLocaleDateString()}
           </Text>
@@ -1245,6 +1315,9 @@ useEffect(() => {
                                   <View key={`sale-${index}`} style={[styles.transactionCard, { backgroundColor: theme.card }]}>
                                     <View style={styles.transactionHeader}>
                                       <View>
+                                         <Text style={[styles.transactionInvoice, { color: theme.primary, fontWeight: '600' }]}>
+                    📄 {sale.invoiceNumber || 'No Invoice'}
+                </Text>
                                         <Text style={[styles.transactionId, { color: theme.textSecondary }]}>
                                           #{sale.id}
                                         </Text>
@@ -1435,6 +1508,14 @@ useEffect(() => {
   t={t}
   userRole={userRole || ''}
 />
+<CashDrawerLogs
+  visible={showCashDrawerLogs}
+  onClose={() => setShowCashDrawerLogs(false)}
+  theme={theme}
+  t={t}
+  userRole={userRole || ''}
+  outletId={outletInfo?.id}
+/>
     </Modal>
   );
 };
@@ -1479,6 +1560,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
+    marginRight: 'auto',
   },
   closeButton: {
     padding: 8,
@@ -2037,6 +2119,18 @@ const styles = StyleSheet.create({
   marginBottom: 12,
   paddingHorizontal: 8,
   fontStyle: 'italic',
+},transactionInvoice: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+    fontFamily: 'monospace',
+},
+// Add to styles object
+invoiceNumber: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+    fontFamily: 'monospace',
 },
 // Add to styles object
 statusTabContainer: {
@@ -2063,13 +2157,14 @@ voidPasswordBtn: {
   flexDirection: 'row',
   alignItems: 'center',
   gap: 6,
-  paddingHorizontal: 12,
-  paddingVertical: 8,
+  paddingHorizontal: 10,
+  paddingVertical: 6,
   borderRadius: 8,
+  marginRight: 8,
 },
 voidPasswordBtnText: {
   color: '#fff',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: '600',
 },
 // Add to styles object
@@ -2087,6 +2182,24 @@ voidReasonText: {
   marginBottom: 8,
   fontStyle: 'italic',
   paddingHorizontal: 4,
+},
+// Add to styles object
+cashDrawerBtn: {
+  paddingHorizontal: 1,
+  paddingVertical: 1,
+  borderRadius: 10,
+},
+cashDrawerToggleContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 1,
+},
+cashDrawerSwitch: {
+  transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }],
+},
+cashDrawerText: {
+  fontSize: 11,
+  fontWeight: '600',
 },
 voidedByText: {
   fontSize: 10,

@@ -809,7 +809,116 @@ router.delete('/delete-user/:userId', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// ============================================
+// DELETE STANDALONE STAFF (No owner)
+// ============================================
+// ============================================
+// DELETE STANDALONE STAFF (No owner)
+// ============================================
+router.delete('/delete-standalone-staff/:staffId', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
 
+        const { staffId } = req.params;
+        const pool = getPool();
+
+        // Check if staff exists and is standalone
+        const staffCheck = await pool.request()
+            .input('staffId', sql.Int, staffId)
+            .query(`
+                SELECT Id, Username, OutletId, OwnerId 
+                FROM Users 
+                WHERE Id = @staffId AND Role = 'staff' AND OwnerId IS NULL
+            `);
+        
+        if (staffCheck.recordset.length === 0) {
+            return res.status(404).json({ error: 'Standalone staff not found' });
+        }
+
+        const staff = staffCheck.recordset[0];
+        const outletId = staff.OutletId;
+
+        // Start transaction
+        const transaction = pool.transaction();
+        await transaction.begin();
+
+        try {
+            console.log(`🗑️ Deleting standalone staff: ${staff.Username} (ID: ${staffId}) with outlet ${outletId}`);
+
+            // ✅ STEP 1: First, REMOVE the staff reference from outlet
+            if (outletId) {
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('UPDATE Outlets SET StaffId = NULL WHERE Id = @outletId');
+                console.log('✅ Removed staff reference from outlet');
+            }
+
+            // ✅ STEP 2: Remove outlet reference from staff
+            await transaction.request()
+                .input('staffId', sql.Int, staffId)
+                .query('UPDATE Users SET OutletId = NULL WHERE Id = @staffId');
+            console.log('✅ Removed outlet reference from staff');
+
+            // 3. Delete user_preferences
+            await transaction.request()
+                .input('userId', sql.Int, staffId)
+                .query('DELETE FROM user_preferences WHERE user_id = @userId');
+
+            // 4. Delete sales
+            if (outletId) {
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('DELETE FROM Sales WHERE OutletId = @outletId');
+
+                // 5. Delete dish items
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('DELETE FROM DishItem WHERE OutletId = @outletId');
+
+                // 6. Delete dish groups
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('DELETE FROM DishGroup WHERE OutletId = @outletId');
+
+                // 7. Delete company settings
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('DELETE FROM CompanySettings WHERE OutletId = @outletId');
+
+                // 8. Delete license
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('DELETE FROM Licenses WHERE OutletId = @outletId');
+
+                // 9. Delete outlet
+                await transaction.request()
+                    .input('outletId', sql.Int, outletId)
+                    .query('DELETE FROM Outlets WHERE Id = @outletId');
+                console.log('✅ Deleted outlet');
+            }
+
+            // 10. Finally delete the staff user
+            await transaction.request()
+                .input('staffId', sql.Int, staffId)
+                .query('DELETE FROM Users WHERE Id = @staffId');
+            console.log('✅ Deleted staff user');
+
+            await transaction.commit();
+            console.log(`✅ Standalone staff ${staff.Username} deleted successfully`);
+            res.json({ success: true, message: 'Standalone staff deleted successfully' });
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('❌ Transaction error:', error);
+            throw error;
+        }
+    } catch (err) {
+        console.error('❌ Delete error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // ============================================
 // 6️⃣ GET ALL SHOPS WITH OUTLETS
 // ============================================
@@ -1184,28 +1293,74 @@ router.delete('/delete-outlet/:outletId', authenticateToken, async (req, res) =>
 
             const staffId = outletResult.recordset[0].StaffId;
 
-            // Delete license
+            console.log(`🗑️ Deleting outlet ${outletId} with staff ${staffId}`);
+
+            // ✅ STEP 1: Delete staff's user_preferences
+            if (staffId) {
+                await transaction.request()
+                    .input('staffId', sql.Int, staffId)
+                    .query('DELETE FROM user_preferences WHERE user_id = @staffId');
+                console.log(`✅ Deleted user_preferences for staff ${staffId}`);
+            }
+
+            // ✅ STEP 2: Delete sales for this outlet
+            await transaction.request()
+                .input('outletId', sql.Int, outletId)
+                .query('DELETE FROM Sales WHERE OutletId = @outletId');
+            console.log(`✅ Deleted sales for outlet ${outletId}`);
+
+            // ✅ STEP 3: Delete dish items
+            await transaction.request()
+                .input('outletId', sql.Int, outletId)
+                .query('DELETE FROM DishItem WHERE OutletId = @outletId');
+            console.log(`✅ Deleted dish items for outlet ${outletId}`);
+
+            // ✅ STEP 4: Delete dish groups
+            await transaction.request()
+                .input('outletId', sql.Int, outletId)
+                .query('DELETE FROM DishGroup WHERE OutletId = @outletId');
+            console.log(`✅ Deleted dish groups for outlet ${outletId}`);
+
+            // ✅ STEP 5: Delete company settings
+            await transaction.request()
+                .input('outletId', sql.Int, outletId)
+                .query('DELETE FROM CompanySettings WHERE OutletId = @outletId');
+            console.log(`✅ Deleted company settings for outlet ${outletId}`);
+
+            // ✅ STEP 6: Delete license
             await transaction.request()
                 .input('outletId', sql.Int, outletId)
                 .query('DELETE FROM Licenses WHERE OutletId = @outletId');
+            console.log(`✅ Deleted license for outlet ${outletId}`);
 
-            // Delete outlet
+            // ✅ STEP 7: Update outlet to remove staff reference BEFORE deleting staff
             await transaction.request()
                 .input('outletId', sql.Int, outletId)
-                .query('DELETE FROM Outlets WHERE Id = @outletId');
+                .query('UPDATE Outlets SET StaffId = NULL WHERE Id = @outletId');
+            console.log(`✅ Updated outlet ${outletId} to remove staff reference`);
 
-            // Delete staff if exists
+            // ✅ STEP 8: Delete the staff user
             if (staffId) {
                 await transaction.request()
                     .input('staffId', sql.Int, staffId)
                     .query('DELETE FROM Users WHERE Id = @staffId');
+                console.log(`✅ Deleted staff user ${staffId}`);
             }
 
+            // ✅ STEP 9: Finally delete the outlet
+            await transaction.request()
+                .input('outletId', sql.Int, outletId)
+                .query('DELETE FROM Outlets WHERE Id = @outletId');
+            console.log(`✅ Deleted outlet ${outletId}`);
+
             await transaction.commit();
+            
+            console.log(`✅ Outlet ${outletId} and all associated data deleted successfully`);
             res.json({ success: true, message: 'Outlet deleted successfully' });
 
         } catch (error) {
             await transaction.rollback();
+            console.error('❌ Transaction error:', error);
             throw error;
         }
 
@@ -1214,7 +1369,101 @@ router.delete('/delete-outlet/:outletId', authenticateToken, async (req, res) =>
         res.status(500).json({ error: err.message });
     }
 });
+// backend/routes/adminRoutes.js
 
+// ============================================
+// EDIT USER (Owner or Staff)
+// ============================================
+router.put('/edit-user', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { userId, username, shopName, fullName, password } = req.body;
+        
+        if (!userId || !username || !shopName) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const pool = getPool();
+        
+        // Check if user exists
+        const userCheck = await pool.request()
+            .input('userId', sql.Int, userId)
+            .query('SELECT Id, Role FROM Users WHERE Id = @userId');
+        
+        if (userCheck.recordset.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const userRole = userCheck.recordset[0].Role;
+        
+        // Start transaction
+        const transaction = pool.transaction();
+        await transaction.begin();
+        
+        try {
+            // Build update query
+            let updateQuery = 'UPDATE Users SET Username = @username, ShopName = @shopName, FullName = @fullName';
+            const request = transaction.request();
+            
+            request.input('userId', sql.Int, userId);
+            request.input('username', sql.NVarChar, username);
+            request.input('shopName', sql.NVarChar, shopName);
+            request.input('fullName', sql.NVarChar, fullName || '');
+            
+            // If password provided, hash it
+            if (password && password.trim() !== '') {
+                const bcrypt = require('bcryptjs');
+                const salt = await bcrypt.genSalt(10);
+                const hashedPassword = await bcrypt.hash(password, salt);
+                updateQuery += ', PasswordHash = @passwordHash';
+                request.input('passwordHash', sql.NVarChar, hashedPassword);
+            }
+            
+            updateQuery += ' WHERE Id = @userId';
+            
+            await request.query(updateQuery);
+            
+            // If staff, also update outlet name
+            if (userRole === 'staff') {
+                // Get outlet ID
+                const outletResult = await transaction.request()
+                    .input('userId', sql.Int, userId)
+                    .query('SELECT OutletId FROM Users WHERE Id = @userId');
+                
+                if (outletResult.recordset[0]?.OutletId) {
+                    const outletId = outletResult.recordset[0].OutletId;
+                    
+                    await transaction.request()
+                        .input('outletId', sql.Int, outletId)
+                        .input('outletName', sql.NVarChar, shopName)
+                        .query('UPDATE Outlets SET OutletName = @outletName WHERE Id = @outletId');
+                    
+                    // Also update license shop name
+                    await transaction.request()
+                        .input('outletId', sql.Int, outletId)
+                        .input('shopName', sql.NVarChar, shopName)
+                        .query('UPDATE Licenses SET ShopName = @shopName WHERE OutletId = @outletId');
+                }
+            }
+            
+            await transaction.commit();
+            
+            console.log(`✅ User ${userId} updated by admin`);
+            res.json({ success: true, message: 'User updated successfully' });
+            
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+        
+    } catch (err) {
+        console.error('❌ Error updating user:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // ============================================
 // 🔟 GET LICENSE STATUS
 // ============================================

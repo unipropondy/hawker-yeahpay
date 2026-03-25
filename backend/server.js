@@ -13,6 +13,8 @@ const Queue = require('bull');
 const salesQueue = new Queue('sales processing');
 const startLicenseUpdater = require('./cron/licenseUpdater');
 // Import routes
+const startSessionCleanup = require('./cron/sessionCleanup');
+const updateSessionActivity = require('./middleware/sessionActivity');
 const authRoutes = require('./routes/authRoutes');
 const dishGroupRoutes = require('./routes/dishGroupRoutes');
 const dishItemRoutes = require('./routes/dishItemRoutes');
@@ -215,6 +217,8 @@ app.use('/api/company-settings', authenticateToken, apiLimiter, companySettingsR
 app.use('/api/user', authenticateToken, apiLimiter, paynowRoutes);
 app.use('/api/owner', authenticateToken, ownerRoutes);
 app.use('/api/cash-drawer', cashDrawerRoutes);
+app.use('/api', authenticateToken, updateSessionActivity);
+
 // Add near the top after middleware
 app.get('/health', (req, res) => {
     res.json({ 
@@ -464,6 +468,7 @@ app.use((err, req, res, next) => {
 // ✅ Start server - connectDB() called ONLY ONCE
 connectDB().then(() => {
     startLicenseUpdater(); 
+    startSessionCleanup(); 
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`✅ Server running on port ${PORT}`);
         console.log(`📍 Local: http://localhost:${PORT}`);

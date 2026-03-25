@@ -53,6 +53,11 @@ const createSale = async (req, res) => {
             return res.status(400).json({ error: 'Outlet ID required' });
         }
         
+        const pool = getPool();
+        
+        // ✅ GENERATE INVOICE NUMBER
+        const invoiceNumber = await generateInvoiceNumber(pool, outletId);
+        
         // Process items
         const itemsWithCategory = items.map(item => ({
             id: item.id,
@@ -66,8 +71,6 @@ const createSale = async (req, res) => {
         
         const itemsJson = JSON.stringify(itemsWithCategory);
         
-        const pool = getPool();
-        
         // ✅ Check if discount columns exist (for backward compatibility)
         const tableCheck = await pool.request().query(`
             SELECT COLUMN_NAME 
@@ -78,6 +81,16 @@ const createSale = async (req, res) => {
         
         const hasDiscountColumns = tableCheck.recordset.length >= 3;
         
+        // ✅ Check if InvoiceNumber column exists
+        const invoiceColumnCheck = await pool.request().query(`
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'Sales' 
+            AND COLUMN_NAME = 'InvoiceNumber'
+        `);
+        
+        const hasInvoiceColumn = invoiceColumnCheck.recordset.length > 0;
+        
         let query = '';
         let request = pool.request()
             .input('total', sql.Decimal(10,2), total)
@@ -87,6 +100,11 @@ const createSale = async (req, res) => {
             .input('changeAmount', sql.Decimal(10,2), change || null)
             .input('outletId', sql.Int, outletId);
         
+        // ✅ Add invoice number if column exists
+        if (hasInvoiceColumn) {
+            request = request.input('invoiceNumber', sql.NVarChar, invoiceNumber);
+        }
+        
         if (hasDiscountColumns) {
             // ✅ With discount columns
             request = request
@@ -94,38 +112,76 @@ const createSale = async (req, res) => {
                 .input('discountValue', sql.Decimal(10,2), discountValue || null)
                 .input('discountAmount', sql.Decimal(10,2), discountAmount || null);
             
-            query = `
-                INSERT INTO Sales (
-                    Total, PaymentMethod, ItemsJson, 
-                    CashPaid, ChangeAmount, OutletId,
-                    DiscountType, DiscountValue, DiscountAmount,
-            Status
-                )
-                OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, 
-                       INSERTED.SaleDate, INSERTED.DiscountType, 
-                       INSERTED.DiscountValue, INSERTED.DiscountAmount
-                VALUES (
-                    @total, @paymentMethod, @itemsJson,
-                    @cashPaid, @changeAmount, @outletId,
-                    @discountType, @discountValue, @discountAmount,
-            'COMPLETED'
-                )
-            `;
+            if (hasInvoiceColumn) {
+                query = `
+                    INSERT INTO Sales (
+                        Total, PaymentMethod, ItemsJson, 
+                        CashPaid, ChangeAmount, OutletId,
+                        DiscountType, DiscountValue, DiscountAmount,
+                        InvoiceNumber, Status
+                    )
+                    OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, 
+                           INSERTED.SaleDate, INSERTED.DiscountType, 
+                           INSERTED.DiscountValue, INSERTED.DiscountAmount,
+                           INSERTED.InvoiceNumber
+                    VALUES (
+                        @total, @paymentMethod, @itemsJson,
+                        @cashPaid, @changeAmount, @outletId,
+                        @discountType, @discountValue, @discountAmount,
+                        @invoiceNumber, 'COMPLETED'
+                    )
+                `;
+            } else {
+                query = `
+                    INSERT INTO Sales (
+                        Total, PaymentMethod, ItemsJson, 
+                        CashPaid, ChangeAmount, OutletId,
+                        DiscountType, DiscountValue, DiscountAmount,
+                        Status
+                    )
+                    OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, 
+                           INSERTED.SaleDate, INSERTED.DiscountType, 
+                           INSERTED.DiscountValue, INSERTED.DiscountAmount
+                    VALUES (
+                        @total, @paymentMethod, @itemsJson,
+                        @cashPaid, @changeAmount, @outletId,
+                        @discountType, @discountValue, @discountAmount,
+                        'COMPLETED'
+                    )
+                `;
+            }
         } else {
             // ✅ Without discount columns (fallback)
-            query = `
-                INSERT INTO Sales (
-                    Total, PaymentMethod, ItemsJson, 
-                    CashPaid, ChangeAmount, OutletId,
-            Status
-                )
-                OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, INSERTED.SaleDate
-                VALUES (
-                    @total, @paymentMethod, @itemsJson,
-                    @cashPaid, @changeAmount, @outletId,
-            'COMPLETED'
-                )
-            `;
+            if (hasInvoiceColumn) {
+                query = `
+                    INSERT INTO Sales (
+                        Total, PaymentMethod, ItemsJson, 
+                        CashPaid, ChangeAmount, OutletId,
+                        InvoiceNumber, Status
+                    )
+                    OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, 
+                           INSERTED.SaleDate, INSERTED.InvoiceNumber
+                    VALUES (
+                        @total, @paymentMethod, @itemsJson,
+                        @cashPaid, @changeAmount, @outletId,
+                        @invoiceNumber, 'COMPLETED'
+                    )
+                `;
+            } else {
+                query = `
+                    INSERT INTO Sales (
+                        Total, PaymentMethod, ItemsJson, 
+                        CashPaid, ChangeAmount, OutletId,
+                        Status
+                    )
+                    OUTPUT INSERTED.Id, INSERTED.Total, INSERTED.PaymentMethod, INSERTED.SaleDate
+                    VALUES (
+                        @total, @paymentMethod, @itemsJson,
+                        @cashPaid, @changeAmount, @outletId,
+                        'COMPLETED'
+                    )
+                `;
+            }
         }
         
         const result = await request.query(query);
@@ -139,6 +195,18 @@ const createSale = async (req, res) => {
             items: itemsWithCategory
         };
         
+        // ✅ Add invoice number if available
+        if (hasInvoiceColumn && result.recordset[0].InvoiceNumber) {
+            newSale.invoiceNumber = result.recordset[0].InvoiceNumber;
+        } else {
+            // Fallback invoice number
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            newSale.invoiceNumber = `${year}${month}${day}-${newSale.id}`;
+        }
+        
         // ✅ Add discount info if present
         if (hasDiscountColumns && discountAmount) {
             newSale.discount = {
@@ -150,7 +218,7 @@ const createSale = async (req, res) => {
             console.log(`💰 Discount applied: ${discountType === 'percentage' ? discountValue + '%' : '$' + discountValue} = $${discountAmount}`);
         }
         
-        console.log(`✅ ${req.user.role} ${req.user.id} created sale for outlet ${outletId}${discountAmount ? ' with discount' : ''}`);
+        console.log(`✅ ${req.user.role} ${req.user.id} created sale for outlet ${outletId} - Invoice: ${newSale.invoiceNumber}${discountAmount ? ' with discount' : ''}`);
         res.status(201).json(newSale);
         
     } catch (err) {
@@ -283,7 +351,7 @@ const voidSale = async (req, res) => {
 // ============================================
 const getSales = async (req, res) => {
     try {
-        const { filter, startDate, endDate, status } = req.query; // ✅ ADD status param
+        const { filter, startDate, endDate, status } = req.query;
         
         const outletId = req.outletId;
         
@@ -298,12 +366,13 @@ const getSales = async (req, res) => {
             SELECT COLUMN_NAME 
             FROM INFORMATION_SCHEMA.COLUMNS 
             WHERE TABLE_NAME = 'Sales' 
-            AND COLUMN_NAME IN ('DiscountType', 'DiscountValue', 'DiscountAmount')
+            AND COLUMN_NAME IN ('DiscountType', 'DiscountValue', 'DiscountAmount', 'InvoiceNumber')
         `);
         
-        const hasDiscountColumns = checkColumns.recordset.length >= 3;
+        const hasDiscountColumns = checkColumns.recordset.some(c => ['DiscountType', 'DiscountValue', 'DiscountAmount'].includes(c.COLUMN_NAME));
+        const hasInvoiceColumn = checkColumns.recordset.some(c => c.COLUMN_NAME === 'InvoiceNumber');
         
-        // ✅ Check if void columns exist (for backward compatibility)
+        // ✅ Check if void columns exist
         const checkVoidColumns = await pool.request().query(`
             SELECT COLUMN_NAME 
             FROM INFORMATION_SCHEMA.COLUMNS 
@@ -320,6 +389,13 @@ const getSales = async (req, res) => {
                    CashPaid, ChangeAmount
         `;
         
+        // ✅ ADD INVOICE NUMBER
+        if (hasInvoiceColumn) {
+            query += `, InvoiceNumber`;
+        } else {
+            query += `, NULL as InvoiceNumber`;
+        }
+        
         // Add discount columns if they exist
         if (hasDiscountColumns) {
             query += `, DiscountType, DiscountValue, DiscountAmount`;
@@ -329,7 +405,6 @@ const getSales = async (req, res) => {
         if (hasVoidColumns) {
             query += `, Status, VoidedBy, VoidedAt, VoidReason`;
         } else {
-            // If columns don't exist, use default
             query += `, 'COMPLETED' as Status, NULL as VoidedBy, NULL as VoidedAt, NULL as VoidReason`;
         }
         
@@ -341,13 +416,12 @@ const getSales = async (req, res) => {
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
 
-        // ✅ Filter by status (COMPLETED or VOIDED)
+        // Filter by status
         if (status === 'voided') {
             query += ' AND Status = \'VOIDED\'';
         } else if (status === 'completed') {
             query += ' AND (Status IS NULL OR Status = \'COMPLETED\' OR Status != \'VOIDED\')';
         } else {
-            // Default: exclude voided transactions
             if (hasVoidColumns) {
                 query += ' AND (Status IS NULL OR Status != \'VOIDED\')';
             }
@@ -379,7 +453,7 @@ const getSales = async (req, res) => {
         
         const result = await request.query(query);
         
-        // Parse JSON and add discount & void info
+        // Parse JSON and format
         const formattedSales = result.recordset.map(sale => {
             let items = [];
             try {
@@ -388,29 +462,26 @@ const getSales = async (req, res) => {
                 items = [];
             }
             
-            // ✅ Add discount info if present
             const discount = (hasDiscountColumns && sale.DiscountAmount) ? {
                 type: sale.DiscountType,
                 value: sale.DiscountValue,
                 amount: sale.DiscountAmount
             } : null;
             
-            // ✅ Add void info
-            const isVoided = sale.Status === 'VOIDED';
-            
             return {
                 id: sale.Id,
                 total: sale.Total,
                 paymentMethod: sale.PaymentMethod,
                 date: sale.SaleDate,
+                invoiceNumber: sale.InvoiceNumber || '', // ✅ ADD INVOICE NUMBER
                 items: items,
                 cashPaid: sale.CashPaid,
                 change: sale.ChangeAmount,
                 discount: discount,
-                status: sale.Status || 'COMPLETED',      // ✅ ADD STATUS
-                voidReason: sale.VoidReason,             // ✅ ADD VOID REASON
-                voidedAt: sale.VoidedAt,                 // ✅ ADD VOID DATE
-                voidedBy: sale.VoidedBy                  // ✅ ADD WHO VOIDED
+                status: sale.Status || 'COMPLETED',
+                voidReason: sale.VoidReason,
+                voidedAt: sale.VoidedAt,
+                voidedBy: sale.VoidedBy
             };
         });
 
@@ -616,6 +687,16 @@ const getSalesByCategory = async (req, res) => {
         
         const pool = getPool();
         
+        // ✅ Check if invoice column exists
+        const checkInvoiceColumn = await pool.request().query(`
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'Sales' 
+            AND COLUMN_NAME = 'InvoiceNumber'
+        `);
+        
+        const hasInvoiceColumn = checkInvoiceColumn.recordset.length > 0;
+        
         // ✅ Check if discount columns exist
         const checkColumns = await pool.request().query(`
             SELECT COLUMN_NAME 
@@ -636,10 +717,14 @@ const getSalesByCategory = async (req, res) => {
         
         const hasStatusColumn = checkStatusColumn.recordset.length > 0;
         
-        // ✅ Build query - include Total
+        // ✅ Build query - include InvoiceNumber
         let query = `
             SELECT Id, Total, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson 
         `;
+        
+        if (hasInvoiceColumn) {
+            query += `, InvoiceNumber`;
+        }
         
         if (hasDiscountColumns) {
             query += `, DiscountType, DiscountValue, DiscountAmount, SaleDate`;
@@ -659,12 +744,12 @@ const getSalesByCategory = async (req, res) => {
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
 
-        // ✅ FILTER BY STATUS
+        // Filter by status
         if (hasStatusColumn) {
             if (status === 'voided') {
                 query += ' AND Status = \'VOIDED\'';
             } else {
-                query += ' AND Status = \'COMPLETED\'';
+                query += ' AND (Status IS NULL OR Status = \'COMPLETED\' OR Status != \'VOIDED\')';
             }
         }
 
@@ -700,7 +785,7 @@ const getSalesByCategory = async (req, res) => {
         result.recordset.forEach(sale => {
             transactionSet.add(sale.Id);
             
-            // ✅ Track discount per transaction
+            // Track discount per transaction
             if (hasDiscountColumns && sale.DiscountAmount && sale.DiscountAmount > 0) {
                 totalDiscountAmount += sale.DiscountAmount;
                 discountedTransactionCount++;
@@ -709,19 +794,16 @@ const getSalesByCategory = async (req, res) => {
             try {
                 const itemsList = JSON.parse(sale.ItemsJson || '[]');
                 
-                // ✅ Calculate total from items (before discount)
                 let totalFromItems = 0;
                 itemsList.forEach(item => {
                     totalFromItems += (item.price || 0) * (item.quantity || 1);
                 });
                 
-                // ✅ Calculate discount factor to apply to each item
                 const discountFactor = totalFromItems > 0 ? sale.Total / totalFromItems : 1;
                 
                 itemsList.forEach(item => {
                     const categoryName = item.displayCategory || item.category || item.originalCategory || 'Uncategorized';
                     const originalRevenue = (item.price || 0) * (item.quantity || 1);
-                    // ✅ Apply discount proportionally to each item
                     const discountedRevenue = originalRevenue * discountFactor;
                     
                     if (!categoryMap.has(categoryName)) {
@@ -730,7 +812,7 @@ const getSalesByCategory = async (req, res) => {
                             totalRevenue: 0,
                             totalQuantity: 0,
                             items: new Map(),
-                            transactions: new Set(),
+                            transactions: new Map(), // ✅ Store transaction with invoice number
                             discountAmount: 0,
                             discountedCount: 0
                         });
@@ -738,12 +820,24 @@ const getSalesByCategory = async (req, res) => {
                     
                     const category = categoryMap.get(categoryName);
                     
-                    // ✅ Use discounted revenue
                     category.totalRevenue += discountedRevenue;
                     category.totalQuantity += (item.quantity || 1);
-                    category.transactions.add(sale.Id);
                     
-                    // ✅ Add discount to category if this sale had discount
+                    // ✅ Store transaction with invoice number
+                    if (!category.transactions.has(sale.Id)) {
+                        category.transactions.set(sale.Id, {
+                            id: sale.Id,
+                            invoiceNumber: sale.InvoiceNumber || '', // ✅ ADD INVOICE NUMBER
+                            date: sale.SaleDate,
+                            total: sale.Total,
+                            discount: hasDiscountColumns && sale.DiscountAmount ? {
+                                type: sale.DiscountType,
+                                value: sale.DiscountValue,
+                                amount: sale.DiscountAmount
+                            } : null
+                        });
+                    }
+                    
                     if (hasDiscountColumns && sale.DiscountAmount > 0) {
                         category.discountAmount += sale.DiscountAmount;
                         category.discountedCount++;
@@ -763,12 +857,10 @@ const getSalesByCategory = async (req, res) => {
                     }
                     
                     const catItem = category.items.get(itemName);
-                    // ✅ Use discounted revenue for item
                     catItem.revenue += discountedRevenue;
                     catItem.quantity += (item.quantity || 1);
                     catItem.transactions.add(sale.Id);
                     
-                    // ✅ Add discount to item
                     if (hasDiscountColumns && sale.DiscountAmount > 0) {
                         catItem.discountAmount += sale.DiscountAmount;
                         catItem.discountedCount++;
@@ -789,12 +881,21 @@ const getSalesByCategory = async (req, res) => {
             const itemsList = Array.from(catData.items.values()).map(item => ({
                 name: item.name,
                 quantity: item.quantity,
-                revenue: Math.round(item.revenue * 100) / 100, // Round to 2 decimals
+                revenue: Math.round(item.revenue * 100) / 100,
                 price: item.price,
                 transactionCount: item.transactions.size,
                 discountAmount: item.discountAmount || 0,
                 discountedCount: item.discountedCount || 0
             })).sort((a, b) => b.revenue - a.revenue);
+            
+            // ✅ Get transactions with invoice numbers
+            const transactionsList = Array.from(catData.transactions.values()).map(trans => ({
+                saleId: trans.id,
+                invoiceNumber: trans.invoiceNumber,
+                date: trans.date,
+                total: trans.total,
+                discount: trans.discount
+            })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             
             formattedCategories.push({
                 name: catName,
@@ -804,6 +905,7 @@ const getSalesByCategory = async (req, res) => {
                 discountAmount: catData.discountAmount || 0,
                 discountedCount: catData.discountedCount || 0,
                 items: itemsList,
+                transactions: transactionsList, // ✅ ADD TRANSACTIONS
                 itemCount: itemsList.length
             });
             
@@ -846,6 +948,53 @@ const getSalesByCategory = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+const generateInvoiceNumber = async (pool, outletId) => {
+    try {
+        // Get today's date in YYYYMMDD format (Singapore time)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const todayPrefix = `${year}${month}${day}`;
+        
+        // Get the latest invoice number for today
+        const result = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .input('datePrefix', sql.NVarChar, `${todayPrefix}%`)
+            .query(`
+                SELECT TOP 1 InvoiceNumber 
+                FROM Sales 
+                WHERE OutletId = @outletId 
+                AND InvoiceNumber LIKE @datePrefix
+                ORDER BY Id DESC
+            `);
+        
+        let nextNumber = 1;
+        
+        if (result.recordset.length > 0 && result.recordset[0].InvoiceNumber) {
+            // Extract the numeric part after '-'
+            const lastNumber = parseInt(result.recordset[0].InvoiceNumber.split('-')[1]);
+            nextNumber = lastNumber + 1;
+        }
+        
+        // Format: YYYYMMDD-0001 (4 digits)
+        const invoiceNumber = `${todayPrefix}-${String(nextNumber).padStart(4, '0')}`;
+        
+        console.log(`📄 Generated invoice number: ${invoiceNumber}`);
+        return invoiceNumber;
+        
+    } catch (error) {
+        console.error('❌ Error generating invoice number:', error);
+        // Fallback: use timestamp
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const todayPrefix = `${year}${month}${day}`;
+        return `${todayPrefix}-${Date.now()}`;
+    }
+};
+
 
 // ============================================
 // GET category items with DISCOUNT (UPDATED)
@@ -853,7 +1002,7 @@ const getSalesByCategory = async (req, res) => {
 const getCategoryItems = async (req, res) => {
     try {
         const { category } = req.params;
-        const { filter, startDate, endDate, status } = req.query; // ✅ ADD status param
+        const { filter, startDate, endDate, status } = req.query;
         
         const outletId = req.outletId;
         
@@ -862,6 +1011,16 @@ const getCategoryItems = async (req, res) => {
         }
         
         const pool = getPool();
+        
+        // ✅ Check if invoice column exists
+        const checkInvoiceColumn = await pool.request().query(`
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'Sales' 
+            AND COLUMN_NAME = 'InvoiceNumber'
+        `);
+        
+        const hasInvoiceColumn = checkInvoiceColumn.recordset.length > 0;
         
         // ✅ Check if discount columns exist
         const checkColumns = await pool.request().query(`
@@ -887,6 +1046,11 @@ const getCategoryItems = async (req, res) => {
             SELECT Id, SaleDate, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson 
         `;
         
+        // ✅ ADD INVOICE NUMBER
+        if (hasInvoiceColumn) {
+            query += `, InvoiceNumber`;
+        }
+        
         if (hasDiscountColumns) {
             query += `, DiscountType, DiscountValue, DiscountAmount`;
         }
@@ -903,14 +1067,13 @@ const getCategoryItems = async (req, res) => {
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
 
-        // ✅ FILTER BY STATUS (VOIDED or COMPLETED)
+        // Filter by status
         if (hasStatusColumn) {
             if (status === 'voided') {
                 query += ' AND Status = \'VOIDED\'';
             } else if (status === 'completed') {
                 query += ' AND (Status IS NULL OR Status = \'COMPLETED\' OR Status != \'VOIDED\')';
             } else {
-                // Default: exclude voided transactions
                 query += ' AND (Status IS NULL OR Status != \'VOIDED\')';
             }
         }
@@ -945,7 +1108,6 @@ const getCategoryItems = async (req, res) => {
         let discountedTransactionCount = 0;
         
         result.recordset.forEach(sale => {
-            // ✅ Track discount per sale
             const hasDiscount = hasDiscountColumns && sale.DiscountAmount && sale.DiscountAmount > 0;
             
             try {
@@ -968,7 +1130,7 @@ const getCategoryItems = async (req, res) => {
                                 transactions: new Set(),
                                 discountAmount: 0,
                                 discountedCount: 0,
-                                status: sale.Status || 'COMPLETED'  // ✅ ADD status to item
+                                status: sale.Status || 'COMPLETED'
                             });
                         }
                         
@@ -977,7 +1139,6 @@ const getCategoryItems = async (req, res) => {
                         catItem.revenue += revenue;
                         catItem.transactions.add(sale.Id);
                         
-                        // ✅ Track discount for this item
                         if (hasDiscount) {
                             const discountPerItem = (sale.DiscountAmount * revenue) / sale.Total;
                             catItem.discountAmount += discountPerItem;
@@ -985,15 +1146,16 @@ const getCategoryItems = async (req, res) => {
                             totalDiscountForCategory += discountPerItem;
                         }
                         
-                        // ✅ Add discount info to transaction
+                        // ✅ Add transaction with INVOICE NUMBER
                         transactions.push({
                             saleId: sale.Id,
+                            invoiceNumber: sale.InvoiceNumber || '', // ✅ ADD INVOICE NUMBER
                             saleDate: sale.SaleDate,
                             name: itemName,
                             quantity: quantity,
                             price: price,
                             total: revenue,
-                            status: sale.Status || 'COMPLETED',  // ✅ ADD status to transaction
+                            status: sale.Status || 'COMPLETED',
                             discount: hasDiscount ? {
                                 type: sale.DiscountType,
                                 value: sale.DiscountValue,
@@ -1048,7 +1210,6 @@ const getCategoryItems = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
-
 module.exports = {
     createSale,
     getSales,

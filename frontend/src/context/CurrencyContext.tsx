@@ -113,10 +113,12 @@ const loadedOutletsRef = useRef<Set<string>>(new Set());
   }
 
   loadingRef.current = true;
-  console.log(`🔄 Loading currency for outlet ${targetId}...`);
+  console.log(`🔄 Loading settings for outlet ${targetId}...`);
   
   try {
-    const response = await API.get(`/company-settings/${targetId}?outletId=${targetId}`, {
+    // ✅ Add timestamp to prevent caching
+    const timestamp = Date.now();
+    const response = await API.get(`/company-settings/${targetId}?outletId=${targetId}&_t=${timestamp}`, {
       timeout: 10000
     });
     
@@ -125,19 +127,42 @@ const loadedOutletsRef = useRef<Set<string>>(new Set());
       const newCode = settings.Currency || settings.currency || 'SGD';
       const newSymbol = settings.CurrencySymbol || settings.currencySymbol || '$';
       
-      console.log(`✅ Loaded currency: ${newCode} (${newSymbol}) for outlet ${targetId}`);
+      // ✅ Load logo settings as well
+      const showCompanyLogo = settings.ShowCompanyLogo === 1 || settings.ShowCompanyLogo === true;
+      const showHalalLogo = settings.ShowHalalLogo === 1 || settings.ShowHalalLogo === true;
+      
+      console.log(`✅ Loaded settings for outlet ${targetId}:`, {
+        currency: `${newCode} (${newSymbol})`,
+        showCompanyLogo,
+        showHalalLogo,
+        companyLogo: settings.CompanyLogoUrl ? 'YES' : 'NO',
+        halalLogo: settings.HalalLogoUrl ? 'YES' : 'NO'
+      });
       
       setCurrencyCode(newCode);
       setCurrencySymbol(newSymbol);
       
-      // ✅ Mark THIS outlet as loaded
-      loadedOutletsRef.current.add(targetId);
-      
+      // ✅ Store all settings in AsyncStorage
       await AsyncStorage.setItem(`currencyCode_${targetId}`, newCode);
       await AsyncStorage.setItem(`currencySymbol_${targetId}`, newSymbol);
+      await AsyncStorage.setItem(`showCompanyLogo_${targetId}`, showCompanyLogo ? '1' : '0');
+      await AsyncStorage.setItem(`showHalalLogo_${targetId}`, showHalalLogo ? '1' : '0');
+      
+      // ❌ REMOVE these lines - they're causing the error
+      // if (window.updateCompanySettings) {
+      //   window.updateCompanySettings({
+      //     showCompanyLogo,
+      //     showHalalLogo,
+      //     companyLogo: settings.CompanyLogoUrl,
+      //     halalLogo: settings.HalalLogoUrl
+      //   });
+      // }
+      
+      // ✅ Mark THIS outlet as loaded
+      loadedOutletsRef.current.add(targetId);
     }
   } catch (error: any) {
-    console.log(`❌ Currency load error for outlet ${targetId}:`, error.message);
+    console.log(`❌ Settings load error for outlet ${targetId}:`, error.message);
     
     if (error.code === 'ECONNABORTED' || error.message === 'Network Error') {
       if (retryCount < 3) {
@@ -158,6 +183,15 @@ const loadedOutletsRef = useRef<Set<string>>(new Set());
         setCurrencyCode(savedCode);
         setCurrencySymbol(savedSymbol);
         console.log(`✅ Using saved currency for outlet ${targetId} from storage`);
+        
+        // Also load saved logo settings
+        const savedCompanyLogo = await AsyncStorage.getItem(`showCompanyLogo_${targetId}`);
+        const savedHalalLogo = await AsyncStorage.getItem(`showHalalLogo_${targetId}`);
+        
+        if (savedCompanyLogo !== null) {
+          console.log(`✅ Loaded saved logo settings: company=${savedCompanyLogo}, halal=${savedHalalLogo}`);
+        }
+        
         loadedOutletsRef.current.add(targetId);
       } else {
         console.log('⚠️ Using default currency');

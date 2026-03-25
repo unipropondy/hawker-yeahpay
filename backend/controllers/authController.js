@@ -77,7 +77,7 @@ const login = async (req, res) => {
         await pool.request()
             .query('UPDATE Licenses SET IsActive = 0 WHERE ExpiryDate < GETDATE()');
         
-        // ✅ Get user with license info - FIXED: No UserId in Licenses!
+        // ✅ Get user with license info
         const result = await pool.request()
             .input('username', sql.NVarChar, username)
             .query(`
@@ -93,7 +93,6 @@ const login = async (req, res) => {
                     u.OutletId,
                     u.ShopName,
                     
-                    -- License info comes via Outlet, not directly
                     CASE 
                         WHEN u.Role = 'owner' THEN NULL
                         ELSE l.ExpiryDate
@@ -105,7 +104,7 @@ const login = async (req, res) => {
                     END as LicenseKey,
                     
                     CASE 
-                        WHEN u.Role = 'owner' THEN 1  -- Owners don't need license
+                        WHEN u.Role = 'owner' THEN 1
                         ELSE l.IsActive
                     END as LicenseActive
                     
@@ -144,14 +143,62 @@ const login = async (req, res) => {
             }
         }
 
-        // Update last login
+        // ✅✅✅ SESSION MANAGEMENT - BLOCK MULTIPLE LOGINS ✅✅✅
+        const existingSession = await pool.request()
+            .input('userId', sql.Int, user.Id)
+            .input('isActive', sql.Bit, 1)
+            .query(`
+                SELECT Id, DeviceInfo, LoginTime, SessionToken
+                FROM UserSessions 
+                WHERE UserId = @userId AND IsActive = @isActive
+            `);
+
+        // ✅ If active session exists, BLOCK login
+        if (existingSession.recordset.length > 0) {
+            const session = existingSession.recordset[0];
+            const loginTime = new Date(session.LoginTime).toLocaleString();
+            const deviceInfo = session.DeviceInfo || 'Unknown Device';
+            
+            console.log(`⚠️ Login BLOCKED - User ${user.Username} already logged in on: ${deviceInfo} at ${loginTime}`);
+            
+            return res.status(403).json({ 
+                error: 'ALREADY_LOGGED_IN',
+                message: `⚠️ Already Logged In!\n\nYou are already logged in on another device:\n📱 Device: ${deviceInfo}\n⏰ Time: ${loginTime}\n\nPlease logout from that device first.`,
+                code: 'SESSION_ACTIVE'
+            });
+        }
+
+        // ✅ Update last login
         await pool.request()
             .input('userId', sql.Int, user.Id)
             .query('UPDATE Users SET LastLoginDate = GETDATE() WHERE Id = @userId');
 
+        // Generate token
+        const token = jwt.sign(
+            { id: user.Id, username: user.Username, role: user.Role },
+            JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        // ✅ Get device info (from request headers)
+        const deviceInfo = req.headers['user-agent'] || 'Unknown Device';
+        
+        // ✅ Create new session
+        await pool.request()
+            .input('userId', sql.Int, user.Id)
+            .input('sessionToken', sql.NVarChar, token)
+            .input('deviceInfo', sql.NVarChar, deviceInfo)
+            .input('isActive', sql.Bit, 1)
+            .input('lastActivity', sql.DateTime, new Date())
+            .query(`
+                INSERT INTO UserSessions (UserId, SessionToken, DeviceInfo, IsActive, LoginTime, LastActivity)
+                VALUES (@userId, @sessionToken, @deviceInfo, @isActive, GETDATE(), @lastActivity)
+            `);
+
+        console.log(`✅ New session created for ${user.Username} on device: ${deviceInfo}`);
+
         // ========== OWNER LOGIN - Return outlets ==========
         if (user.Role === 'owner') {
-            // Get all outlets for this owner
             const outlets = await pool.request()
                 .input('ownerId', sql.Int, user.Id)
                 .query(`
@@ -171,12 +218,6 @@ const login = async (req, res) => {
                     ORDER BY o.OutletName
                 `);
 
-            const token = jwt.sign(
-                { id: user.Id, username: user.Username, role: user.Role },
-                JWT_SECRET,
-                { expiresIn: '24h' }
-            );
-
             console.log(`✅ Owner login: ${user.Username} with ${outlets.recordset.length} outlets`);
 
             return res.json({
@@ -194,20 +235,8 @@ const login = async (req, res) => {
             });
         }
 
-        // ========== STAFF LOGIN - Direct to outlet ==========
+        // ========== STAFF LOGIN ==========
         if (user.Role === 'staff') {
-            const token = jwt.sign(
-                { 
-                    id: user.Id, 
-                    username: user.Username, 
-                    role: user.Role,
-                    outletId: user.OutletId,
-                    ownerId: user.OwnerId
-                },
-                JWT_SECRET,
-                { expiresIn: '24h' }
-            );
-
             console.log(`✅ Staff login: ${user.Username} for outlet ${user.OutletId}`);
 
             return res.json({
@@ -220,19 +249,15 @@ const login = async (req, res) => {
                     email: user.Email,
                     shopName: user.ShopName,
                     outletId: user.OutletId,
-                    ownerId: user.OwnerId
+                    ownerId: user.OwnerId,
+                      licenseKey: user.LicenseKey,     // ← ADD THIS
+            expiryDate: user.ExpiryDate 
                 },
                 requiresOutlet: false
             });
         }
 
         // ========== ADMIN LOGIN ==========
-        const token = jwt.sign(
-            { id: user.Id, username: user.Username, role: user.Role },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
         console.log(`✅ Admin login: ${user.Username}`);
 
         res.json({
@@ -249,6 +274,32 @@ const login = async (req, res) => {
     } catch (err) {
         console.error('❌ Login error:', err);
         res.status(500).json({ error: 'Login failed' });
+    }
+};
+const logout = async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        
+        if (token) {
+            const pool = getPool();
+            
+            // Deactivate session
+            await pool.request()
+                .input('sessionToken', sql.NVarChar, token)
+                .query(`
+                    UPDATE UserSessions 
+                    SET IsActive = 0 
+                    WHERE SessionToken = @sessionToken
+                `);
+            
+            console.log(`✅ Session deactivated for token: ${token.substring(0, 20)}...`);
+        }
+        
+        res.json({ success: true, message: 'Logged out successfully' });
+        
+    } catch (err) {
+        console.error('Logout error:', err);
+        res.status(500).json({ error: 'Logout failed' });
     }
 };
 
@@ -392,5 +443,6 @@ module.exports = {
     login,
      getProfile,
     changePassword,
-    getLicenseStatus
+    getLicenseStatus,
+     logout
 };

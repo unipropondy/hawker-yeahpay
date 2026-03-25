@@ -12,15 +12,15 @@ const config = {
     encrypt: true,
     trustServerCertificate: true,
     enableArithAbort: true,
-    connectTimeout: 30000,
-    requestTimeout: 30000,
-    cancelTimeout: 5000
+    connectTimeout: 60000,      // ✅ Increased from 30s to 60s
+    requestTimeout: 60000,       // ✅ Increased from 30s to 60s
+    cancelTimeout: 10000         // ✅ Increased from 5s to 10s
   },
   pool: {
-    max: 50,
-    min: 10,
+    max: 100,                    // ✅ Increased from 50 to 100
+    min: 20,                     // ✅ Increased from 10 to 20
     idleTimeoutMillis: 30000,
-    acquireTimeoutMillis: 30000
+    acquireTimeoutMillis: 60000
   }
 };
 
@@ -61,7 +61,8 @@ const connectDB = async () => {
         connectionPromise = sql.connect(config);
         pool = await connectionPromise;
         
-        console.log('✅ Connection pool created successfully for 600 users');
+        console.log('✅ Connection pool created successfully for 1000 users');
+
         
         const result = await pool.request().query('SELECT @@VERSION as version');
         console.log('📊 SQL Server Version:', result.recordset[0].version);

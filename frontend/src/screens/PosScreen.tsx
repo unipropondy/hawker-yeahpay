@@ -347,7 +347,7 @@ useEffect(() => {
   const t = translations[language] || translations.en;
   
  const [categories, setCategories] = useState<string[]>([]);
-  const companyLogo = require('../../assets/images/unipro-logo-white.png');
+  const companyLogo = require('../../assets/images/smarthawker icon final.png');
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage] = useState<number>(8);
@@ -709,24 +709,33 @@ const handleOutletSelect = async (outlet) => {
     try {
         console.log('🏪 Selected outlet:', outlet);
         
-        // ✅ Save all outlet details
+        // ✅ CLEAR OLD DATA FIRST
+        await AsyncStorage.removeItem('selectedOutletId');
+        await AsyncStorage.removeItem('selectedOutletName');
+        await AsyncStorage.removeItem('selectedOutletLicense');
+        await AsyncStorage.removeItem('selectedOutletExpiry');
+        
+        // ✅ Save new outlet details
         await AsyncStorage.setItem('selectedOutletId', outlet.Id.toString());
         await AsyncStorage.setItem('selectedOutletName', outlet.name);
-         await AsyncStorage.setItem('selectedOutletLicense', outlet.LicenseKey || ''); 
-        await AsyncStorage.setItem('selectedOutletExpiry', outlet.license?.expiryDate || '');
+        await AsyncStorage.setItem('selectedOutletLicense', outlet.LicenseKey || ''); 
+        await AsyncStorage.setItem('selectedOutletExpiry', outlet.ExpiryDate || '');
         
-        // ✅ CRITICAL: Update state immediately
+        // ✅ CRITICAL: Update state immediately with ALL fields
         setSelectedOutlet(outlet);
         setOutletInfo({
+            id: outlet.Id,
             name: outlet.name,
-           license: outlet.LicenseKey,
-            expiry: outlet.license?.expiryDate,
-            staff: outlet.staff?.username
+            license: outlet.LicenseKey,
+            expiry: outlet.ExpiryDate,
+            staff: outlet.staffUsername
         });
         
         console.log('✅ Outlet info set:', {
+            id: outlet.Id,
             name: outlet.name,
-            license: outlet.license?.key
+            license: outlet.LicenseKey,
+            expiry: outlet.ExpiryDate
         });
         
         setShowOutletSelector(false);
@@ -736,7 +745,21 @@ const handleOutletSelect = async (outlet) => {
         console.log('❌ Error:', error);
     }
 };
-
+// When opening Company Settings
+const openCompanySettings = () => {
+    console.log('🔍 Opening Company Settings with outletInfo:', {
+        id: outletInfo?.id,
+        name: outletInfo?.name,
+        license: outletInfo?.license
+    });
+    
+    if (!outletInfo?.id) {
+        Alert.alert('Error', 'Please select an outlet first');
+        return;
+    }
+    
+    setShowCompanySettings(true);
+};
 // Helper functions for string to object conversion
 const getModeName = (modeId: string): string => {
   const names: Record<string, string> = {
@@ -1031,7 +1054,7 @@ const loadDishItems = async (force = false) => {
       console.log('🔍 IsFavourite in response:', response.data[0].IsFavourite);
     }
     
-    const baseURL = 'https://hawkerfinalv-production.up.railway.app';
+    const baseURL = 'https://uniprohawker-production.up.railway.app';
     
     const items = (response.data || []).map((item: any) => {
       const newItem = {
@@ -1520,20 +1543,34 @@ const loadData = useCallback(async () => {
         console.log('📦 Loading data for outlet...');
         
         const outletId = await AsyncStorage.getItem('selectedOutletId');
+        const outletName = await AsyncStorage.getItem('selectedOutletName');
+        const outletLicense = await AsyncStorage.getItem('selectedOutletLicense');
+        const outletExpiry = await AsyncStorage.getItem('selectedOutletExpiry');
         
         if (!outletId) {
             console.log('⚠️ No outlet selected');
             return;
         }
         
+        // ✅ Set outletInfo if not already set or if changed
+        if (!outletInfo || outletInfo.id !== parseInt(outletId)) {
+            setOutletInfo({
+                id: parseInt(outletId),
+                name: outletName || '',
+                license: outletLicense || '',
+                expiry: outletExpiry || ''
+            });
+            console.log('✅ Outlet info loaded:', { outletId, outletName });
+        }
+        
         // ✅ ALL calls must use outletId, not user.id
         await Promise.all([
             loadDishGroups(true),
             loadDishItems(true),
-            loadPaymentModes(true),  // This should use outletId
-            loadUPIId(true),          // This should use outletId
-            loadPayNowQR(true),       // This should use outletId
-            refreshCurrency()          // This should use outletId
+            loadPaymentModes(true),
+            loadUPIId(true),
+            loadPayNowQR(true),
+            refreshCurrency()
         ]);
         
         console.log('✅ All data loaded for outlet:', outletId);
@@ -1541,7 +1578,29 @@ const loadData = useCallback(async () => {
     } catch (error) {
         console.log('❌ Error loading data:', error);
     }
-},  [loadDishGroups, loadDishItems, loadPaymentModes, loadUPIId, loadPayNowQR, refreshCurrency]);
+}, [loadDishGroups, loadDishItems, loadPaymentModes, loadUPIId, loadPayNowQR, refreshCurrency, outletInfo]);
+
+// In PosScreen.tsx - add this near other useEffects
+useEffect(() => {
+    const loadInitialOutletInfo = async () => {
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        const outletName = await AsyncStorage.getItem('selectedOutletName');
+        const outletLicense = await AsyncStorage.getItem('selectedOutletLicense');
+        const outletExpiry = await AsyncStorage.getItem('selectedOutletExpiry');
+        
+        if (outletId && !outletInfo) {
+            setOutletInfo({
+                id: parseInt(outletId),
+                name: outletName || '',
+                license: outletLicense || '',
+                expiry: outletExpiry || ''
+            });
+            console.log('📦 Initial outlet info loaded:', { outletId, outletName });
+        }
+    };
+    
+    loadInitialOutletInfo();
+}, []);
 // In your login handler (where you set user state)
 const handleLoginResponse = (response) => {
   console.log('✅ Login response:', response.data);
@@ -1585,7 +1644,27 @@ const handleLoginResponse = (response) => {
     loadData();
   }
 };
-
+// In PosScreen.tsx
+useEffect(() => {
+    const loadOutletInfo = async () => {
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        const outletName = await AsyncStorage.getItem('selectedOutletName');
+        const outletLicense = await AsyncStorage.getItem('selectedOutletLicense');
+        const outletExpiry = await AsyncStorage.getItem('selectedOutletExpiry');
+        
+        if (outletId) {
+            setOutletInfo({
+                id: parseInt(outletId),
+                name: outletName || '',
+                license: outletLicense || '',
+                expiry: outletExpiry || ''
+            });
+            console.log('📦 Loaded outlet info from storage:', { outletId, outletName });
+        }
+    };
+    
+    loadOutletInfo();
+}, []);
 useEffect(() => {
   console.log('🔍 OUTLETS from context:', outlets);
   console.log('🔍 OUTLETS length:', outlets?.length);
@@ -1892,6 +1971,7 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
       total: response.data.total || response.data.Total,
       paymentMethod: response.data.paymentMethod || response.data.PaymentMethod,
       date: response.data.date || response.data.SaleDate,
+      invoiceNumber: response.data.invoiceNumber,
       items: response.data.items || response.data.ItemsJson || [],
       discount: response.data.discount || null
     };
@@ -1909,6 +1989,7 @@ const handlePaymentSelect = async (payment: any): Promise<void> => {
       setPendingSaleData({
         ...saleData,
         id: newSale.id,
+        invoiceNumber: newSale.invoiceNumber,
         discount: {
           type: discountInfo.type,
           value: discountInfo.value,
@@ -1977,6 +2058,7 @@ const handlePayNowSuccess = async () => {
       ...saleData,
       id: response.data.id,
       outletId: outletId,
+      invoiceNumber: response.data.invoiceNumber,
       discount: {
         type: discountInfo.type,
         value: discountInfo.value,
@@ -2059,6 +2141,7 @@ const handleUPISuccess = async () => {
       ...saleData,
       id: response.data.id,
       outletId: outletId,
+      invoiceNumber: response.data.invoiceNumber,
       discount: {
         type: discountInfo.type,
         value: discountInfo.value,
@@ -2211,6 +2294,7 @@ const handleCashPayment = async (): Promise<void> => {
       total: response.data.total || response.data.Total || 0,
       paymentMethod: response.data.paymentMethod || response.data.PaymentMethod || '',
       date: response.data.date || response.data.SaleDate || new Date(),
+      invoiceNumber: response.data.invoiceNumber,
       items: response.data.items || response.data.ItemsJson || [],
       change: balance,
       cashPaid: cashPaid,
@@ -2243,6 +2327,7 @@ const handleCashPayment = async (): Promise<void> => {
       cashPaid: cashPaid,
       userId: user?.id,
       outletId: outletId,
+      invoiceNumber: newSale.invoiceNumber,
       discount: {
         type: discountInfo.type,
         value: discountInfo.value,
@@ -2309,6 +2394,7 @@ const loadSalesData = useCallback(async () => {
       total: sale.total || sale.Total || 0,
       paymentMethod: sale.paymentMethod || sale.PaymentMethod || '',
       date: sale.date || sale.SaleDate || new Date(),
+      invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber,
       items: sale.items || sale.ItemsJson || []
     }));
     
@@ -2370,27 +2456,40 @@ const applyCustomFilter = useCallback(() => {
 }, [loadSalesData, loadSalesSummary]);
 
 
-  const pickImage = async (setter: (uri: string) => void): Promise<void> => {
+ const pickImage = async (setter: (uri: string) => void): Promise<void> => {
     try {
-      setImageUploading(true);
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.5,
-        base64: false,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setter(result.assets[0].uri);
+        // ✅ Mark image picker as open
+        if (typeof window !== 'undefined' && window.__markImagePickerOpen) {
+            console.log('📸 Marking image picker as open');
+            window.__markImagePickerOpen();
+        }
         
-      }
+        setImageUploading(true);
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.5,
+            base64: false,
+        });
+
+        if (!result.canceled && result.assets && result.assets[0]) {
+            setter(result.assets[0].uri);
+        }
     } catch (error) {
-      Alert.alert(t.error, 'Failed to pick image');
+        Alert.alert(t.error, 'Failed to pick image');
     } finally {
-      setImageUploading(false);
+        setImageUploading(false);
+        
+        // ✅ DELAY closing marker to let app fully return to foreground
+        setTimeout(() => {
+            if (typeof window !== 'undefined' && window.__markImagePickerClose) {
+                console.log('📸 Marking image picker as closed (after delay)');
+                window.__markImagePickerClose();
+            }
+        }, 500); // Wait 500ms before marking closed
     }
-  };
+};
 const loadImageWithFallback = async (url: string) => {
   try {
     // Try HTTPS first
@@ -2402,26 +2501,40 @@ const loadImageWithFallback = async (url: string) => {
     return httpUrl;
   }
 };
-  const captureImage = async (setter: (uri: string) => void): Promise<void> => {
+ const captureImage = async (setter: (uri: string) => void): Promise<void> => {
     try {
-      setImageUploading(true);
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.5,
-        base64: false,
-      });
+        // ✅ Mark camera as open
+        if (typeof window !== 'undefined' && window.__markImagePickerOpen) {
+            console.log('📸 Marking camera as open');
+            window.__markImagePickerOpen();
+        }
+        
+        setImageUploading(true);
+        const result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.5,
+            base64: false,
+        });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setter(result.assets[0].uri);
-        Alert.alert(t.success, t.photoCaptured);
-      }
+        if (!result.canceled && result.assets && result.assets[0]) {
+            setter(result.assets[0].uri);
+            Alert.alert(t.success, t.photoCaptured);
+        }
     } catch (error) {
-      Alert.alert(t.error, 'Failed to capture image');
+        Alert.alert(t.error, 'Failed to capture image');
     } finally {
-      setImageUploading(false);
+        setImageUploading(false);
+        
+        // ✅ DELAY closing marker to let app fully return to foreground
+        setTimeout(() => {
+            if (typeof window !== 'undefined' && window.__markImagePickerClose) {
+                console.log('📸 Marking camera as closed (after delay)');
+                window.__markImagePickerClose();
+            }
+        }, 500); // 500ms delay
     }
-  };
+};
 
   // Payment Options
 // In PosScreen.tsx, move this to the top with other useMemo declarations
@@ -3104,7 +3217,7 @@ const testSunmiConnection = async () => {
           />
         </View>
         <Text style={[styles.companyName, { color: currentTheme.text }]}>
-          UNIPRO SOFTWARES SG PTE LTD
+          SMART HAWKER BY UNIPROSG
         </Text>
       </View>
 
@@ -3417,18 +3530,7 @@ const renderCashModal = () => (
               </TouchableOpacity>
               
               <View style={[styles.dropdownDivider, { backgroundColor: currentTheme.border }]} />
-                  <TouchableOpacity 
-      style={styles.dropdownItem}
-      onPress={() => {
-        setShowHomeMenu(false);
-        setShowDrawerLogs(true);  // ← New state
-      }}
-    >
-      <Text style={styles.dropdownIcon}>💰</Text>
-      <Text style={[styles.dropdownText, { color: currentTheme.text }]}>
-        Cash Drawer Logs
-      </Text>
-    </TouchableOpacity>
+                 
     
     <View style={[styles.dropdownDivider, { backgroundColor: currentTheme.border }]} />
 
@@ -3760,20 +3862,27 @@ const renderCashModal = () => (
   />
 )}
 <CompanySettingsForm
-  visible={showCompanySettings}
-  onClose={() => setShowCompanySettings(false)}
-  onSave={async (settings) => {
-    // ✅ Use outletId instead of userId
-    const clientId = String(outletInfo?.id || user?.clientId || user?.id || '');
-    await BillPDFGenerator.saveSettings(settings, clientId);
-    Alert.alert('✅ Success', 'Company settings saved!');
-    setShowCompanySettings(false);
-  }}
-  theme={currentTheme}
-  t={t}
-  clientId={String(outletInfo?.id || user?.clientId || user?.id || '')}
-  userShopName={outletInfo?.name || user?.shopName}  // ✅ Use outlet name
-  defaultCashier={user?.username}
+    visible={showCompanySettings}
+    onClose={() => setShowCompanySettings(false)}
+    onSave={async (settings) => {
+        // ✅ ONLY use outlet ID - no fallbacks
+        const outletId = outletInfo?.id?.toString();
+        
+        if (!outletId) {
+            Alert.alert('Error', 'No outlet selected. Please select an outlet first.');
+            return;
+        }
+        
+        console.log('💾 Saving company settings for outlet:', outletId);
+        await BillPDFGenerator.saveSettings(settings, outletId);
+       
+        setShowCompanySettings(false);
+    }}
+    theme={currentTheme}
+    t={t}
+    clientId={outletInfo?.id?.toString() || ''}  // ✅ ONLY outlet ID
+    userShopName={outletInfo?.name || ''}  // ✅ ONLY outlet name
+    defaultCashier={user?.username}
 />
 {/* UPI Payment Modal */}
 <UPIQRPayment
@@ -5890,8 +5999,8 @@ companyLogoContainer: {
   overflow: 'hidden',
 },
 companyLogoImage: {
-  width: 45,
-  height: 45,
+  width: 55,
+  height: 85,
 },
 companyTextContainer: {
   flex: 1,

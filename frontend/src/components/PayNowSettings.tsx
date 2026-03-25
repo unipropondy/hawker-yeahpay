@@ -61,29 +61,41 @@ const PayNowSettings: React.FC<PayNowSettingsProps> = ({
       setLoading(false);
     }
   };
-
-  const pickImage = async () => {
+const pickImage = async () => {
     try {
-      setImageUploading(true);
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        base64: false,
-      });
+        // ✅ Mark image picker as open
+        if (typeof window !== 'undefined' && window.__markImagePickerOpen) {
+            console.log('📸 Marking image picker as open');
+            window.__markImagePickerOpen();
+        }
+        
+        setImageUploading(true);
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+            base64: false,
+        });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
-        await uploadImage(imageUri);
-      }
+        if (!result.canceled && result.assets && result.assets[0]) {
+            const imageUri = result.assets[0].uri;
+            await uploadImage(imageUri);
+        }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image');
+        Alert.alert('Error', 'Failed to pick image');
     } finally {
-      setImageUploading(false);
+        setImageUploading(false);
+        
+        // ✅ DELAY closing marker to let app fully return to foreground
+        setTimeout(() => {
+            if (typeof window !== 'undefined' && window.__markImagePickerClose) {
+                console.log('📸 Marking image picker as closed (after delay)');
+                window.__markImagePickerClose();
+            }
+        }, 500); // 500ms delay
     }
-  };
-
+};
  // Update the uploadImage function with better error handling:
 
 // In PayNowSettings.tsx, update uploadImage function:
@@ -106,7 +118,7 @@ const uploadImage = async (uri: string) => {
     } as any);
 
     // ✅ ONLY RAILWAY URL - No development!
-    const baseURL = 'https://hawkerfinalv-production.up.railway.app/api';
+    const baseURL = 'https://uniprohawker-production.up.railway.app/api';
       
     console.log('📡 Environment: Production');
     console.log('📡 Sending to:', `${baseURL}/upload`);
@@ -127,7 +139,7 @@ const uploadImage = async (uri: string) => {
     // ✅ Ensure full URL for production
     const fullImageUrl = imageUrl.startsWith('http') 
       ? imageUrl 
-      : `https://hawkerfinalv-production.up.railway.app${imageUrl}`;
+      : `https://uniprohawker-production.up.railway.app${imageUrl}`;
     
     console.log('✅ Image URL set:', fullImageUrl);
     setQrCodeUrl(fullImageUrl);
@@ -276,7 +288,7 @@ const savePayNowSettings = async () => {
     {(() => {
       const imageUrl = qrCodeUrl.startsWith('http') 
         ? qrCodeUrl 
-        : `https://hawkerfinalv-production.up.railway.app${qrCodeUrl}`;
+        : `https://uniprohawker-production.up.railway.app${qrCodeUrl}`;
       
       console.log('🎯 Final image URL:', imageUrl);
       

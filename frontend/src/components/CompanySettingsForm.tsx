@@ -19,7 +19,12 @@ import * as ImagePicker from 'expo-image-picker';
 import BillPDFGenerator from './BillPDFGenerator';
 import { useCurrency } from '../context/CurrencyContext';
 import API, { uploadAPI } from '../api';
-
+declare global {
+  interface Window {
+    __markImagePickerOpen?: () => void;
+    __markImagePickerClose?: () => void;
+  }
+}
 interface CompanySettings {
   name: string;
   address: string;
@@ -100,30 +105,44 @@ const CompanySettingsForm: React.FC<Props> = ({
 
   const loadClientSettings = async () => {
     try {
-      if (clientId) {
-        const savedSettings = await BillPDFGenerator.loadSettings(clientId);
-        setSettings({
-          name: userShopName || savedSettings.name || '',
-          address: savedSettings.address || '',
-          gstNo: savedSettings.gstNo || '',
-          gstPercentage: savedSettings.gstPercentage || 9,
-          phone: savedSettings.phone || '',
-          email: savedSettings.email || '',
-          cashierName: savedSettings.cashierName || defaultCashier || '',
-          currency: savedSettings.currency || 'SGD',
-          currencySymbol: savedSettings.currencySymbol || '$',
-          companyLogo: savedSettings.companyLogo || '',
-          halalLogo: savedSettings.halalLogo || '',
-          showCompanyLogo: savedSettings.showCompanyLogo !== false,
-          showHalalLogo: savedSettings.showHalalLogo !== false,
-        });
-        setEnableGST(savedSettings.gstPercentage > 0);
-      }
+        if (clientId) {
+            console.log('🔄 Loading client settings with clientId:', clientId);
+            console.log('🔄 clientId type:', typeof clientId);
+            console.log('🔄 userShopName from parent:', userShopName);
+            
+            const savedSettings = await BillPDFGenerator.loadSettings(clientId);
+            
+            console.log('📥 SAVED SETTINGS FROM BILLPDFGENERATOR:', {
+                showCompanyLogo: savedSettings.showCompanyLogo,
+                showHalalLogo: savedSettings.showHalalLogo,
+                name: savedSettings.name,
+                type: typeof savedSettings.showCompanyLogo
+            });
+            
+            setSettings({
+                name: userShopName || savedSettings.name || '',
+                address: savedSettings.address || '',
+                gstNo: savedSettings.gstNo || '',
+                gstPercentage: savedSettings.gstPercentage || 0,
+                phone: savedSettings.phone || '',
+                email: savedSettings.email || '',
+                cashierName: savedSettings.cashierName || defaultCashier || '',
+                currency: savedSettings.currency || 'SGD',
+                currencySymbol: savedSettings.currencySymbol || '$',
+                companyLogo: savedSettings.companyLogo || '',
+                halalLogo: savedSettings.halalLogo || '',
+                showCompanyLogo: savedSettings.showCompanyLogo,
+                showHalalLogo: savedSettings.showHalalLogo,
+            });
+            
+            setEnableGST(savedSettings.gstPercentage > 0);
+        } else {
+            console.log('⚠️ No clientId provided!');
+        }
     } catch (error) {
-      console.log('Error loading settings:', error);
+        console.log('Error loading settings:', error);
     }
-  };
-
+};
   // ✅ Upload logo function
   const uploadLogo = async (imageUri: string, type: 'company' | 'halal') => {
     try {
@@ -139,7 +158,7 @@ const CompanySettingsForm: React.FC<Props> = ({
       });
 
       const imageUrl = response.data.imageUrl || response.data.imageUri;
-      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://hawkerfinalv-production.up.railway.app${imageUrl}`;
+      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://uniprohawker-production.up.railway.app${imageUrl}`;
       
       if (type === 'company') {
         setSettings(prev => ({ ...prev, companyLogo: fullUrl }));
@@ -155,33 +174,48 @@ const CompanySettingsForm: React.FC<Props> = ({
   };
 
   // ✅ Pick image function
-  const pickImage = async (type: 'company' | 'halal') => {
+ const pickImage = async (type: 'company' | 'halal') => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]) {
-        if (type === 'company') {
-          setUploadingCompanyLogo(true);
-          await uploadLogo(result.assets[0].uri, 'company');
-          setUploadingCompanyLogo(false);
-        } else {
-          setUploadingHalalLogo(true);
-          await uploadLogo(result.assets[0].uri, 'halal');
-          setUploadingHalalLogo(false);
+        // ✅ Mark image picker as open
+        // @ts-ignore
+        if (window.__markImagePickerOpen) {
+            console.log('📸 Marking image picker as open');
+            window.__markImagePickerOpen();
         }
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to upload image');
-      if (type === 'company') setUploadingCompanyLogo(false);
-      else setUploadingHalalLogo(false);
-    }
-  };
+        
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
 
+        if (!result.canceled && result.assets && result.assets[0]) {
+            if (type === 'company') {
+                setUploadingCompanyLogo(true);
+                await uploadLogo(result.assets[0].uri, 'company');
+                setUploadingCompanyLogo(false);
+            } else {
+                setUploadingHalalLogo(true);
+                await uploadLogo(result.assets[0].uri, 'halal');
+                setUploadingHalalLogo(false);
+            }
+        }
+    } catch (error) {
+        Alert.alert('Error', 'Failed to upload image');
+        if (type === 'company') setUploadingCompanyLogo(false);
+        else setUploadingHalalLogo(false);
+    } finally {
+        // ✅ DELAY closing marker to let app fully return to foreground
+        setTimeout(() => {
+            // @ts-ignore
+            if (window.__markImagePickerClose) {
+                console.log('📸 Marking image picker as closed (after delay)');
+                window.__markImagePickerClose();
+            }
+        }, 500); // 500ms delay
+    }
+};
   // ✅ Remove logo function
   const removeLogo = (type: 'company' | 'halal') => {
     if (type === 'company') {
@@ -192,36 +226,95 @@ const CompanySettingsForm: React.FC<Props> = ({
   };
 
   const handleSave = async () => {
+    // ✅ ADD DEBUG LOG with GST
+    console.log('🔍 HANDLE SAVE - Current settings:', {
+        showCompanyLogo: settings.showCompanyLogo,
+        showHalalLogo: settings.showHalalLogo,
+        gstPercentage: settings.gstPercentage,
+        enableGST: enableGST,
+        companyLogo: settings.companyLogo ? 'YES' : 'NO',
+        halalLogo: settings.halalLogo ? 'YES' : 'NO'
+    });
+
     if (!settings.name.trim()) {
-      Alert.alert(t.error, 'Shop name is required for bill receipt');
-      return;
+        Alert.alert(t.error, 'Shop name is required for bill receipt');
+        return;
     }
 
     const finalSettings = {
-      ...settings,
-      gstPercentage: enableGST ? settings.gstPercentage : 0
+        ...settings,
+        gstPercentage: enableGST ? settings.gstPercentage : 0,
+        showCompanyLogo: settings.showCompanyLogo,
+        showHalalLogo: settings.showHalalLogo,
+        companyLogo: settings.companyLogo,
+        halalLogo: settings.halalLogo
     };
+
+    // ✅ ADD DEBUG LOG with GST
+    console.log('🔍 FINAL SETTINGS TO SAVE:', {
+        gstPercentage: finalSettings.gstPercentage,
+        enableGST: enableGST,
+        showCompanyLogo: finalSettings.showCompanyLogo,
+        showHalalLogo: finalSettings.showHalalLogo
+    });
 
     setSaving(true);
     
     try {
-      const success = await BillPDFGenerator.saveSettings(finalSettings, clientId);
-      
-      if (success) {
-        await refreshCurrency();
-        onSave(finalSettings);
-        Alert.alert(t.success, 'Settings saved successfully');
-        onClose();
-      } else {
-        Alert.alert(t.error, 'Failed to save settings');
-      }
+        // ✅ STEP 1: Save to database
+        const success = await BillPDFGenerator.saveSettings(finalSettings, clientId);
+        
+        if (success) {
+            console.log('✅ Save successful, waiting for DB commit...');
+            
+            // ✅ STEP 2: Wait for database to commit
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // ✅ STEP 3: Force reload from database with cache-buster
+            console.log('🔄 Reloading settings from DB...');
+            const freshSettings = await BillPDFGenerator.loadSettings(clientId);
+            
+            console.log('📥 FRESH SETTINGS FROM DB:', {
+                gstPercentage: freshSettings.gstPercentage,
+                showCompanyLogo: freshSettings.showCompanyLogo,
+                showHalalLogo: freshSettings.showHalalLogo,
+                companyLogo: freshSettings.companyLogo ? 'YES' : 'NO',
+                halalLogo: freshSettings.halalLogo ? 'YES' : 'NO'
+            });
+            
+            // ✅ STEP 4: Update local state with DB values
+            setSettings({
+                ...settings,
+                gstPercentage: freshSettings.gstPercentage,
+                showCompanyLogo: freshSettings.showCompanyLogo,
+                showHalalLogo: freshSettings.showHalalLogo,
+                companyLogo: freshSettings.companyLogo,
+                halalLogo: freshSettings.halalLogo
+            });
+            
+            // ✅ STEP 5: Update enableGST based on fresh value
+            setEnableGST(freshSettings.gstPercentage > 0);
+            
+            // ✅ STEP 6: Refresh currency
+            await refreshCurrency();
+            
+            // ✅ STEP 7: Small delay
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // ✅ STEP 8: Call onSave and close
+            onSave(finalSettings);
+            Alert.alert(t.success, 'Settings saved successfully');
+            onClose();
+        } else {
+            Alert.alert(t.error, 'Failed to save settings');
+        }
     } catch (error) {
-      Alert.alert(t.error, 'Failed to save settings');
+        console.log('❌ Save error:', error);
+        Alert.alert(t.error, 'Failed to save settings');
     } finally {
-      setSaving(false);
+        setSaving(false);
     }
-  };
-
+};
   const currencyOptions = [
     { code: 'SGD', symbol: '$', name: 'Singapore Dollar' },
     { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
@@ -294,13 +387,20 @@ const CompanySettingsForm: React.FC<Props> = ({
                     Show Company Logo
                   </Text>
                 </View>
-                <Switch
-                  value={settings.showCompanyLogo}
-                  onValueChange={(val) => setSettings(prev => ({ ...prev, showCompanyLogo: val }))}
-                  trackColor={{ false: theme.inactive, true: theme.success }}
-                  thumbColor="#fff"
-                  disabled={saving}
-                />
+              <Switch
+    value={settings.showCompanyLogo}
+    onValueChange={(val) => {
+        console.log('🔄 Toggle Company Logo:', {
+            old: settings.showCompanyLogo,
+            new: val,
+            type: typeof val
+        });
+        setSettings(prev => ({ ...prev, showCompanyLogo: val }));
+    }}
+    trackColor={{ false: theme.inactive, true: theme.success }}
+    thumbColor="#fff"
+    disabled={saving}
+/>
               </View>
               
               {settings.showCompanyLogo && (
@@ -534,16 +634,22 @@ const CompanySettingsForm: React.FC<Props> = ({
                     color: theme.text,
                     borderColor: theme.border
                   }]}
-                  value={settings.gstPercentage.toString()}
-                  onChangeText={(text) => {
-                    const num = parseFloat(text) || 0;
-                    setSettings({...settings, gstPercentage: num});
-                  }}
-                  placeholder="9"
-                  keyboardType="numeric"
-                  placeholderTextColor={theme.textSecondary}
-                  editable={!saving}
-                />
+                   value={settings.gstPercentage === 0 ? '' : settings.gstPercentage.toString()}
+    onChangeText={(text) => {
+        if (text === '') {
+            setSettings({...settings, gstPercentage: 0});
+        } else {
+            const num = parseFloat(text);
+            if (!isNaN(num)) {
+                setSettings({...settings, gstPercentage: num});
+            }
+        }
+    }}
+    placeholder="0"
+    placeholderTextColor={theme.textSecondary}
+    keyboardType="numeric"
+    editable={!saving && enableGST}  // ✅ Only editable when GST enabled
+/>
               </>
             )}
 

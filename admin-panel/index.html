@@ -1189,7 +1189,7 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
-        const API_URL = 'https://hawkerfinalv-production.up.railway.app/api';
+        const API_URL = 'https://uniprohawker-production.up.railway.app/api';
         let adminToken = '';
         let startPicker, endPicker, outletStartPicker, outletEndPicker, renewStartPicker, renewEndPicker;
 
@@ -1284,7 +1284,33 @@
                 document.getElementById('ownerForm').style.display = 'none';
             }
         }
-
+// ========== DELETE OWNER ==========
+async function deleteOwner(ownerId, ownerName) {
+    showModernConfirm(
+        '⚠️ Delete Owner',
+        `Are you sure you want to delete owner "${ownerName}"?\n\n⚠️ WARNING: This will delete:\n- All outlets under this owner\n- All staff members\n- All sales data\n- All menu items\n- All licenses\n\nThis action CANNOT be undone!`,
+        async () => {
+            try {
+                const res = await fetch(`${API_URL}/admin/delete-user/${ownerId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+                
+                const result = await res.json();
+                
+                if (res.ok) {
+                    showModernAlert('success', '✅ Owner and all associated data deleted successfully!', '', 'OK', () => {
+                        loadShops(); // Reload table
+                    });
+                } else {
+                    showModernAlert('error', 'Error: ' + (result.error || 'Delete failed'));
+                }
+            } catch (error) {
+                showModernAlert('error', 'Failed to delete owner: ' + error.message);
+            }
+        }
+    );
+}
         // ========== LOAD OWNERS FOR DROPDOWNS ==========
 // Fix loadOwners function
 async function loadOwners() {
@@ -1496,7 +1522,159 @@ async function createStaff() {
        showModernAlert('error','Failed: ' + error.message);
     }
 }
+// ========== EDIT USER MODAL ==========
+let currentEditingUser = null;
+let currentEditingType = null; // 'owner' or 'staff'
 
+function showEditModal(userId, username, shopName, role, fullName = '', outletId = null) {
+    currentEditingUser = userId;
+    currentEditingType = role;
+    
+    const modalHtml = `
+        <div id="editUserModal" class="modal" style="display: flex;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-edit" style="margin-right: 12px; color: #4A90E2;"></i>Edit ${role === 'owner' ? 'Owner' : 'Staff'}</h3>
+                    <div class="close-modal" onclick="closeEditModal()">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+                
+                <div class="form-grid" style="margin-bottom: 20px;">
+                    <div class="input-group">
+                        <i class="fas fa-store"></i>
+                        <input type="text" id="editShopName" placeholder="Shop / Outlet Name" value="${escapeHtml(shopName)}">
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="editUsername" placeholder="Username" value="${escapeHtml(username)}">
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="editFullName" placeholder="Full Name (Optional)" value="${escapeHtml(fullName || '')}">
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="editPassword" placeholder="New Password (leave blank to keep current)">
+                    </div>
+                </div>
+                
+                ${role === 'staff' && outletId ? `
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <i class="fas fa-store"></i>
+                    <input type="text" id="editOutletId" value="${outletId}" style="background: rgba(255,255,255,0.1);" readonly>
+                    <small style="color: rgba(255,255,255,0.5); display: block; margin-top: 5px;">Outlet ID: ${outletId} (read-only)</small>
+                </div>
+                ` : ''}
+                
+                <div class="modal-actions">
+                    <button class="modal-btn cancel" onclick="closeEditModal()">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button class="modal-btn confirm" onclick="saveUserEdit()">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('editUserModal');
+    if (existingModal) existingModal.remove();
+    
+    // Add new modal
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('editUserModal');
+    if (modal) modal.remove();
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+// ========== DELETE STANDALONE STAFF ==========
+async function deleteStandaloneStaff(staffId, staffName) {
+    showModernConfirm(
+        '⚠️ Delete Standalone Staff',
+        `Are you sure you want to delete standalone staff "${staffName}"?\n\n⚠️ WARNING: This will delete:\n- Staff account\n- Outlet\n- All sales data\n- All menu items\n- License\n\nThis action CANNOT be undone!`,
+        async () => {
+            try {
+                const res = await fetch(`${API_URL}/admin/delete-standalone-staff/${staffId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+                
+                const result = await res.json();
+                
+                if (res.ok) {
+                    showModernAlert('success', '✅ Standalone staff deleted successfully!', '', 'OK', () => {
+                        loadShops(); // Reload table
+                    });
+                } else {
+                    showModernAlert('error', 'Error: ' + (result.error || 'Delete failed'));
+                }
+            } catch (error) {
+                showModernAlert('error', 'Failed to delete: ' + error.message);
+            }
+        }
+    );
+}
+// ========== SAVE USER EDIT ==========
+async function saveUserEdit() {
+    const shopName = document.getElementById('editShopName').value;
+    const username = document.getElementById('editUsername').value;
+    const fullName = document.getElementById('editFullName').value;
+    const newPassword = document.getElementById('editPassword').value;
+    
+    if (!shopName || !username) {
+        showModernAlert('warning', 'Please fill all required fields');
+        return;
+    }
+    
+    const data = {
+        userId: currentEditingUser,
+        shopName: shopName,
+        username: username,
+        fullName: fullName
+    };
+    
+    if (newPassword && newPassword.trim() !== '') {
+        data.password = newPassword;
+    }
+    
+    try {
+        const res = await fetch(`${API_URL}/admin/edit-user`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        
+        if (res.ok) {
+            showModernAlert('success', '✅ User updated successfully!', '', 'OK', () => {
+                closeEditModal();
+                loadShops(); // Reload table
+            });
+        } else {
+            showModernAlert('error', 'Error: ' + (result.error || 'Update failed'));
+        }
+    } catch (error) {
+        showModernAlert('error', 'Failed to update user: ' + error.message);
+    }
+}
         // ========== CREATE NEW OUTLET ==========
         async function createOutlet() {
             const data = {
@@ -1565,11 +1743,21 @@ async function loadShops() {
                 <td><span class="badge badge-active">—</span></td>
                 <td><span class="badge ${owner.isActive ? 'badge-active' : 'badge-expired'}">${owner.isActive ? 'Active' : 'Inactive'}</span></td>
                 <td>
+                     <div style="display: flex; gap: 8px;">
+            <button class="action-btn success" 
+                    onclick="showEditModal(${owner.id}, '${escapeHtml(owner.username)}', '${escapeHtml(owner.shopName || '')}', 'owner', '${escapeHtml(owner.fullName || '')}')">
+                <i class="fas fa-edit"></i> Edit
+            </button>
                     <button class="action-btn ${owner.isActive ? 'warning' : 'success'}" 
                             onclick="toggleUserStatus(${owner.id}, ${!owner.isActive})">
                         <i class="fas ${owner.isActive ? 'fa-ban' : 'fa-check'}"></i>
                         ${owner.isActive ? 'Deactivate' : 'Activate'}
                     </button>
+                    <button class="action-btn danger" 
+                    onclick="deleteOwner(${owner.id}, '${escapeHtml(owner.username)}')">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+                    </div>
                 </td>
             </tr>`;
             
@@ -1592,6 +1780,10 @@ async function loadShops() {
                     <td><span class="badge ${outletActive ? 'badge-active' : 'badge-expired'}">${outletActive ? 'Active' : 'Inactive'}</span></td>
                     <td>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                             <button class="action-btn success" 
+                    onclick="showEditModal(${outlet.staff?.id || outlet.id}, '${escapeHtml(outlet.staff?.username || '')}', '${escapeHtml(outlet.name)}', 'staff', '${escapeHtml(outlet.staff?.fullName || '')}', ${outlet.id})">
+                <i class="fas fa-edit"></i> Edit
+            </button>
                             <button class="action-btn ${outletActive ? 'warning' : 'success'}" 
                                     onclick="toggleOutletStatus(${outlet.id}, ${!outletActive})">
                                 <i class="fas ${outletActive ? 'fa-ban' : 'fa-check'}"></i>
@@ -1635,6 +1827,10 @@ async function loadShops() {
                     <td><span class="badge ${staff.IsActive ? 'badge-active' : 'badge-expired'}">${staff.IsActive ? 'Active' : 'Inactive'}</span></td>
                     <td>
                         <div style="display: flex; gap: 8px;">
+                                <button class="action-btn success" 
+                    onclick="showEditModal(${staff.Id}, '${escapeHtml(staff.Username)}', '${escapeHtml(staff.OutletName || staff.ShopName)}', 'staff', '${escapeHtml(staff.FullName || '')}', ${staff.OutletId})">
+                <i class="fas fa-edit"></i> Edit
+            </button>
                             <button class="action-btn ${staff.IsActive ? 'warning' : 'success'}" 
                                     onclick="toggleStaffStatus(${staff.Id}, ${!staff.IsActive})">
                                 <i class="fas ${staff.IsActive ? 'fa-ban' : 'fa-check'}"></i>
@@ -1643,10 +1839,10 @@ async function loadShops() {
                             <button class="renew-btn" onclick="showRenewModal(${staff.OutletId})">
                                 <i class="fas fa-sync-alt"></i> Renew
                             </button>
-                            <button class="action-btn danger" 
-                                    onclick="deleteStaff(${staff.Id}, '${staff.Username}')">
-                                <i class="fas fa-trash"></i>
-                            </button>
+  <button class="action-btn danger" 
+        onclick="deleteStandaloneStaff(${staff.Id}, '${escapeHtml(staff.Username)}')">
+    <i class="fas fa-trash"></i> Delete
+</button>
                         </div>
                     </td>
                 </tr>`;
@@ -1663,6 +1859,67 @@ async function loadShops() {
         document.getElementById('shopsList').innerHTML = '<div class="error">Error loading shops</div>';
     }
 }
+async function toggleStaffStatus(staffId, newStatus) {
+    const action = newStatus ? 'activate' : 'deactivate';
+    
+    showModernConfirm(
+        `⚠️ ${action === 'activate' ? 'Activate' : 'Deactivate'} Staff`,
+        `Are you sure you want to ${action} this staff member?`,
+        async () => {
+            try {
+                console.log(`🔄 Toggling staff ${staffId} to ${newStatus}`);
+                
+                const res = await fetch(`${API_URL}/admin/toggle-status/${staffId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`
+                    },
+                    body: JSON.stringify({ isActive: newStatus })
+                });
+                
+                if (res.ok) {
+                    showModernAlert('success', `✅ Staff ${action}d successfully!`, '', 'OK', () => {
+                        loadShops(); // Reload table
+                    });
+                } else {
+                    const data = await res.json();
+                    showModernAlert('error', 'Error: ' + (data.error || 'Failed to update status'));
+                }
+            } catch (error) {
+                showModernAlert('error', 'Failed: ' + error.message);
+            }
+        }
+    );
+}
+async function deleteStaff(staffId, staffName) {
+    showModernConfirm(
+        '⚠️ Delete Staff',
+        `Are you sure you want to delete staff "${staffName}"?\n\n⚠️ WARNING: This will delete:\n- Staff account\n- Outlet (if standalone)\n- All sales data\n- All menu items\n- License\n\nThis action CANNOT be undone!`,
+        async () => {
+            try {
+                const res = await fetch(`${API_URL}/admin/delete-user/${staffId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+                
+                const result = await res.json();
+                
+                if (res.ok) {
+                    showModernAlert('success', '✅ Staff deleted successfully!', '', 'OK', () => {
+                        loadShops(); // Reload table
+                        loadOwners(); // Reload owners dropdown if needed
+                    });
+                } else {
+                    showModernAlert('error', 'Error: ' + (result.error || 'Delete failed'));
+                }
+            } catch (error) {
+                showModernAlert('error', 'Failed to delete staff: ' + error.message);
+            }
+        }
+    );
+}
+
 // Toggle outlet status
 // Toggle outlet status
 async function toggleOutletStatus(outletId, newStatus) {
@@ -1869,26 +2126,33 @@ async function toggleUserStatus(userId, newStatus) {
     }
 }
         // ========== DELETE OUTLET ==========
-        async function deleteOutlet(outletId, outletName) {
-            if (!confirm(`⚠️ Delete ${outletName}? This will remove all associated data!`)) return;
-            
+       // ========== DELETE OUTLET ==========
+async function deleteOutlet(outletId, outletName) {
+    showModernConfirm(
+        '⚠️ Delete Outlet',
+        `Delete outlet "${outletName}"?\n\n⚠️ This will delete:\n- Staff account\n- All sales data\n- All menu items\n- License\n\nThis action CANNOT be undone!`,
+        async () => {
             try {
                 const res = await fetch(`${API_URL}/admin/delete-outlet/${outletId}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${adminToken}` }
                 });
                 
+                const result = await res.json();
+                
                 if (res.ok) {
-                    alert('✅ Outlet deleted!');
-                    loadShops();
+                    showModernAlert('success', '✅ Outlet deleted successfully!', '', 'OK', () => {
+                        loadShops();
+                    });
                 } else {
-                    const data = await res.json();
-                    alert('Error: ' + data.error);
+                    showModernAlert('error', 'Error: ' + (result.error || 'Delete failed'));
                 }
             } catch (error) {
-                alert('Failed: ' + error.message);
+                showModernAlert('error', 'Failed to delete outlet: ' + error.message);
             }
         }
+    );
+}
 
         // ========== FILTER SHOPS ==========
         function filterShops() {

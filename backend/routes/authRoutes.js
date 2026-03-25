@@ -6,13 +6,14 @@ const {
     register, 
     getProfile, 
     changePassword,
-    getLicenseStatus 
+    getLicenseStatus,
+    logout  
 } = require('../controllers/authController');
 const { authenticateToken } = require('../middleware/auth');
 
 // Public routes
 router.post('/login', login);
-
+router.post('/logout', authenticateToken, logout);
 // Protected routes
 router.get('/profile', authenticateToken, getProfile);
 router.post('/change-password', authenticateToken, changePassword);

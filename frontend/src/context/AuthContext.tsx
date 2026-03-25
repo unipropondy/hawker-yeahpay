@@ -73,57 +73,90 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   // ✅ LOGIN FUNCTION - PUT HERE
-  const login = async (username: string, password: string): Promise<boolean> => {
+ const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      setIsLoading(true);
-      const response = await API.post('/auth/login', { username, password });
-      
-      if (response.data) {
-        // Save token and user
-        await AsyncStorage.setItem('token', response.data.token);
-        await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
+        setIsLoading(true);
+        const response = await API.post('/auth/login', { username, password });
         
-        setUser(response.data.user);
+        if (response.data) {
+            // Save token and user
+            await AsyncStorage.setItem('token', response.data.token);
+            await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
+            
+            setUser(response.data.user);
+            
+            // ✅ Check if owner with outlets
+            if (response.data.user.role === 'owner' && response.data.outlets) {
+                console.log('🏪 Owner has outlets:', response.data.outlets.length);
+                setOutlets(response.data.outlets);
+                setShowOutletSelector(true);
+            } 
+            else if (response.data.user.role === 'staff') {
+                // ✅ Staff - save BOTH outlet ID and name
+                const outletId = response.data.user.outletId;
+                const outletName = response.data.user.shopName;
+                const licenseKey = response.data.user.licenseKey || '';
+    const expiryDate = response.data.user.expiryDate || '';
+                await AsyncStorage.setItem('selectedOutletId', outletId.toString());
+                await AsyncStorage.setItem('selectedOutletName', outletName);
+                 await AsyncStorage.setItem('selectedOutletLicense', licenseKey);
+    await AsyncStorage.setItem('selectedOutletExpiry', expiryDate);
+                // Also set outletInfo immediately
+               
+                
+                 console.log('📦 Staff login - saved outlet:', { outletId, outletName, licenseKey });
+            }
+            
+            return true;
+        }
+        return false;
         
-        // ✅ Check if owner with outlets
-        if (response.data.user.role === 'owner' && response.data.outlets) {
-          console.log('🏪 Owner has outlets:', response.data.outlets.length);
-          setOutlets(response.data.outlets);
-          setShowOutletSelector(true);
-        } 
-        else if (response.data.user.role === 'staff') {
-          // Staff - save outlet
-          await AsyncStorage.setItem('selectedOutletId', response.data.user.outletId.toString());
+    } catch (error: any) {
+        console.log('❌ Login error:', error.response?.data || error.message);
+        
+        const errorData = error.response?.data;
+        
+        if (errorData?.code === 'SESSION_ACTIVE' || errorData?.error === 'ALREADY_LOGGED_IN') {
+            Alert.alert(
+                '⚠️ Already Logged In',
+                errorData.message || 'You are already logged in on another device!\n\nPlease logout from that device first.',
+                [
+                    { 
+                        text: 'OK',
+                        onPress: async () => {
+                            await AsyncStorage.removeItem('remember_username');
+                            await AsyncStorage.removeItem('remember_password');
+                            await AsyncStorage.removeItem('token');
+                            await AsyncStorage.removeItem('user');
+                            await AsyncStorage.removeItem('selectedOutletId');
+                            await AsyncStorage.removeItem('selectedOutletName');
+                            console.log('🧹 Cleared all saved credentials and session');
+                        }
+                    }
+                ]
+            );
+            return false;
         }
         
-        return true;
-      }
-      return false;
-      
-    } catch (error: any) {
-      console.log('❌ Login error:', error.response?.data || error.message);
-      
-      // ✅ Handle different error types with proper messages
-      const errorData = error.response?.data;
-      
-      if (errorData?.code === 'ACCOUNT_BLOCKED') {
-  Alert.alert('⛔ Account Blocked', errorData.message);
-} 
-else if (errorData?.code === 'OUTLET_BLOCKED') {
-  Alert.alert('🚫 Outlet Deactivated', errorData.message);
-}
-else if (errorData?.code === 'LICENSE_EXPIRED') {
-  Alert.alert('📅 License Expired', errorData.message);
-}
-else if (error.response?.status === 401) {
-  Alert.alert('❌ Login Failed', 'Invalid username or password');
-}
-      
-      return false;
+        // Handle other errors
+        if (errorData?.code === 'ACCOUNT_BLOCKED') {
+            Alert.alert('⛔ Account Blocked', errorData.message);
+        } 
+        else if (errorData?.code === 'OUTLET_BLOCKED') {
+            Alert.alert('🚫 Outlet Deactivated', errorData.message);
+        }
+        else if (errorData?.code === 'LICENSE_EXPIRED') {
+            Alert.alert('📅 License Expired', errorData.message);
+        }
+        else if (error.response?.status === 401) {
+            Alert.alert('❌ Login Failed', 'Invalid username or password');
+        }
+        
+        return false;
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  };
+};
 
   // ✅ SELECT OUTLET FUNCTION
   const selectOutlet = async (outletId: number) => {
@@ -139,20 +172,48 @@ else if (error.response?.status === 401) {
     }
   };
 
-  const logout = async () => {
-    try {
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
-      await AsyncStorage.removeItem('selectedOutletId');
-      setUser(null);
-      setOutlets([]);
-      setShowOutletSelector(false);
-      console.log('✅ Logged out');
-    } catch (error) {
-      console.log('❌ Logout error:', error);
-    }
-  };
+ // frontend/src/context/AuthContext.tsx
 
+const logout = async () => {
+    try {
+        // ✅ CRITICAL: Get token before clearing
+        const token = await AsyncStorage.getItem('token');
+        
+        // ✅ Call backend to deactivate session
+        if (token) {
+            try {
+                await API.post('/auth/logout', {}, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                console.log('✅ Session deactivated on server');
+            } catch (apiError) {
+                console.log('⚠️ Logout API error:', apiError.message);
+                // Continue with local logout even if API fails
+            }
+        }
+        
+        // Clear local storage
+        await AsyncStorage.removeItem('token');
+        await AsyncStorage.removeItem('user');
+        await AsyncStorage.removeItem('selectedOutletId');
+        
+        setUser(null);
+        setOutlets([]);
+        setShowOutletSelector(false);
+        
+        console.log('✅ Logged out successfully');
+        
+    } catch (error) {
+        console.log('❌ Logout error:', error);
+        // Still try to clear local storage
+        await AsyncStorage.removeItem('token');
+        await AsyncStorage.removeItem('user');
+        await AsyncStorage.removeItem('selectedOutletId');
+        setUser(null);
+        setOutlets([]);
+        setShowOutletSelector(false);
+    }
+};
   return (
     <AuthContext.Provider value={{ 
       user, 

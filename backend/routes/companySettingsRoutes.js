@@ -61,10 +61,19 @@ const getEffectiveOutletId = async (req, res, next) => {
             outletId = parseInt(outletId);
         }
         
+        if (!outletId) {
+            console.error(`❌ No outlet ID found for ${userRole} ${userId}`);
+            return res.status(400).json({ 
+                error: 'OUTLET_NOT_FOUND',
+                message: 'Could not determine outlet for this user'
+            });
+        }
+        
         req.outletId = outletId;
         req.query.outletId = outletId;
         if (req.body) req.body.outletId = outletId;
         
+        console.log(`✅ Outlet ID set: ${req.outletId}`);
         next();
         
     } catch (err) {
@@ -73,16 +82,20 @@ const getEffectiveOutletId = async (req, res, next) => {
     }
 };
 
-// Apply middleware
+// ✅ Apply middleware to ALL routes (ONCE)
 router.use(authenticateToken);
 router.use(getEffectiveOutletId);
 
 // ============================================
-// GET company settings (WITH LOGOS)
+// GET company settings
 // ============================================
-router.get('/:targetId', authenticateToken, async (req, res) => {
+router.get('/:targetId', async (req, res) => {
     try {
         const outletId = req.outletId;
+        
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
+        }
         
         const pool = getPool();
         
@@ -102,8 +115,8 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
                     c.CurrencySymbol,
                     c.CompanyLogoUrl,
                     c.HalalLogoUrl,
-                    c.ShowCompanyLogo,
-                    c.ShowHalalLogo
+                    ISNULL(c.ShowCompanyLogo, 0) as ShowCompanyLogo,
+                    ISNULL(c.ShowHalalLogo, 0) as ShowHalalLogo
                 FROM Outlets o
                 LEFT JOIN CompanySettings c ON o.Id = c.OutletId
                 WHERE o.Id = @outletId
@@ -115,11 +128,22 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
         
         const row = result.recordset[0];
         
+        let showCompanyLogo = false;
+        let showHalalLogo = false;
+        
+        if (row.ShowCompanyLogo === true || row.ShowCompanyLogo === 1 || row.ShowCompanyLogo === '1') {
+            showCompanyLogo = true;
+        }
+        
+        if (row.ShowHalalLogo === true || row.ShowHalalLogo === 1 || row.ShowHalalLogo === '1') {
+            showHalalLogo = true;
+        }
+        
         const settings = {
             CompanyName: row.CompanyName || '',
             Address: row.Address || '',
             GSTNo: row.GSTNo || '',
-            GSTPercentage: row.GSTPercentage || 9,
+            GSTPercentage: row.GSTPercentage !== undefined && row.GSTPercentage !== null ? row.GSTPercentage : 9,
             Phone: row.Phone || '',
             Email: row.Email || '',
             CashierName: row.CashierName || '',
@@ -127,11 +151,10 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
             CurrencySymbol: row.CurrencySymbol || '$',
             CompanyLogoUrl: row.CompanyLogoUrl || '',
             HalalLogoUrl: row.HalalLogoUrl || '',
-            ShowCompanyLogo: row.ShowCompanyLogo !== undefined ? row.ShowCompanyLogo : 1,
-            ShowHalalLogo: row.ShowHalalLogo !== undefined ? row.ShowHalalLogo : 1
+            ShowCompanyLogo: showCompanyLogo,
+            ShowHalalLogo: showHalalLogo
         };
         
-        console.log(`✅ ${req.user.role} ${req.user.id} fetched settings for outlet ${outletId}`);
         res.json({
             success: true,
             settings,
@@ -143,11 +166,23 @@ router.get('/:targetId', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 // ============================================
-// POST (create/update) company settings (WITH LOGOS)
+// POST company settings
 // ============================================
-router.post('/:targetId', authenticateToken, async (req, res) => {
+router.post('/:targetId', async (req, res) => {
     try {
+        const outletId = req.outletId;
+        
+        // ✅ CRITICAL CHECK
+        if (!outletId) {
+            console.error('❌ No outletId in request!');
+            return res.status(400).json({ 
+                error: 'OUTLET_REQUIRED',
+                message: 'Please select an outlet first'
+            });
+        }
+        
         const { 
             CompanyName, 
             Address, 
@@ -158,23 +193,32 @@ router.post('/:targetId', authenticateToken, async (req, res) => {
             CashierName,
             Currency,
             CurrencySymbol,
-            CompanyLogoUrl,      // ✅ ADD
-            HalalLogoUrl,        // ✅ ADD
-            ShowCompanyLogo,     // ✅ ADD
-            ShowHalalLogo        // ✅ ADD
+            CompanyLogoUrl,
+            HalalLogoUrl,
+            ShowCompanyLogo,
+            ShowHalalLogo
         } = req.body;
         
-        const outletId = req.outletId;
+        let companyLogoValue = ShowCompanyLogo ? 1 : 0;
+        let halalLogoValue = ShowHalalLogo ? 1 : 0;
+        
+        console.log('📥 SAVING TO DATABASE for outlet:', outletId);
+        console.log('📥 Logo values:', { companyLogoValue, halalLogoValue });
         
         const pool = getPool();
         
-        // ✅ Save with logo fields
+        // ✅ Delete existing
+        await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query('DELETE FROM CompanySettings WHERE OutletId = @outletId');
+        
+        // ✅ Insert new
         await pool.request()
             .input('outletId', sql.Int, outletId)
             .input('companyName', sql.NVarChar, CompanyName || '')
             .input('address', sql.NVarChar, Address || '')
             .input('gstNo', sql.NVarChar, GSTNo || '')
-            .input('gstPercentage', sql.Decimal(5,2), GSTPercentage || 9)
+           .input('gstPercentage', sql.Decimal(5,2), GSTPercentage !== undefined ? GSTPercentage : 9)
             .input('phone', sql.NVarChar, Phone || '')
             .input('email', sql.NVarChar, Email || '')
             .input('cashierName', sql.NVarChar, CashierName || '')
@@ -182,40 +226,50 @@ router.post('/:targetId', authenticateToken, async (req, res) => {
             .input('currencySymbol', sql.NVarChar, CurrencySymbol || '$')
             .input('companyLogoUrl', sql.NVarChar, CompanyLogoUrl || null)
             .input('halalLogoUrl', sql.NVarChar, HalalLogoUrl || null)
-            .input('showCompanyLogo', sql.Bit, ShowCompanyLogo !== false ? 1 : 0)
-            .input('showHalalLogo', sql.Bit, ShowHalalLogo !== false ? 1 : 0)
+            .input('showCompanyLogo', sql.Bit, companyLogoValue)
+            .input('showHalalLogo', sql.Bit, halalLogoValue)
             .query(`
-                MERGE INTO CompanySettings AS target
-                USING (SELECT @outletId AS OutletId) AS source
-                ON target.OutletId = source.OutletId
-                WHEN MATCHED THEN
-                    UPDATE SET 
-                        CompanyName = @companyName,
-                        Address = @address,
-                        GSTNo = @gstNo,
-                        GSTPercentage = @gstPercentage,
-                        Phone = @phone,
-                        Email = @email,
-                        CashierName = @cashierName,
-                        Currency = @currency,
-                        CurrencySymbol = @currencySymbol,
-                        CompanyLogoUrl = @companyLogoUrl,
-                        HalalLogoUrl = @halalLogoUrl,
-                        ShowCompanyLogo = @showCompanyLogo,
-                        ShowHalalLogo = @showHalalLogo
-                WHEN NOT MATCHED THEN
-                    INSERT (OutletId, CompanyName, Address, GSTNo, GSTPercentage, Phone, Email, CashierName, Currency, CurrencySymbol, CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo)
-                    VALUES (@outletId, @companyName, @address, @gstNo, @gstPercentage, @phone, @email, @cashierName, @currency, @currencySymbol, @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo);
+                INSERT INTO CompanySettings (
+                    OutletId, CompanyName, Address, GSTNo, GSTPercentage, 
+                    Phone, Email, CashierName, Currency, CurrencySymbol,
+                    CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo
+                ) VALUES (
+                    @outletId, @companyName, @address, @gstNo, @gstPercentage,
+                    @phone, @email, @cashierName, @currency, @currencySymbol,
+                    @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo
+                )
             `);
         
-        console.log(`✅ ${req.user.role} ${req.user.id} saved settings for outlet ${outletId}`);
-        res.json({ 
-            success: true, 
-            message: 'Company settings saved successfully' 
-        });
+        console.log(`✅ Settings saved for outlet ${outletId}`);
+        res.json({ success: true, message: 'Company settings saved successfully' });
         
     } catch (err) {
         console.error('❌ Error saving settings:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================
+// DELETE company settings
+// ============================================
+router.delete('/:targetId', async (req, res) => {
+    try {
+        const outletId = req.outletId;
+        
+        if (!outletId) {
+            return res.status(400).json({ error: 'Outlet ID required' });
+        }
+        
+        const pool = getPool();
+        
+        await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query('DELETE FROM CompanySettings WHERE OutletId = @outletId');
+        
+        res.json({ success: true, message: 'Settings cleared' });
+        
+    } catch (err) {
+        console.error('❌ Error deleting settings:', err);
         res.status(500).json({ error: err.message });
     }
 });

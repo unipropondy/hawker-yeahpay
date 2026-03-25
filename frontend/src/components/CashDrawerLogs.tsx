@@ -1,3 +1,4 @@
+// frontend/src/components/CashDrawerLogs.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -7,7 +8,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Switch  // ✅ Add Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import API from '../api';
@@ -27,8 +29,6 @@ interface DrawerLog {
   SaleId: number | null;
   ActionType: string;
   Notes: string | null;
-  OpenTimeFormatted?: string;
-  CloseTimeFormatted?: string;
 }
 
 interface CashDrawerLogsProps {
@@ -59,6 +59,7 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
     totalCash: 0
   });
 
+  // ✅ Load data when modal opens
   useEffect(() => {
     if (visible) {
       loadAllData();
@@ -77,14 +78,18 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
         ]);
         setOpenDrawers(openRes.data.openDrawers || []);
         setLogs(historyRes.data.logs || []);
-      } else {
-        // Owner/Staff see their outlet only
+      } else if (userRole === 'owner') {
+        // ✅ Owner sees their outlet only
         const [openRes, historyRes] = await Promise.all([
           API.get('/cash-drawer/check-open'),
           API.get('/cash-drawer/history?limit=100')
         ]);
         setOpenDrawers(openRes.data.openDrawers || []);
         setLogs(historyRes.data.logs || []);
+      } else {
+        // Staff - should not be here, but just in case
+        setOpenDrawers([]);
+        setLogs([]);
       }
 
       // Calculate stats
@@ -151,6 +156,11 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
     }
   };
 
+  // ✅ If not owner or admin, don't show anything
+  if (userRole !== 'owner' && userRole !== 'admin') {
+    return null;
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -166,23 +176,25 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Stats Cards */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.statValue, { color: theme.primary }]}>{stats.totalOpens}</Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Opens</Text>
+        {/* Stats Cards - Only show if there's data */}
+        {(stats.totalOpens > 0 || stats.totalCash > 0) && (
+          <View style={styles.statsContainer}>
+            <View style={[styles.statCard, { backgroundColor: theme.card }]}>
+              <Text style={[styles.statValue, { color: theme.primary }]}>{stats.totalOpens}</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Opens</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.card }]}>
+              <Text style={[styles.statValue, { color: theme.warning }]}>{formatDuration(stats.avgDuration)}</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Avg Duration</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.card }]}>
+              <Text style={[styles.statValue, { color: theme.success }]}>
+                ${stats.totalCash.toFixed(2)}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Cash</Text>
+            </View>
           </View>
-          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.statValue, { color: theme.warning }]}>{formatDuration(stats.avgDuration)}</Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Avg Duration</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.statValue, { color: theme.success }]}>
-              ${stats.totalCash.toFixed(2)}
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Total Cash</Text>
-          </View>
-        </View>
+        )}
 
         {/* Tabs */}
         <View style={[styles.tabContainer, { borderBottomColor: theme.border }]}>
@@ -205,7 +217,7 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
               styles.tabText,
               { color: activeTab === 'history' ? theme.primary : theme.textSecondary }
             ]}>
-              📋 History
+              📋 History ({logs.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -236,13 +248,6 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
                   
                   return (
                     <View key={drawer.Id} style={[styles.logCard, { backgroundColor: theme.card }]}>
-                      
-                      {/* Header with Outlet (for admin) */}
-                      {userRole === 'admin' && drawer.OutletName && (
-                        <Text style={[styles.outletName, { color: theme.primary }]}>
-                          🏪 {drawer.OutletName}
-                        </Text>
-                      )}
                       
                       {/* User and Duration */}
                       <View style={styles.logHeader}>
@@ -287,87 +292,89 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
               )
             ) : (
               // HISTORY
-              logs.map(log => {
-                const openDateTime = formatDateTime(log.OpenTime);
-                const closeDateTime = log.CloseTime ? formatDateTime(log.CloseTime) : null;
-                const statusColor = getStatusColor(log.Status, log.DurationSeconds || 0);
-                
-                return (
-                  <View key={log.Id} style={[styles.logCard, { backgroundColor: theme.card }]}>
-                    
-                    {/* Header with Outlet (for admin) */}
-                    {userRole === 'admin' && log.OutletName && (
-                      <Text style={[styles.outletName, { color: theme.primary }]}>
-                        🏪 {log.OutletName}
-                      </Text>
-                    )}
-                    
-                    {/* User and Status */}
-                    <View style={styles.logHeader}>
-                      <View style={styles.userInfo}>
-                        <Ionicons name="person" size={16} color={theme.textSecondary} />
-                        <Text style={[styles.userName, { color: theme.text }]}>
-                          {log.UserName}
-                        </Text>
+              logs.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="document-text-outline" size={50} color={theme.textSecondary} />
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                    No history found
+                  </Text>
+                </View>
+              ) : (
+                logs.map(log => {
+                  const openDateTime = formatDateTime(log.OpenTime);
+                  const closeDateTime = log.CloseTime ? formatDateTime(log.CloseTime) : null;
+                  const statusColor = getStatusColor(log.Status, log.DurationSeconds || 0);
+                  
+                  return (
+                    <View key={log.Id} style={[styles.logCard, { backgroundColor: theme.card }]}>
+                      
+                      {/* User and Status */}
+                      <View style={styles.logHeader}>
+                        <View style={styles.userInfo}>
+                          <Ionicons name="person" size={16} color={theme.textSecondary} />
+                          <Text style={[styles.userName, { color: theme.text }]}>
+                            {log.UserName}
+                          </Text>
+                        </View>
+                        <View style={[styles.statusBadge, { 
+                          backgroundColor: statusColor + '20',
+                          borderColor: statusColor
+                        }]}>
+                          <Text style={[styles.statusText, { color: statusColor }]}>
+                            {log.Status}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={[styles.statusBadge, { 
-                        backgroundColor: statusColor + '20',
-                        borderColor: statusColor
-                      }]}>
-                        <Text style={[styles.statusText, { color: statusColor }]}>
-                          {log.Status}
-                        </Text>
-                      </View>
-                    </View>
 
-                    {/* Open Time */}
-                    <View style={styles.timeRow}>
-                      <Ionicons name="log-in" size={14} color={theme.success} />
-                      <Text style={[styles.timeDetail, { color: theme.textSecondary }]}>
-                        Open: {openDateTime.date} {openDateTime.time}
-                      </Text>
-                    </View>
-
-                    {/* Close Time */}
-                    {closeDateTime && (
+                      {/* Open Time */}
                       <View style={styles.timeRow}>
-                        <Ionicons name="log-out" size={14} color={theme.danger} />
+                        <Ionicons name="log-in" size={14} color={theme.success} />
                         <Text style={[styles.timeDetail, { color: theme.textSecondary }]}>
-                          Close: {closeDateTime.date} {closeDateTime.time}
+                          Open: {openDateTime.date} {openDateTime.time}
                         </Text>
                       </View>
-                    )}
 
-                    {/* Duration */}
-                    <View style={styles.timeRow}>
-                      <Ionicons name="time" size={14} color={theme.primary} />
-                      <Text style={[styles.timeDetail, { color: theme.text }]}>
-                        Duration: {formatDuration(log.DurationSeconds || log.CurrentDuration || 0)}
-                      </Text>
+                      {/* Close Time */}
+                      {closeDateTime && (
+                        <View style={styles.timeRow}>
+                          <Ionicons name="log-out" size={14} color={theme.danger} />
+                          <Text style={[styles.timeDetail, { color: theme.textSecondary }]}>
+                            Close: {closeDateTime.date} {closeDateTime.time}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Duration */}
+                      <View style={styles.timeRow}>
+                        <Ionicons name="time" size={14} color={theme.primary} />
+                        <Text style={[styles.timeDetail, { color: theme.text }]}>
+                          Duration: {formatDuration(log.DurationSeconds || log.CurrentDuration || 0)}
+                        </Text>
+                      </View>
+
+                      {/* Amount */}
+                      {log.TotalAmount > 0 && (
+                        <View style={[styles.amountRow, { 
+                          backgroundColor: theme.success + '10',
+                          borderColor: theme.success + '30'
+                        }]}>
+                          <Ionicons name="cash" size={16} color={theme.success} />
+                          <Text style={[styles.amountDetail, { color: theme.success }]}>
+                            ${log.TotalAmount.toFixed(2)} {log.PaymentMethod && `- ${log.PaymentMethod}`}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Notes */}
+                      {log.Notes && (
+                        <Text style={[styles.notes, { color: theme.textSecondary }]}>
+                          📝 {log.Notes}
+                        </Text>
+                      )}
                     </View>
-
-                    {/* Amount */}
-                    {log.TotalAmount > 0 && (
-                      <View style={[styles.amountRow, { 
-                        backgroundColor: theme.success + '10',
-                        borderColor: theme.success + '30'
-                      }]}>
-                        <Ionicons name="cash" size={16} color={theme.success} />
-                        <Text style={[styles.amountDetail, { color: theme.success }]}>
-                          ${log.TotalAmount.toFixed(2)} {log.PaymentMethod && `- ${log.PaymentMethod}`}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Notes */}
-                    {log.Notes && (
-                      <Text style={[styles.notes, { color: theme.textSecondary }]}>
-                        📝 {log.Notes}
-                      </Text>
-                    )}
-                  </View>
-                );
-              })
+                  );
+                })
+              )
             )}
           </ScrollView>
         )}
@@ -459,11 +466,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
-  },
-  outletName: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 8,
   },
   logHeader: {
     flexDirection: 'row',

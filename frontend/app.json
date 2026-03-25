@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "UNIPRO HAWKER SYSTEM",
+    "name": "SMART HAWKER",
     "slug": "unipro-pos-new",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
-    "icon": "./assets/images/unipro-hawker.png",
+    "icon": "./assets/images/smarthawker icon final.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/unipro-hawker.png",
+      "image": "./assets/images/smarthawker icon final.png",
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
@@ -23,7 +23,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/unipro-hawker.png",
+        "foregroundImage": "./assets/images/smarthawker icon final.png",
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.unipro.pos",
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/unipro-hawker.png"
+      "favicon": "./assets/images/smarthawker icon final.png"
     },
     "plugins": [
       "@react-native-community/datetimepicker",

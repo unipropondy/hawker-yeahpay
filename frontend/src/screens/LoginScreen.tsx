@@ -20,7 +20,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // ✅ ADD THIS
 import { useAuth } from '../context/AuthContext';
 
-const companyLogo = require('../../assets/images/unipro-logo-white.png');
+const companyLogo = require('../../assets/images/smarthawker icon final.png');
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
@@ -77,40 +77,54 @@ export default function LoginScreen() {
   };
 
   // ✅ Clear saved credentials (optional - for testing)
-  const clearSavedCredentials = async () => {
-    await AsyncStorage.removeItem('remember_username');
-    await AsyncStorage.removeItem('remember_password');
-    await AsyncStorage.setItem('remember_me', 'false');
-    setUsername('');
-    setPassword('');
-    setRememberMe(false);
-    Alert.alert('✅ Cleared', 'Saved credentials cleared');
-  };
+  
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert('Warning', 'Please enter username and password');
-      return;
+        Alert.alert('Warning', 'Please enter username and password');
+        return;
     }
 
     setLoading(true);
     try {
-      console.log('📝 Attempting login with:', username);
-      
-      const success = await login(username, password);
-      
-      if (success) {
-        // ✅ Save credentials after successful login
-        await saveCredentials(username, password);
-        console.log('✅ Login successful');
-      }
+        console.log('📝 Attempting login with:', username);
+        
+        const success = await login(username, password);
+        
+        if (success) {
+            // ✅ Save credentials after successful login
+            await saveCredentials(username, password);
+            console.log('✅ Login successful');
+        } else {
+            // ✅ Login failed - clear fields to prevent auto-retry
+            console.log('❌ Login failed - clearing fields');
+            setUsername('');
+            setPassword('');
+            // Don't clear rememberMe state, but clear saved credentials
+            await clearSavedCredentials();
+        }
     } catch (error: any) {
-      console.log('❌ Login error:', error);
+        console.log('❌ Login error:', error);
+        // Also clear on error
+        setUsername('');
+        setPassword('');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  };
+};
 
+// Add this helper function
+const clearSavedCredentials = async () => {
+    try {
+        await AsyncStorage.removeItem('remember_username');
+        await AsyncStorage.removeItem('remember_password');
+        await AsyncStorage.setItem('remember_me', 'false');
+        setRememberMe(false);
+        console.log('🧹 Cleared saved credentials');
+    } catch (error) {
+        console.log('❌ Error clearing credentials:', error);
+    }
+};
   // Show loading while checking storage
   if (checkingStorage) {
     return (
@@ -147,7 +161,7 @@ export default function LoginScreen() {
             </Text>
             
             <Text style={styles.subText}>
-              Login to POS System
+              Login to Smart Hawker POS
             </Text>
 
             {/* Login Form */}
@@ -228,10 +242,10 @@ export default function LoginScreen() {
             {/* Company Name and Copyright */}
             <View style={styles.companyFooter}>
               <Text style={styles.companyName}>
-                UNIPRO SOFTWARES SG PTE LTD
+                SMART HAWKER BY UNIPROSG
               </Text>
               <Text style={styles.copyright}>
-                © 2026 UNIPRO SOFTWARES SG PTE LTD. All rights reserved.
+                © 2026-2027 UNIPRO SOFTWARES SG PTE LTD. All rights reserved.
               </Text>
             </View>
           </View>
@@ -269,9 +283,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   logoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,  // ✅ Makes it round (half of width/height)
     backgroundColor: '#fafafa',
     justifyContent: 'center',
     alignItems: 'center',
@@ -281,10 +295,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
     elevation: 3,
-  },
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+},
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 100,
+    height: 100,
   },
   welcomeText: {
     fontSize: 24,
