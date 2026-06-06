@@ -78,6 +78,54 @@ const PayModeSettings: React.FC<PayModeSettingsProps> = ({
       ensureDiscountMode();
     }
   }, [visible, userId]);
+  // In the ensureDefaultModes function or useEffect
+const ensureYeahPayModes = async () => {
+    try {
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        const response = await API.get(`/user/payment-modes/${outletId}?type=outlet`);
+        let modes = response.data.paymentModes || [];
+        
+        // Check if YeahPay modes exist
+        const hasYeahPayCard = modes.some(m => m.id === 'yeahpay_card');
+        const hasYeahPayPayNow = modes.some(m => m.id === 'yeahpay_paynow');
+        
+        let needsUpdate = false;
+        
+        if (!hasYeahPayCard) {
+            modes.push({
+                id: 'yeahpay_card',
+                name: 'YeahPay Card',
+                icon: '💳',
+                description: 'Pay using YeahPay terminal card',
+                isActive: false,  // Admin can enable
+                order: modes.length
+            });
+            needsUpdate = true;
+        }
+        
+        if (!hasYeahPayPayNow) {
+            modes.push({
+                id: 'yeahpay_paynow',
+                name: 'YeahPay PayNow',
+                icon: '📱',
+                description: 'Pay using YeahPay terminal QR',
+                isActive: false,
+                order: modes.length
+            });
+            needsUpdate = true;
+        }
+        
+        if (needsUpdate) {
+            await API.put('/user/payment-modes', {
+                userId: outletId,
+                paymentModes: modes
+            });
+            console.log('✅ YeahPay modes added');
+        }
+    } catch (error) {
+        console.log('Error ensuring YeahPay modes:', error);
+    }
+};
 const ensureDiscountMode = async () => {
     try {
         const outletId = await AsyncStorage.getItem('selectedOutletId');

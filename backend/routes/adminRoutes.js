@@ -191,6 +191,10 @@ router.get('/staff-standalone', authenticateToken, async (req, res) => {
                     u.IsActive,
                     o.Id as OutletId,
                     o.OutletName,
+                    -- ✅ ADD YEAHPAY COLUMNS
+                    o.DeviceSN,
+                    o.DeviceSalt,
+                    ISNULL(o.YeahPayEnabled, 0) as YeahPayEnabled,
                     l.LicenseKey,
                     l.StartDate,
                     l.ExpiryDate,
@@ -809,6 +813,55 @@ router.delete('/delete-user/:userId', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// UPDATE YeahPay settings for outlet
+router.put('/update-yeahpay-settings/:outletId', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { outletId } = req.params;
+        const { deviceSN, deviceSalt, enabled } = req.body;
+
+        console.log('📝 Updating YeahPay settings:', { outletId, deviceSN, deviceSalt, enabled });
+
+        const pool = getPool();
+        
+        // Check if outlet exists
+        const checkResult = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query('SELECT Id FROM Outlets WHERE Id = @outletId');
+        
+        if (checkResult.recordset.length === 0) {
+            return res.status(404).json({ error: 'Outlet not found' });
+        }
+        
+        // Update YeahPay settings
+        await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .input('deviceSN', sql.NVarChar, deviceSN || null)
+            .input('deviceSalt', sql.NVarChar, deviceSalt || null)
+            .input('enabled', sql.Bit, enabled ? 1 : 0)
+            .query(`
+                UPDATE Outlets 
+                SET DeviceSN = @deviceSN,
+                    DeviceSalt = @deviceSalt,
+                    YeahPayEnabled = @enabled
+                WHERE Id = @outletId
+            `);
+
+        console.log(`✅ YeahPay settings updated for outlet ${outletId}`);
+        
+        res.json({ 
+            success: true, 
+            message: 'YeahPay settings updated successfully' 
+        });
+        
+    } catch (err) {
+        console.error('❌ Error updating YeahPay settings:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // ============================================
 // DELETE STANDALONE STAFF (No owner)
 // ============================================
@@ -937,15 +990,20 @@ router.get('/shops', authenticateToken, async (req, res) => {
                     u.Id, 
                     u.Username,
                     u.Role,
-                    u.ShopName as OwnerShopName,  -- ✅ Owner's main shop name
+                    u.ShopName as OwnerShopName,
                     u.IsActive as UserActive,
                     
                     -- Outlet details
                     o.Id as OutletId,
                     o.OutletName, 
-                     o.IsActive as OutletActive,               
+                    o.IsActive as OutletActive,               
                     o.Address,
                     o.Phone,
+                    
+                    -- ✅ ADD YEAHPAY COLUMNS HERE
+                    o.DeviceSN,
+                    o.DeviceSalt,
+                    ISNULL(o.YeahPayEnabled, 0) as YeahPayEnabled,
                     
                     -- License details
                     l.LicenseKey,
@@ -974,7 +1032,7 @@ router.get('/shops', authenticateToken, async (req, res) => {
                 owners[row.Id] = {
                     id: row.Id,
                     username: row.Username,
-                    shopName: row.OwnerShopName,  // ✅ Owner's main shop name
+                    shopName: row.OwnerShopName,
                     isActive: row.UserActive,
                     outlets: []
                 };
@@ -984,10 +1042,14 @@ router.get('/shops', authenticateToken, async (req, res) => {
             if (row.OutletId && !owners[row.Id].outlets.some(o => o.id === row.OutletId)) {
                 owners[row.Id].outlets.push({
                     id: row.OutletId,
-                    name: row.OutletName,          // ✅ Outlet's unique name
+                    name: row.OutletName,
                     address: row.Address,
                     phone: row.Phone,
                     isActive: row.OutletActive,
+                    // ✅ ADD YEAHPAY FIELDS TO OUTLET OBJECT
+                    DeviceSN: row.DeviceSN,
+                    DeviceSalt: row.DeviceSalt,
+                    YeahPayEnabled: row.YeahPayEnabled === 1 || row.YeahPayEnabled === true,
                     license: {
                         key: row.LicenseKey,
                         startDate: row.StartDate,
@@ -1012,7 +1074,6 @@ router.get('/shops', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 // ============================================
 // 7️⃣ RENEW LICENSE FOR OUTLET
 // ============================================

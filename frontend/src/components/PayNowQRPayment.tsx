@@ -9,10 +9,14 @@ import {
   StyleSheet,
   Alert,
   Image,
-  ScrollView
+  ScrollView,
+  Dimensions  // ✅ Add this
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCurrency } from '../context/CurrencyContext';
+
+const { width, height } = Dimensions.get('window');  // ✅ Get screen dimensions
+
 interface PayNowQRPaymentProps {
   visible: boolean;
   onClose: () => void;
@@ -24,7 +28,7 @@ interface PayNowQRPaymentProps {
   t: any;
   shopName: string;
   qrCodeUrl: string | null;
-   formatPrice: (amount: number) => string;
+  formatPrice: (amount: number) => string;
 }
 
 const PayNowQRPayment: React.FC<PayNowQRPaymentProps> = ({
@@ -40,6 +44,8 @@ const PayNowQRPayment: React.FC<PayNowQRPaymentProps> = ({
   qrCodeUrl,
   formatPrice
 }) => {
+  const isLandscape = width > height;  // ✅ Check orientation
+  
   const handleManualSuccess = () => {
     Alert.alert(
       'Confirm Payment',
@@ -58,44 +64,54 @@ const PayNowQRPayment: React.FC<PayNowQRPaymentProps> = ({
   };
 
   if (!visible || !qrCodeUrl) return null;
-const getFullImageUrl = (url: string) => {
-  if (url.startsWith('http')) {
-    return url;
-  }
-  return `https://uniprohawker-production.up.railway.app${url}`;
-};
+  
+  const getFullImageUrl = (url: string) => {
+    if (url.startsWith('http')) {
+      return url;
+    }
+    return `https://uniprohawker-production.up.railway.app${url}`;
+  };
+  
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-          
-          {/* Header with back button */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onBack}>
-              <Ionicons name="arrow-back" size={24} color={theme.text} />
-            </TouchableOpacity>
-            <Text style={[styles.title, { color: theme.text }]}>PayNow QR Payment</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={theme.text} />
-            </TouchableOpacity>
-          </View>
+        {/* ✅ Wrap everything in ScrollView */}
+        <ScrollView 
+          style={styles.modalScrollView}
+          contentContainerStyle={styles.modalScrollContent}
+          showsVerticalScrollIndicator={true}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            
+            {/* Header with back button */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onBack}>
+                <Ionicons name="arrow-back" size={24} color={theme.text} />
+              </TouchableOpacity>
+              <Text style={[styles.title, { color: theme.text }]}>PayNow QR Payment</Text>
+              <TouchableOpacity onPress={onClose}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
 
-          {/* Amount */}
-          <View style={[styles.amountContainer, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>Amount to Pay</Text>
-            <Text style={[styles.amountValue, { color: theme.primary }]}>
-             {formatPrice(amount)} 
-            </Text>
-          </View>
+            {/* Amount */}
+            <View style={[styles.amountContainer, { backgroundColor: theme.surface }]}>
+              <Text style={[styles.amountLabel, { color: theme.textSecondary }]}>Amount to Pay</Text>
+              <Text style={[styles.amountValue, { color: theme.primary }]}>
+                {formatPrice(amount)} 
+              </Text>
+            </View>
 
-          {/* QR Code Image */}
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <View style={styles.qrContainer}>
-  <Image 
-  source={{ uri: getFullImageUrl(qrCodeUrl) }} 
-  style={styles.qrImage}
-  resizeMode="contain"
-/>
+            {/* QR Code Image - Responsive size */}
+            <View style={[styles.qrContainer, isLandscape && styles.qrContainerLandscape]}>
+              <View style={[styles.qrBox, { backgroundColor: '#fff' }]}>
+                <Image 
+                  source={{ uri: getFullImageUrl(qrCodeUrl) }} 
+                  style={[styles.qrImage, isLandscape && styles.qrImageLandscape]}
+                  resizeMode="contain"
+                />
+              </View>
               <Text style={[styles.qrSubtext, { color: theme.textSecondary }]}>
                 Ask customer to scan this PayNow QR code
               </Text>
@@ -118,9 +134,9 @@ const getFullImageUrl = (url: string) => {
               <Ionicons name="arrow-back" size={20} color={theme.text} />
               <Text style={[styles.backButtonText, { color: theme.text }]}>Back to Payment Methods</Text>
             </TouchableOpacity>
-          </ScrollView>
 
-        </View>
+          </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -133,12 +149,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  modalScrollView: {
+    width: '100%',
+    maxHeight: '90%',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
   modalContent: {
-    width: '90%',
+    width: '100%',
     maxWidth: 400,
     borderRadius: 20,
     padding: 20,
-    maxHeight: '80%',
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -164,21 +189,40 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
   },
-  scrollContent: {
-    alignItems: 'center',
-  },
   qrContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'center',
+    marginVertical: 20,
+    width: '100%',
+  },
+  qrContainerLandscape: {
+    marginVertical: 10,
+  },
+  qrBox: {
+    width: 220,
+    height: 220,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   qrImage: {
-    width: 250,
-    height: 250,
-    borderRadius: 12,
-    marginBottom: 8,
+    width: 200,
+    height: 200,
+    borderRadius: 10,
+  },
+  qrImageLandscape: {
+    width: 160,
+    height: 160,
   },
   qrSubtext: {
     fontSize: 12,
+    marginTop: 8,
     textAlign: 'center',
   },
   infoBox: {
@@ -218,6 +262,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     width: '100%',
+    marginBottom: 10,
   },
   backButtonText: {
     fontSize: 16,

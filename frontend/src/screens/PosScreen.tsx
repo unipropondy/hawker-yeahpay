@@ -18,7 +18,7 @@ import Printer from 'react-native-printer';
 import { useDataLoader } from '../hooks/useDataLoader';
 import API, { uploadAPI } from '../api';
 import { useLicenseCheck } from '../hooks/useLicenseCheck';
-import PrinterManager from '../components/PrinterManager';
+
 // At the top with other imports
 import DiscountInput from '../components/DiscountInput';
  // ✅ Correct path
@@ -48,7 +48,7 @@ import { OutletSelector } from '../components/OutletSelector';
 // Import constants and utils
 import { themes } from '../utils/themes';
 import { translations, dishNameTranslations } from '../utils/translations';
-
+import { processYeahPayCardPayment, processYeahPayPayNowPayment } from '../../services/yeahpayservice';
 import { MenuItem } from '../types';
 // Add this to track all API calls
 interface PaymentMode {
@@ -369,7 +369,7 @@ const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(nu
   const [selectedSalesFilter, setSelectedSalesFilter] = useState<string>('today');
   const [startDate, setStartDate] = useState<Date>(new Date());
 const [endDate, setEndDate] = useState<Date>(new Date());
-
+const [showLoadingScreen, setShowLoadingScreen] = useState(false);
 const [showPicker, setShowPicker] = useState<boolean>(false);
 const [pickerType, setPickerType] = useState<'start' | 'end'>('start');
 const [tempDate, setTempDate] = useState<Date>(new Date());
@@ -1861,12 +1861,266 @@ const handleCheckout = (): void => {
     );
   }
 };
+useEffect(() => {
+    const loadYeahPaySettings = async () => {
+        try {
+            const outletId = await AsyncStorage.getItem('selectedOutletId');
+            console.log('🏪 Loading YeahPay for outlet:', outletId);
+            
+            if (!outletId) {
+                console.log('⚠️ No outlet selected');
+                return;
+            }
+            
+            const response = await API.get(`/outlet/yeahpay-settings/${outletId}`);
+            console.log('📥 YeahPay API Response:', response.data);
+            
+            // ✅ Save to AsyncStorage properly
+            if (response.data && response.data.enabled === true) {
+                await AsyncStorage.setItem('yeahpay_enabled', 'true');
+                await AsyncStorage.setItem('yeahpay_device_sn', response.data.deviceSn || '');
+                await AsyncStorage.setItem('yeahpay_salt', response.data.salt || '');
+                console.log('✅ YeahPay ENABLED - Saved to storage');
+                console.log('  - Device SN:', response.data.deviceSn);
+                console.log('  - Salt:', response.data.salt);
+                
+                // ✅ Verify save
+                const verifyEnabled = await AsyncStorage.getItem('yeahpay_enabled');
+                const verifySn = await AsyncStorage.getItem('yeahpay_device_sn');
+                console.log('🔍 Verification - enabled:', verifyEnabled, 'sn:', verifySn);
+            } else {
+                await AsyncStorage.setItem('yeahpay_enabled', 'false');
+                console.log('❌ YeahPay DISABLED for this outlet');
+            }
+        } catch (error) {
+            console.log('❌ Error loading YeahPay:', error);
+            await AsyncStorage.setItem('yeahpay_enabled', 'false');
+        }
+    };
+    
+    loadYeahPaySettings();
+}, [outletInfo?.id]);
+// Update handlePaymentSelect
+// In PosScreen.tsx, update handlePaymentSelect function
+// Add this function in PosScreen component
+const loadYeahPaySettings = async () => {
+    try {
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        console.log('📡 Loading YeahPay settings for outlet:', outletId);
+        
+        if (!outletId) {
+            console.log('⚠️ No outlet selected');
+            return;
+        }
+        
+        const response = await API.get(`/outlet/yeahpay-settings/${outletId}`);
+        console.log('📥 YeahPay settings response:', response.data);
+        
+        if (response.data && response.data.enabled) {
+            await AsyncStorage.setItem('yeahpay_device_sn', response.data.deviceSn || '');
+            await AsyncStorage.setItem('yeahpay_salt', response.data.salt || '');
+            await AsyncStorage.setItem('yeahpay_enabled', 'true');
+            console.log('✅ YeahPay ENABLED for this outlet');
+            console.log('📱 Device SN:', response.data.deviceSn);
+        } else {
+            await AsyncStorage.setItem('yeahpay_enabled', 'false');
+            console.log('❌ YeahPay DISABLED for this outlet');
+        }
+    } catch (error) {
+        console.log('❌ Error loading YeahPay settings:', error);
+        await AsyncStorage.setItem('yeahpay_enabled', 'false');
+    }
+};
+
 // Update handlePaymentSelect
 // In PosScreen.tsx, update handlePaymentSelect function
 
 const handlePaymentSelect = async (payment: any): Promise<void> => {
   const totalAmount = parseFloat(calculateTotal());
-  
+   // ✅ YEAHPAY CARD PAYMENT - Direct API call
+// ✅ YEAHPAY CARD PAYMENT
+if (payment.name === 'Yeahpay Card' || payment.id === 'mode_1780572442855_syh829us4') {
+    console.log('💳 YeahPay Card selected');
+    
+    const totalAmount =  parseFloat(calculateTotal());
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    if (!outletId) {
+        Alert.alert('Error', 'No outlet selected');
+        return;
+    }
+    
+    setProcessingPayment(true);
+    setSelectedPayment(payment);
+    
+    try {
+        const settingsResponse = await API.get(`/outlet/yeahpay-settings/${outletId}`);
+        console.log('📥 Full settings response:', JSON.stringify(settingsResponse.data, null, 2));
+        console.log('📥 RAW response:', settingsResponse);
+console.log('📥 DATA:', settingsResponse.data);
+console.log('📥 enabled value:', settingsResponse.data.enabled);
+console.log('📥 enabled type:', typeof settingsResponse.data.enabled);
+        // ✅ Check both 'enabled' and 'YeahPayEnabled' fields
+        const isEnabled = !!settingsResponse.data.deviceSn;
+console.log('🔍 isEnabled (based on deviceSn):', isEnabled);
+        
+        console.log('🔍 isEnabled:', isEnabled);
+        console.log('🔍 deviceSn:', settingsResponse.data.deviceSn);
+        console.log('🔍 salt:', settingsResponse.data.salt);
+        
+        if (!isEnabled) {
+            Alert.alert('YeahPay Not Configured', 'Terminal not configured for this outlet');
+            setProcessingPayment(false);
+            return;
+        }
+        
+        const deviceSn = settingsResponse.data.deviceSn;
+        const salt = settingsResponse.data.salt;
+        
+        if (!deviceSn || !salt) {
+            Alert.alert('YeahPay Not Configured', 'Device SN or Salt missing');
+            setProcessingPayment(false);
+            return;
+        }
+        
+        console.log('📡 Calling YeahPay API with:', { amount: totalAmount, deviceSn });
+        
+        const result = await processYeahPayCardPayment(totalAmount, deviceSn, salt);
+        console.log('YeahPay result:', result);
+        
+        if (result.success) {
+            const saleData = {
+                total: totalAmount,
+                paymentMethod: 'YeahPay Card',
+                items: cart.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    category: item.displayCategory || 'Uncategorized'
+                })),
+                cashier: user?.username || 'Admin',
+                outletId: outletId,
+                discountType: discountInfo.type,
+                discountValue: discountInfo.value,
+                discountAmount: discountInfo.amount
+            };
+            
+            const saleResponse = await API.post('/sales', saleData);
+            
+            setPendingSaleData({
+                ...saleData,
+                id: saleResponse.data.id,
+                invoiceNumber: saleResponse.data.invoiceNumber
+            });
+            
+            setPaymentSuccess(true);
+            setTimeout(() => {
+                setPaymentSuccess(false);
+                setShowPaymentModal(false);
+                setProcessingPayment(false);
+                setCart([]);
+                setShowBillPrompt(true);
+                setDiscountInfo({
+                    applied: false, type: 'percentage', value: 0, amount: 0,
+                    originalTotal: 0, finalTotal: 0
+                });
+                
+            }, 1500);
+        } else {
+            Alert.alert('Payment Failed', result.msg || 'YeahPay transaction failed');
+            setProcessingPayment(false);
+        }
+    } catch (error) {
+        console.log('YeahPay error:', error);
+        Alert.alert('Error', 'Payment failed: ' + error.message);
+        setProcessingPayment(false);
+    }
+    return;
+}
+
+// ✅ YEAHPAY PAYNOW PAYMENT
+// ✅ YEAHPAY PAYNOW PAYMENT
+if (payment.name?.toLowerCase().includes('paynow') && 
+    payment.name?.toLowerCase().includes('yeahpay')) {
+    
+    console.log('📱 YeahPay PayNow selected - Name:', payment.name);
+    
+    const totalAmount =parseFloat(calculateTotal());
+    const outletId = await AsyncStorage.getItem('selectedOutletId');
+    
+    if (!outletId) {
+        Alert.alert('Error', 'No outlet selected');
+        return;
+    }
+    
+    setProcessingPayment(true);
+    setSelectedPayment(payment);
+    
+    try {
+        const settingsResponse = await API.get(`/outlet/yeahpay-settings/${outletId}`);
+        
+        if (!settingsResponse.data || !settingsResponse.data.enabled) {
+            Alert.alert('YeahPay Not Configured', 'Terminal not configured for this outlet');
+            setProcessingPayment(false);
+            return;
+        }
+        
+        const deviceSn = settingsResponse.data.deviceSn;
+        const salt = settingsResponse.data.salt;
+        
+        console.log('📡 Calling YeahPay PayNow API...');
+        const result = await processYeahPayPayNowPayment(totalAmount, deviceSn, salt);
+        console.log('PayNow result:', result);
+        
+        if (result.success) {
+            const saleData = {
+                total: totalAmount,
+                paymentMethod: payment.name,
+                items: cart.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    category: item.displayCategory || 'Uncategorized'
+                })),
+                cashier: user?.username || 'Admin',
+                outletId: outletId,
+                discountType: discountInfo.type,
+                discountValue: discountInfo.value,
+                discountAmount: discountInfo.amount
+            };
+            
+            const saleResponse = await API.post('/sales', saleData);
+            
+            setPendingSaleData({
+                ...saleData,
+                id: saleResponse.data.id,
+                invoiceNumber: saleResponse.data.invoiceNumber
+            });
+            
+            setPaymentSuccess(true);
+            setTimeout(() => {
+                setPaymentSuccess(false);
+                setShowPaymentModal(false);
+                setProcessingPayment(false);
+                setCart([]);
+                setShowBillPrompt(true);
+                setDiscountInfo({
+                    applied: false, type: 'percentage', value: 0, amount: 0,
+                    originalTotal: 0, finalTotal: 0
+                });
+               
+            }, 1500);
+        } else {
+            Alert.alert('Payment Failed', result.msg || 'YeahPay PayNow failed');
+            setProcessingPayment(false);
+        }
+    } catch (error) {
+        console.log('YeahPay error:', error);
+        Alert.alert('Error', 'Payment failed');
+        setProcessingPayment(false);
+    }
+    return;
+}
   if (payment.name === t.cash) {
     setShowPaymentModal(false);
     setShowCashModal(true);
@@ -2192,70 +2446,74 @@ const handleCashPayment = async (): Promise<void> => {
   }
   
   if (cashPaid < totalAmount) {
-    Alert.alert(t.insufficientCash, `${t.insufficientCash} $${calculateTotal()}`);
+    Alert.alert(t.insufficientCash, `${t.insufficientCash} ${formatPrice(totalAmount)}`);
     return;
   }
   
   const balance = cashPaid - totalAmount;
   setBalanceAmount(balance);
   
-  // ========== 🔥 CHECK FOR OPEN DRAWERS (ONCE) ==========
-  if (!hasCheckedDrawer.current) {
-    try {
-      console.log('🔍 Checking for open drawers (one-time)...');
-      const response = await API.get('/cash-drawer/check-open');
-      const openDrawers = response.data.openDrawers || [];
-      
-      hasCheckedDrawer.current = true;
-      
-      openDrawers.forEach((drawer: any) => {
-        if (drawer.CurrentDuration > 30) {
-          Alert.alert(
-            '⚠️ Cash Drawer Open',
-            `Drawer opened ${Math.floor(drawer.CurrentDuration)} seconds ago!\nPlease close it.`,
-            [
-              {
-                text: 'Close Now',
-                onPress: async () => {
-                  await API.post('/cash-drawer/close');
-                }
-              },
-              { text: 'OK', style: 'cancel' }
-            ]
-          );
-        }
-      });
-      
-    } catch (error) {
-      console.log('❌ Drawer check error:', error);
-      hasCheckedDrawer.current = true;
-    }
-  }
+  // ✅ STEP 1: Show loading screen IMMEDIATELY
+  setShowLoadingScreen(true);
   
-  // ========== 🔥 OPEN CASH DRAWER ==========
-  const drawerOpened = await UniversalPrinter.openCashDrawer();
+  // ✅ STEP 2: Close cash modal immediately
+  setShowCashModal(false);
+  setSelectedPayment(null);
+  setCashAmount('');
   
-  // ========== 🔥 LOG TO DATABASE ==========
-  let drawerLogId = null;
-  if (drawerOpened) {
-    try {
-      const drawerResponse = await API.post('/cash-drawer/open', {
-        totalAmount: totalAmount,
-        paymentMethod: 'Cash',
-        notes: 'Cash payment'
-      });
-      drawerLogId = drawerResponse.data.log?.Id;
-      console.log('💰 Drawer opened and logged');
-    } catch (drawerError) {
-      console.log('⚠️ Drawer log failed, but drawer opened');
-    }
-  }
+  // ✅ STEP 3: Clear cart immediately
+  setCart([]);
   
+  // ✅ STEP 4: Run all background tasks
   try {
-    // ✅ GET OUTLET ID
+    // Get outlet ID
     const outletId = await AsyncStorage.getItem('selectedOutletId');
     
-    // ✅✅✅ CREATE SALE DATA WITH DISCOUNT FIELDS ✅✅✅
+    // Check for open drawers (background)
+    if (!hasCheckedDrawer.current) {
+      try {
+        console.log('🔍 Checking for open drawers...');
+        const response = await API.get('/cash-drawer/check-open');
+        const openDrawers = response.data.openDrawers || [];
+        hasCheckedDrawer.current = true;
+        
+        openDrawers.forEach((drawer: any) => {
+          if (drawer.CurrentDuration > 30) {
+            Alert.alert(
+              '⚠️ Cash Drawer Open',
+              `Drawer opened ${Math.floor(drawer.CurrentDuration)} seconds ago!\nPlease close it.`,
+              [
+                { text: 'Close Now', onPress: async () => { await API.post('/cash-drawer/close'); } },
+                { text: 'OK', style: 'cancel' }
+              ]
+            );
+          }
+        });
+      } catch (error) {
+        console.log('Drawer check error:', error);
+        hasCheckedDrawer.current = true;
+      }
+    }
+    
+    // Open cash drawer
+    const drawerOpened = await UniversalPrinter.openCashDrawer();
+    
+    let drawerLogId = null;
+    if (drawerOpened) {
+      try {
+        const drawerResponse = await API.post('/cash-drawer/open', {
+          totalAmount: totalAmount,
+          paymentMethod: 'Cash',
+          notes: 'Cash payment'
+        });
+        drawerLogId = drawerResponse.data.log?.Id;
+        console.log('💰 Drawer opened and logged');
+      } catch (drawerError) {
+        console.log('Drawer log failed');
+      }
+    }
+    
+    // Create sale data
     const saleData = {
       total: totalAmount,
       cashPaid: cashPaid,
@@ -2271,8 +2529,6 @@ const handleCashPayment = async (): Promise<void> => {
       cashier: user?.username || 'Admin',
       outletId: outletId,
       drawerLogId: drawerLogId,
-      
-      // ✅✅✅ CRITICAL: ADD DISCOUNT FIELDS ✅✅✅
       discountType: discountInfo.type,
       discountValue: discountInfo.value,
       discountAmount: discountInfo.amount
@@ -2282,12 +2538,11 @@ const handleCashPayment = async (): Promise<void> => {
       total: saleData.total,
       discountType: saleData.discountType,
       discountValue: saleData.discountValue,
-      discountAmount: saleData.discountAmount,
-      discountApplied: discountInfo.applied
+      discountAmount: saleData.discountAmount
     });
 
     const response = await API.post('/sales', saleData);
-    console.log('✅ Sale saved with discount:', response.data);
+    console.log('✅ Sale saved:', response.data);
     
     const newSale = {
       id: response.data.id || response.data.Id,
@@ -2304,22 +2559,20 @@ const handleCashPayment = async (): Promise<void> => {
     
     setSalesHistory(prev => [newSale, ...prev]);
     
-    // ========== 🔥 UPDATE DRAWER LOG WITH SALE ID ==========
+    // Update drawer log
     if (drawerLogId) {
       try {
         await API.put(`/cash-drawer/${drawerLogId}`, {
           saleId: newSale.id,
           totalAmount: totalAmount
         });
-      } catch (updateError) {
-        // Silent fail
-      }
+      } catch (updateError) {}
     }
-   
-    setShowCashModal(false);
-    setSelectedPayment(null);
-    setCashAmount('');
     
+    // ✅ STEP 5: Hide loading screen
+    setShowLoadingScreen(false);
+    
+    // ✅ STEP 6: Show bill prompt
     setPendingSaleData({
       ...saleData,
       id: newSale.id,
@@ -2336,12 +2589,22 @@ const handleCashPayment = async (): Promise<void> => {
     });
     setShowBillPrompt(true);
     
+    // Reset discount
+    setDiscountInfo({
+      applied: false,
+      type: 'percentage',
+      value: 0,
+      amount: 0,
+      originalTotal: 0,
+      finalTotal: 0
+    });
+    
   } catch (error: any) {
     console.log('❌ Cash payment error:', error);
-    Alert.alert('Error', 'Payment failed');
+    setShowLoadingScreen(false);
+    Alert.alert('Error', 'Payment failed. Please check sales report.');
   }
 };
-
 const loadSalesSummary = useCallback(async () => {
   try {
     let url = '/sales/summary';
@@ -2952,17 +3215,26 @@ const checkPrinterStatus = async () => {
   }
 };
 const handlePrintBill = async () => {
+  console.log('🔴 STEP 1: START');
+  
   if (!pendingSaleData || !user?.id) {
     console.log('❌ No pending sale data or user id');
+    Alert.alert('Error', 'No sale data found');
     return;
   }
-
-  console.log('🖨️ handlePrintBill called with:', pendingSaleData);
   
-  // ✅ Get outlet ID from storage
+  console.log('🔴 STEP 2: pendingSaleData =', pendingSaleData);
+  console.log('🔴 STEP 3: user.id =', user?.id);
+  
   const outletId = await AsyncStorage.getItem('selectedOutletId');
+  console.log('🔴 STEP 4: outletId =', outletId);
   
-  // ✅ Create discount info object
+  if (!outletId) {
+    console.log('❌ No outlet ID found');
+    Alert.alert('Error', 'No outlet selected');
+    return;
+  }
+  
   const discountData = discountInfo.applied ? {
     applied: discountInfo.applied,
     type: discountInfo.type,
@@ -2970,22 +3242,24 @@ const handlePrintBill = async () => {
     amount: discountInfo.amount
   } : undefined;
   
+  console.log('🔴 STEP 5: discountData =', discountData);
+  
   try {
-    // ✅ Pass outletId instead of user.id
+    console.log('🔴 STEP 6: Calling UniversalPrinter.smartPrint...');
     const printed = await UniversalPrinter.smartPrint(
       pendingSaleData,
-      outletId,  // ← CHANGE THIS: from user.id to outletId
+      outletId,
       t,
       discountData
     );
     
+    console.log('🔴 STEP 7: smartPrint result =', printed);
+    
     if (printed) {
-      console.log('✅ Print completed, cleaning up...');
+      console.log('✅ Print completed');
       setShowBillPrompt(false);
       setPendingSaleData(null);
       setCart([]);
-      
-      // ✅ Reset discount after printing
       setDiscountInfo({
         applied: false,
         type: 'percentage',
@@ -2994,11 +3268,15 @@ const handlePrintBill = async () => {
         originalTotal: 0,
         finalTotal: 0
       });
+      Alert.alert('✅ Success', 'Bill printed successfully!');
+    } else {
+      console.log('❌ Print returned false');
+      Alert.alert('⚠️ Warning', 'Print failed, but sale is saved');
     }
     
   } catch (error) {
     console.log('❌ Print error:', error);
-    Alert.alert('Error', 'Failed to print bill');
+    Alert.alert('Error', 'Failed to print bill: ' + (error?.message || 'Unknown error'));
   }
 };
 const testSunmiConnection = async () => {
@@ -3352,118 +3630,137 @@ const renderCashModal = () => (
     onRequestClose={() => setShowCashModal(false)}
   >
     <View style={styles.paymentModalOverlay}>
-      <View style={[styles.paymentModalContent, isMobile && styles.paymentModalContentMobile, { backgroundColor: currentTheme.card }]}>
-        <View style={styles.paymentModalHeader}>
-          <Text style={[styles.paymentModalTitle, { color: currentTheme.text }]}>{t.cash}</Text>
-          <TouchableOpacity 
-            style={styles.paymentModalClose}
-            onPress={() => {
-              setShowCashModal(false);
-              setCashAmount('');
-            }}
-          >
-            <Text style={[styles.paymentModalCloseText, { color: currentTheme.textSecondary }]}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Amount Display */}
-        <View style={[styles.paymentAmountContainer, { backgroundColor: currentTheme.surface }]}>
-          <Text style={[styles.paymentAmountLabel, { color: currentTheme.textSecondary }]}>{t.totalAmount}</Text>
-          <Text style={[styles.paymentAmountValue, { color: currentTheme.primary }]}>
-            {formatPrice(parseFloat(total))}
-          </Text>
-        </View>
-
-        {/* ✅ REMOVED the paymentSuccess condition - Directly show input */}
-        
-        {/* Cash Input with Currency Symbol */}
-        <View style={styles.cashInputContainer}>
-          <Text style={[styles.cashInputLabel, { color: currentTheme.text }]}>{t.cashReceived}</Text>
-          <View style={[styles.cashInputWrapper, { borderColor: currentTheme.primary }]}>
-            <Text style={[styles.cashInputCurrency, { color: currentTheme.primary }]}>
-              {currencySymbol || '$'}
-            </Text>
-            <TextInput
-              style={[styles.cashInput, { color: currentTheme.text }]}
-              placeholder="0.00"
-              placeholderTextColor={currentTheme.textSecondary}
-              keyboardType="numeric"
-              value={cashAmount}
-              onChangeText={setCashAmount}
-              autoFocus={true}
-            />
+      <ScrollView 
+        style={styles.cashModalScrollView}
+        contentContainerStyle={styles.cashModalScrollContent}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[styles.paymentModalContent, isMobile && styles.paymentModalContentMobile, { backgroundColor: currentTheme.card }]}>
+          
+          <View style={styles.paymentModalHeader}>
+            <Text style={[styles.paymentModalTitle, { color: currentTheme.text }]}>{t.cash}</Text>
+            <TouchableOpacity 
+              style={styles.paymentModalClose}
+              onPress={() => {
+                setShowCashModal(false);
+                setCashAmount('');
+              }}
+            >
+              <Text style={[styles.paymentModalCloseText, { color: currentTheme.textSecondary }]}>✕</Text>
+            </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Balance Display */}
-        {cashAmount !== '' && !isNaN(parseFloat(cashAmount)) && (
-          <View style={[styles.balanceContainer, { backgroundColor: currentTheme.surface }]}>
-            <Text style={[styles.balanceLabel, { color: currentTheme.textSecondary }]}>
-              {parseFloat(cashAmount) >= parseFloat(total) ? t.balanceToReturn : t.additionalNeeded}
+          {/* Amount Display */}
+          <View style={[styles.paymentAmountContainer, { backgroundColor: currentTheme.surface }]}>
+            <Text style={[styles.paymentAmountLabel, { color: currentTheme.textSecondary }]}>{t.totalAmount}</Text>
+            <Text style={[styles.paymentAmountValue, { color: currentTheme.primary }]}>
+              {formatPrice(parseFloat(total))}
             </Text>
-            <Text style={[
-              styles.balanceValue,
-              parseFloat(cashAmount) >= parseFloat(total) ? { color: currentTheme.success } : { color: currentTheme.danger }
-            ]}>
-              {formatPrice(Math.abs(parseFloat(cashAmount) - parseFloat(total)))}
-            </Text>
-            {parseFloat(cashAmount) < parseFloat(total) && (
-              <Text style={[styles.balanceWarning, { color: currentTheme.danger }]}>
-                {t.insufficientCash} {formatPrice(parseFloat(total) - parseFloat(cashAmount))} {t.more}
+          </View>
+
+          {/* Cash Input */}
+          <View style={styles.cashInputContainer}>
+            <Text style={[styles.cashInputLabel, { color: currentTheme.text }]}>{t.cashReceived}</Text>
+            <View style={[styles.cashInputWrapper, { borderColor: currentTheme.primary }]}>
+              <Text style={[styles.cashInputCurrency, { color: currentTheme.primary }]}>
+                {currencySymbol || '$'}
               </Text>
-            )}
+              <TextInput
+                style={[styles.cashInput, { color: currentTheme.text }]}
+                placeholder="0.00"
+                placeholderTextColor={currentTheme.textSecondary}
+                keyboardType="numeric"
+                value={cashAmount}
+                onChangeText={setCashAmount}
+                autoFocus={true}
+              />
+            </View>
           </View>
-        )}
 
-        {/* Quick Amount Buttons */}
-        <View style={styles.quickAmountContainer}>
-          <Text style={[styles.quickAmountLabel, { color: currentTheme.text }]}>
-            {t.quickCash || 'Quick Cash'}
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {[10, 20, 50, 100, 200, 500].map(amount => (
-              <TouchableOpacity
-                key={amount}
-                style={[styles.quickAmountBtn, { 
-                  backgroundColor: currentTheme.surface,
-                  borderColor: currentTheme.border 
-                }]}
-                onPress={() => setCashAmount(amount.toString())}
-              >
-                <Text style={[styles.quickAmountBtnText, { color: currentTheme.text }]}>
-                  {formatPrice(amount)}
+          {/* Balance Display */}
+          {cashAmount !== '' && !isNaN(parseFloat(cashAmount)) && (
+            <View style={[styles.balanceContainer, { backgroundColor: currentTheme.surface }]}>
+              <Text style={[styles.balanceLabel, { color: currentTheme.textSecondary }]}>
+                {parseFloat(cashAmount) >= parseFloat(total) ? t.balanceToReturn : t.additionalNeeded}
+              </Text>
+              <Text style={[
+                styles.balanceValue,
+                parseFloat(cashAmount) >= parseFloat(total) ? { color: currentTheme.success } : { color: currentTheme.danger }
+              ]}>
+                {formatPrice(Math.abs(parseFloat(cashAmount) - parseFloat(total)))}
+              </Text>
+              {parseFloat(cashAmount) < parseFloat(total) && (
+                <Text style={[styles.balanceWarning, { color: currentTheme.danger }]}>
+                  {t.insufficientCash} {formatPrice(parseFloat(total) - parseFloat(cashAmount))} {t.more}
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+              )}
+            </View>
+          )}
 
-        {/* Buttons */}
-        <View style={styles.cashModalButtons}>
-          <TouchableOpacity 
-            style={[styles.cashModalBtn, styles.cashModalCancel, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border }]}
-            onPress={() => {
-              setShowCashModal(false);
-              setCashAmount('');
-            }}
-          >
-            <Text style={[styles.cashModalCancelText, { color: currentTheme.text }]}>Cancel</Text>
-          </TouchableOpacity>
+          {/* Quick Amount Buttons */}
+          <View style={styles.quickAmountContainer}>
+            <Text style={[styles.quickAmountLabel, { color: currentTheme.text }]}>
+              {t.quickCash || 'Quick Cash'}
+            </Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={true}
+              style={styles.quickAmountScroll}
+              contentContainerStyle={styles.quickAmountContent}
+            >
+              {[10, 20, 50, 100, 200, 500].map(amount => (
+                <TouchableOpacity
+                  key={amount}
+                  style={[styles.quickAmountBtn, { 
+                    backgroundColor: currentTheme.surface,
+                    borderColor: currentTheme.border,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    minWidth: 70,
+                    alignItems: 'center',
+                    marginRight: 8,
+                  }]}
+                  onPress={() => setCashAmount(amount.toString())}
+                >
+                  <Text style={[styles.quickAmountBtnText, { color: currentTheme.text, fontSize: 14, fontWeight: '600' }]}>
+                    {formatPrice(amount)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
 
-          <TouchableOpacity 
-            style={[
-              styles.cashModalBtn, 
-              styles.cashModalConfirm,
-              { backgroundColor: currentTheme.success },
-              (!cashAmount || parseFloat(cashAmount) < parseFloat(total)) && { backgroundColor: currentTheme.inactive, opacity: 0.5 }
-            ]}
-            onPress={handleCashPayment}
-            disabled={!cashAmount || parseFloat(cashAmount) < parseFloat(total)}
-          >
-            <Text style={styles.cashModalConfirmText}>Confirm Payment</Text>
-          </TouchableOpacity>
+          {/* Buttons - Only Cancel and Confirm */}
+          <View style={styles.cashModalButtons}>
+            <TouchableOpacity 
+              style={[styles.cashModalBtn, styles.cashModalCancel, { backgroundColor: currentTheme.surface, borderColor: currentTheme.border, flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' }]}
+              onPress={() => {
+                setShowCashModal(false);
+                setCashAmount('');
+              }}
+            >
+              <Text style={[styles.cashModalCancelText, { color: currentTheme.text, fontSize: 16, fontWeight: '600' }]}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[
+                styles.cashModalBtn, 
+                styles.cashModalConfirm,
+                { backgroundColor: currentTheme.success, flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
+                (!cashAmount || parseFloat(cashAmount) < parseFloat(total)) && { backgroundColor: currentTheme.inactive, opacity: 0.5 }
+              ]}
+              onPress={handleCashPayment}
+              disabled={!cashAmount || parseFloat(cashAmount) < parseFloat(total)}
+            >
+              <Text style={[styles.cashModalConfirmText, { color: '#fff', fontSize: 16, fontWeight: '700' }]}>Confirm Payment</Text>
+            </TouchableOpacity>
+          </View>
+          
         </View>
-      </View>
+      </ScrollView>
     </View>
   </Modal>
 );
@@ -3779,40 +4076,45 @@ const renderCashModal = () => (
   />
 )}
       {/* Side Menu Modal */}
-      <Modal
-        visible={menuVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.sideMenu, isMobile && styles.sideMenuMobile, { backgroundColor: currentTheme.background }]}>
-            <View style={[styles.sideMenuHeader, { backgroundColor: currentTheme.primary }]}>
-              <Text style={styles.sideMenuTitle}>{t.posMenu}</Text>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => {
-                  setMenuVisible(false);
-                  setActiveMenu('main');
-                }}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            {activeMenu !== 'main' && (
-              <TouchableOpacity 
-                style={[styles.backButton, { backgroundColor: currentTheme.surface, borderBottomColor: currentTheme.border }]}
-                onPress={() => setActiveMenu('main')}
-              >
-                <Text style={[styles.backButtonText, { color: currentTheme.primary }]}>{t.backToMain}</Text>
-              </TouchableOpacity>
-            )}
-            
-            {renderMenuContent()}
-          </View>
-        </View>
-      </Modal>
+<Modal
+  visible={menuVisible}
+  animationType="slide"
+  transparent={true}
+  onRequestClose={() => setMenuVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    {/* ✅ REMOVE ScrollView - use View directly */}
+    <View 
+      style={[styles.sideMenu, isMobile && styles.sideMenuMobile, { backgroundColor: currentTheme.background, flex: 1 }]}
+    >
+      <View style={[styles.sideMenuHeader, { backgroundColor: currentTheme.primary }]}>
+        <Text style={styles.sideMenuTitle}>{t.posMenu}</Text>
+        <TouchableOpacity 
+          style={styles.closeButton}
+          onPress={() => {
+            setMenuVisible(false);
+            setActiveMenu('main');
+          }}
+        >
+          <Text style={styles.closeButtonText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+      
+      {activeMenu !== 'main' && (
+        <TouchableOpacity 
+          style={[styles.backButton, { backgroundColor: currentTheme.surface, borderBottomColor: currentTheme.border }]}
+          onPress={() => setActiveMenu('main')}
+        >
+          <Text style={[styles.backButtonText, { color: currentTheme.primary }]}>{t.backToMain}</Text>
+        </TouchableOpacity>
+      )}
+      
+      {/* ✅ No ScrollView wrapper - components handle their own scrolling */}
+      {renderMenuContent()}
+      
+    </View>
+  </View>
+</Modal>
 
       {/* Payment Modal */}
       {renderPaymentModal()}
@@ -3940,7 +4242,25 @@ const renderCashModal = () => (
   qrCodeUrl={payNowQrUrl}
    formatPrice={formatPrice} 
 />
-
+{/* Loading Screen Modal */}
+<Modal
+  visible={showLoadingScreen}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => {}}
+>
+  <View style={styles.loadingOverlay}>
+    <View style={[styles.loadingContainer, { backgroundColor: currentTheme.card }]}>
+      <ActivityIndicator size="large" color={currentTheme.primary} />
+      <Text style={[styles.loadingText, { color: currentTheme.text, marginTop: 15 }]}>
+        Processing Payment...
+      </Text>
+      <Text style={[styles.loadingSubText, { color: currentTheme.textSecondary, marginTop: 5 }]}>
+        Please wait
+      </Text>
+    </View>
+  </View>
+</Modal>
       {/* Profile Modal */}
       <ProfileModal
         visible={showProfileModal}
@@ -4870,6 +5190,32 @@ registerText: {
     minHeight: 50,
     justifyContent: 'center',
   },
+    loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    padding: 30,
+    borderRadius: 20,
+    alignItems: 'center',
+    minWidth: 200,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 15,
+  },
+  loadingSubText: {
+    fontSize: 12,
+    marginTop: 5,
+  },
   profileCancelText: { 
     fontSize: 16, 
     fontWeight: '600',
@@ -5062,12 +5408,7 @@ quickAmountBtn: {
   fontWeight: '600',
   color: '#333',
 },
-quickAmountScroll: {
-  flexDirection: 'row',
-  maxHeight: 50,
-  marginBottom: 20,
-  width: '100%',                // ✅ Takes full width
-},
+
   cashModalButtons: {
   flexDirection: 'row',
   justifyContent: 'space-between',
@@ -5793,6 +6134,17 @@ processingSubText: {
     justifyContent: 'center',
     marginBottom: 10,
   },
+    quickAmountScroll: {
+    maxHeight: 60,
+    marginBottom: 20,
+    width: '100%',
+  },
+    quickAmountContent: {
+    paddingHorizontal: 10,
+    gap: 8,
+    flexDirection: 'row',
+  },
+   
   logoutButtonText: {
     color: '#ffffff',
     fontSize: 16,
@@ -5849,11 +6201,7 @@ salesMainScrollView: {
 salesMainContent: {
   paddingBottom: 20,
 },
-loadingContainer: {
-  padding: 40,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
+
 // Add to your styles object
 bottomInfo: {
   marginTop: 'auto',  // Pushes to bottom
@@ -5889,6 +6237,17 @@ bottomShopName: {
   fontWeight: '600',
   flex: 1,
 },
+cashModalScrollView: {
+    width: '100%',
+    maxHeight: '200%',
+    
+  },
+  cashModalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 30,
+  },
+
 bottomLabel: {
   fontSize: 12,
   width: 70,

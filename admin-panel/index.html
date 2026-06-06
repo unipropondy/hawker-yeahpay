@@ -214,7 +214,24 @@
             align-items: center;
             gap: 10px;
         }
+.action-btn.yeahpay {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
 
+.action-btn.yeahpay:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.action-btn.yeahpay i {
+    margin-right: 4px;
+}
         .section-title i {
             color: #4A90E2;
             font-size: 20px;
@@ -761,58 +778,64 @@
 
         /* Modal */
         .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(8px);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
 
-        .modal-content {
-            width: 90%;
-            max-width: 500px;
-            background: rgba(20, 30, 50, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 32px;
-            padding: 32px;
-        }
+      .modal-content {
+    background: rgba(30, 40, 60, 0.95);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+       .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 24px 24px 0 0;
+}
 
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
+      .modal-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 20px;
+    font-weight: 600;
+}
 
-        .modal-header h3 {
-            color: white;
-            font-size: 24px;
-            font-weight: 600;
-        }
+       .close-modal {
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+}
 
-        .close-modal {
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            cursor: pointer;
-        }
 
-        .close-modal:hover {
-            background: #ff4646;
-        }
+       .close-modal:hover {
+    background: rgba(255, 255, 255, 0.4);
+    transform: rotate(90deg);
+}
 
         .modal-actions {
             display: flex;
@@ -911,6 +934,141 @@
             .datetime-range { grid-template-columns: 1fr; }
             .user-tabs { max-width: 100%; }
         }
+        .form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #fff;  /* ✅ WHITE text */
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.form-group label i {
+    margin-right: 8px;
+    color: #667eea;
+}
+
+/* ✅ FIX: Input field styles */
+.form-control {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    color: #fff;  /* ✅ WHITE text */
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #667eea;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.form-control::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ✅ FIX: Readonly field */
+.form-control[readonly] {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* ✅ FIX: Small text */
+.text-muted, small {
+    display: block;
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.5) !important;
+    font-size: 11px;
+}
+
+/* ✅ FIX: Checkbox label */
+.form-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.form-check-input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.form-check-label {
+    color: #fff;  /* ✅ WHITE text */
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* ✅ FIX: Alert box */
+.alert-info {
+    background: rgba(102, 126, 234, 0.2);
+    border: 1px solid rgba(102, 126, 234, 0.5);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 15px 0;
+}
+
+.alert-info i {
+    color: #667eea;
+    margin-right: 8px;
+}
+
+.alert-info small,
+.alert-info .small {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* ✅ FIX: Modal Actions buttons */
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    padding: 20px 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    text-align: center;
+}
+
+.modal-btn.cancel {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.modal-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.modal-btn.confirm {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+}
+
+.modal-btn.confirm:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.modal-btn i {
+    margin-right: 6px;
+}
     </style>
 </head>
 <body>
@@ -1185,11 +1343,66 @@
             </div>
         </div>
     </div>
-
+<!-- YeahPay Terminal Settings Modal -->
+<div id="yeahpayModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3><i class="fas fa-microchip" style="margin-right: 12px; color: #667eea;"></i>YeahPay Terminal Settings</h3>
+            <div class="close-modal" onclick="closeYeahPayModal()">
+                <i class="fas fa-times"></i>
+            </div>
+        </div>
+        
+        <div class="modal-body" style="padding: 20px;">
+            <div class="info-box" style="margin-bottom: 20px; padding: 12px; background: #f0f0f0; border-radius: 8px;">
+                <i class="fas fa-info-circle"></i>
+                <span>Configure YeahPay terminal for this outlet</span>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label><i class="fas fa-store"></i> Outlet</label>
+                <input type="text" id="yeahpayOutletName" class="form-control" readonly style="background: #f5f5f5;">
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label><i class="fas fa-microchip"></i> Device SN *</label>
+                <input type="text" id="yeahpayDeviceSN" class="form-control" placeholder="e.g., P30224BSJ0633">
+                <small class="text-muted">Terminal serial number from YeahPay terminal</small>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label><i class="fas fa-key"></i> Device Salt *</label>
+                <input type="text" id="yeahpayDeviceSalt" class="form-control" placeholder="e.g., HPIZLZA1SY2NTFHAUQ9HRSRJTWDULPUJ">
+                <small class="text-muted">Unique salt key provided by YeahPay</small>
+            </div>
+            
+            <div class="form-check" style="margin-bottom: 20px;">
+                <input type="checkbox" class="form-check-input" id="yeahpayEnabled">
+                <label class="form-check-label" for="yeahpayEnabled">
+                    <i class="fas fa-check-circle text-success"></i> Enable YeahPay Terminal
+                </label>
+            </div>
+            
+            <div class="alert alert-info" style="margin: 15px 0; padding: 10px; background: #e3f2fd; border-radius: 8px;">
+                <i class="fas fa-info-circle"></i>
+                <small>After enabling, POS app will use this terminal for card and QR payments.</small>
+            </div>
+        </div>
+        
+        <div class="modal-actions" style="padding: 15px 20px; border-top: 1px solid #eee;">
+            <button class="modal-btn cancel" onclick="closeYeahPayModal()">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button class="modal-btn confirm" onclick="saveYeahPaySettings()" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                <i class="fas fa-save"></i> Save Settings
+            </button>
+        </div>
+    </div>
+</div>
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
-        const API_URL = 'https://uniprohawker-production.up.railway.app/api';
+        const API_URL = 'http://192.168.0.131:5000/api';
         let adminToken = '';
         let startPicker, endPicker, outletStartPicker, outletEndPicker, renewStartPicker, renewEndPicker;
 
@@ -1284,6 +1497,108 @@
                 document.getElementById('ownerForm').style.display = 'none';
             }
         }
+        // Store current outlet ID for YeahPay modal
+let currentYeahPayOutletId = null;
+
+// Show YeahPay Modal
+async function showYeahPayModal(outletId, outletName) {
+    console.log('🔧 Opening YeahPay modal for:', outletId, outletName);
+    currentYeahPayOutletId = outletId;
+    
+    // Set outlet name
+    document.getElementById('yeahpayOutletName').value = outletName;
+    
+    // Clear form
+    document.getElementById('yeahpayDeviceSN').value = '';
+    document.getElementById('yeahpayDeviceSalt').value = '';
+    document.getElementById('yeahpayEnabled').checked = false;
+    
+    // Load existing settings if any
+    try {
+        const response = await fetch(`${API_URL}/outlet/yeahpay-settings/${outletId}`, {
+            headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('📥 Loaded YeahPay settings:', data);
+            
+            if (data.deviceSn) {
+                document.getElementById('yeahpayDeviceSN').value = data.deviceSn;
+                document.getElementById('yeahpayDeviceSalt').value = data.salt || '';
+                document.getElementById('yeahpayEnabled').checked = data.enabled === true;
+            }
+        }
+    } catch (error) {
+        console.log('Error loading YeahPay settings:', error);
+    }
+    
+    // Show modal
+    const modal = document.getElementById('yeahpayModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else {
+        console.error('❌ yeahpayModal element not found!');
+        alert('Modal element not found. Please check HTML.');
+    }
+}
+
+// Close YeahPay Modal
+function closeYeahPayModal() {
+    const modal = document.getElementById('yeahpayModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    currentYeahPayOutletId = null;
+}
+
+// Save YeahPay Settings
+async function saveYeahPaySettings() {
+    const deviceSN = document.getElementById('yeahpayDeviceSN').value.trim();
+    const deviceSalt = document.getElementById('yeahpayDeviceSalt').value.trim();
+    const enabled = document.getElementById('yeahpayEnabled').checked;
+    
+    console.log('💾 Saving YeahPay settings:', { deviceSN, deviceSalt, enabled });
+    
+    if (!deviceSN && enabled) {
+        showModernAlert('warning', 'Please enter Device SN to enable YeahPay');
+        return;
+    }
+    
+    if (!deviceSalt && enabled) {
+        showModernAlert('warning', 'Please enter Device Salt to enable YeahPay');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/admin/update-yeahpay-settings/${currentYeahPayOutletId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({
+                deviceSN: deviceSN,
+                deviceSalt: deviceSalt,
+                enabled: enabled ? 1 : 0
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showModernAlert('success', '✅ YeahPay settings saved successfully!', '', 'OK', () => {
+                closeYeahPayModal();
+                loadShops(); // Refresh table to show updated status
+            });
+        } else {
+            showModernAlert('error', 'Error: ' + (result.error || 'Failed to save'));
+        }
+    } catch (error) {
+        console.error('❌ Save error:', error);
+        showModernAlert('error', 'Failed to save: ' + error.message);
+    }
+}
 // ========== DELETE OWNER ==========
 async function deleteOwner(ownerId, ownerName) {
     showModernConfirm(
@@ -1748,6 +2063,7 @@ async function loadShops() {
                     onclick="showEditModal(${owner.id}, '${escapeHtml(owner.username)}', '${escapeHtml(owner.shopName || '')}', 'owner', '${escapeHtml(owner.fullName || '')}')">
                 <i class="fas fa-edit"></i> Edit
             </button>
+            
                     <button class="action-btn ${owner.isActive ? 'warning' : 'success'}" 
                             onclick="toggleUserStatus(${owner.id}, ${!owner.isActive})">
                         <i class="fas ${owner.isActive ? 'fa-ban' : 'fa-check'}"></i>
@@ -1784,6 +2100,11 @@ async function loadShops() {
                     onclick="showEditModal(${outlet.staff?.id || outlet.id}, '${escapeHtml(outlet.staff?.username || '')}', '${escapeHtml(outlet.name)}', 'staff', '${escapeHtml(outlet.staff?.fullName || '')}', ${outlet.id})">
                 <i class="fas fa-edit"></i> Edit
             </button>
+             <button class="action-btn yeahpay" 
+                                    onclick="showYeahPayModal(${outlet.id}, '${escapeHtml(outlet.name)}')"
+                                    style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none;">
+                                <i class="fas fa-microchip"></i> YeahPay
+                            </button>
                             <button class="action-btn ${outletActive ? 'warning' : 'success'}" 
                                     onclick="toggleOutletStatus(${outlet.id}, ${!outletActive})">
                                 <i class="fas ${outletActive ? 'fa-ban' : 'fa-check'}"></i>
@@ -1831,6 +2152,7 @@ async function loadShops() {
                     onclick="showEditModal(${staff.Id}, '${escapeHtml(staff.Username)}', '${escapeHtml(staff.OutletName || staff.ShopName)}', 'staff', '${escapeHtml(staff.FullName || '')}', ${staff.OutletId})">
                 <i class="fas fa-edit"></i> Edit
             </button>
+            
                             <button class="action-btn ${staff.IsActive ? 'warning' : 'success'}" 
                                     onclick="toggleStaffStatus(${staff.Id}, ${!staff.IsActive})">
                                 <i class="fas ${staff.IsActive ? 'fa-ban' : 'fa-check'}"></i>

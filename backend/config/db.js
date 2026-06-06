@@ -14,7 +14,7 @@ const config = {
     enableArithAbort: true,
     connectTimeout: 60000,      // ✅ Increased from 30s to 60s
     requestTimeout: 60000,       // ✅ Increased from 30s to 60s
-    cancelTimeout: 10000         // ✅ Increased from 5s to 10s
+    cancelTimeout: 10000,         // ✅ Increased from 5s to 10s
   },
   pool: {
     max: 100,                    // ✅ Increased from 50 to 100
@@ -41,9 +41,16 @@ let poolMetrics = {
 
 const connectDB = async () => {
     if (pool) {
-        console.log('✅ Reusing existing connection pool');
-        updatePoolMetrics();
-        return pool;
+        // ✅ Check if pool is actually alive
+        try {
+            await pool.request().query('SELECT 1');
+            console.log('✅ Reusing existing connection pool');
+            updatePoolMetrics();
+            return pool;
+        } catch (err) {
+            console.log('⚠️ Existing pool is dead, reconnecting...');
+            resetPool();
+        }
     }
     
     if (connecting && connectionPromise) {
@@ -53,7 +60,7 @@ const connectDB = async () => {
 
     try {
         connecting = true;
-        console.log('🔄 Creating new connection pool (max: 50, min: 10)...');
+        console.log('🔄 Creating new connection pool...');
         console.log('📍 Server:', config.server);
         console.log('📍 Database:', config.database);
         console.log('📍 User:', config.user);
@@ -61,24 +68,63 @@ const connectDB = async () => {
         connectionPromise = sql.connect(config);
         pool = await connectionPromise;
         
-        console.log('✅ Connection pool created successfully for 1000 users');
-
+        console.log('✅ Connection pool created successfully');
         
+        // Test connection
         const result = await pool.request().query('SELECT @@VERSION as version');
         console.log('📊 SQL Server Version:', result.recordset[0].version);
         
         startPoolMonitoring();
         
-        pool.on('error', err => {
-            console.error('❌ Pool error:', err);
+        // ✅ Better error handling with auto-reconnect
+        pool.on('error', async (err) => {
+            console.error('❌ Pool error:', err.message);
+            console.log('🔄 Auto-reconnecting in 5 seconds...');
             resetPool();
+            
+            // Clear monitoring interval
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+                monitoringInterval = null;
+            }
+            
+            // Auto-reconnect after delay
+            setTimeout(async () => {
+                try {
+                    await connectDB();
+                    console.log('✅ Auto-reconnect successful');
+                } catch (reconnectErr) {
+                    console.error('❌ Auto-reconnect failed:', reconnectErr.message);
+                    // Retry again after 30 seconds
+                    setTimeout(async () => {
+                        try {
+                            await connectDB();
+                        } catch (finalErr) {
+                            console.error('❌ Final reconnect failed. Manual restart needed.');
+                        }
+                    }, 30000);
+                }
+            }, 5000);
         });
         
         return pool;
+        
     } catch (err) {
         console.error('❌ Connection failed:', err.message);
         console.error('📝 Details:', err);
         resetPool();
+        
+        // ✅ Schedule retry after 10 seconds
+        console.log('🔄 Will retry connection in 10 seconds...');
+        setTimeout(async () => {
+            try {
+                await connectDB();
+                console.log('✅ Retry connection successful');
+            } catch (retryErr) {
+                console.error('❌ Retry failed:', retryErr.message);
+            }
+        }, 10000);
+        
         throw err;
     } finally {
         connecting = false;
@@ -154,10 +200,16 @@ const stopPoolMonitoring = () => {
 };
 const getPool = () => {
     if (!pool) {
-        throw new Error('Database not connected. Call connectDB first.');
+        console.log('⚠️ Database not connected');
+        return null;  // ✅ Return null instead of throwing error
     }
     updatePoolMetrics();
     return pool;
+};
+
+// ✅ Add helper function
+const isDbConnected = () => {
+    return pool !== null;
 };
 
 const getPoolMetrics = () => {
@@ -217,5 +269,6 @@ module.exports = {
     sql, 
     testConnection,
     getPoolMetrics,
-    closePool 
+    closePool,
+    isDbConnected 
 };

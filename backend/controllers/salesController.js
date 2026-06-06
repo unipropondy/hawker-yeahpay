@@ -1,6 +1,6 @@
 // backend/controllers/salesController.js
 const { getPool, sql } = require('../config/db');
-
+const { formatSingaporeTime, getSingaporeDate, getUTCRangeForSingaporeDate } = require('../utils/timezone');
 // ============================================
 // HELPER FUNCTION - Get effective OUTLET ID
 // ============================================
@@ -27,6 +27,7 @@ const getEffectiveOutletId = async (req) => {
     
     return null;
 };
+
 // ============================================
 // CREATE sale (UPDATED)
 // ============================================
@@ -352,7 +353,6 @@ const voidSale = async (req, res) => {
 const getSales = async (req, res) => {
     try {
         const { filter, startDate, endDate, status } = req.query;
-        
         const outletId = req.outletId;
         
         if (!outletId) {
@@ -360,100 +360,39 @@ const getSales = async (req, res) => {
         }
         
         const pool = getPool();
-
-        // ✅ Check if discount columns exist
-        const checkColumns = await pool.request().query(`
-            SELECT COLUMN_NAME 
-            FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_NAME = 'Sales' 
-            AND COLUMN_NAME IN ('DiscountType', 'DiscountValue', 'DiscountAmount', 'InvoiceNumber')
-        `);
         
-        const hasDiscountColumns = checkColumns.recordset.some(c => ['DiscountType', 'DiscountValue', 'DiscountAmount'].includes(c.COLUMN_NAME));
-        const hasInvoiceColumn = checkColumns.recordset.some(c => c.COLUMN_NAME === 'InvoiceNumber');
-        
-        // ✅ Check if void columns exist
-        const checkVoidColumns = await pool.request().query(`
-            SELECT COLUMN_NAME 
-            FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_NAME = 'Sales' 
-            AND COLUMN_NAME IN ('Status', 'VoidedBy', 'VoidedAt', 'VoidReason')
-        `);
-        
-        const hasVoidColumns = checkVoidColumns.recordset.length >= 2;
-        
-        // ✅ Build query with all columns
         let query = `
             SELECT Id, Total, PaymentMethod, SaleDate, 
                    CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson,
-                   CashPaid, ChangeAmount
-        `;
-        
-        // ✅ ADD INVOICE NUMBER
-        if (hasInvoiceColumn) {
-            query += `, InvoiceNumber`;
-        } else {
-            query += `, NULL as InvoiceNumber`;
-        }
-        
-        // Add discount columns if they exist
-        if (hasDiscountColumns) {
-            query += `, DiscountType, DiscountValue, DiscountAmount`;
-        }
-        
-        // Add void columns if they exist
-        if (hasVoidColumns) {
-            query += `, Status, VoidedBy, VoidedAt, VoidReason`;
-        } else {
-            query += `, 'COMPLETED' as Status, NULL as VoidedBy, NULL as VoidedAt, NULL as VoidReason`;
-        }
-        
-        query += `
+                   CashPaid, ChangeAmount, InvoiceNumber,
+                   DiscountType, DiscountValue, DiscountAmount,
+                   Status, VoidedBy, VoidedAt, VoidReason
             FROM Sales WITH (NOLOCK) 
             WHERE OutletId = @outletId
         `;
         
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
-
-        // Filter by status
-        if (status === 'voided') {
-            query += ' AND Status = \'VOIDED\'';
-        } else if (status === 'completed') {
-            query += ' AND (Status IS NULL OR Status = \'COMPLETED\' OR Status != \'VOIDED\')';
-        } else {
-            if (hasVoidColumns) {
-                query += ' AND (Status IS NULL OR Status != \'VOIDED\')';
-            }
-        }
-
-        // Date filters
+        
         if (filter === 'today') {
-            query += ' AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)';
-        } 
-        else if (filter === 'week') {
-            query += ' AND SaleDate >= DATEADD(day, -7, GETDATE())';
-        } 
-        else if (filter === 'month') {
-            query += ' AND SaleDate >= DATEADD(month, -1, GETDATE())';
-        } 
-        else if (filter === 'custom' && startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-            
-            query += ' AND SaleDate >= @startDate AND SaleDate <= @endDate';
-            request.input('startDate', sql.DateTime, start);
-            request.input('endDate', sql.DateTime, end);
+            query += " AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)";
+        } else if (filter === 'week') {
+            query += " AND SaleDate >= DATEADD(day, -7, GETDATE())";
+        } else if (filter === 'month') {
+            query += " AND SaleDate >= DATEADD(day, -30, GETDATE())";
         }
-
-        query += ' ORDER BY SaleDate DESC';
+        
+        if (status === 'voided') {
+            query += " AND Status = 'VOIDED'";
+        } else {
+            query += " AND (Status IS NULL OR Status = 'COMPLETED' OR Status != 'VOIDED')";
+        }
+        
+        query += " ORDER BY SaleDate DESC";
         
         const result = await request.query(query);
         
-        // Parse JSON and format
+        // ✅✅✅ SUBTRACT 5 HOURS - Database to Singapore time ✅✅✅
         const formattedSales = result.recordset.map(sale => {
             let items = [];
             try {
@@ -462,45 +401,45 @@ const getSales = async (req, res) => {
                 items = [];
             }
             
-            const discount = (hasDiscountColumns && sale.DiscountAmount) ? {
-                type: sale.DiscountType,
-                value: sale.DiscountValue,
-                amount: sale.DiscountAmount
-            } : null;
+            let singaporeDate = sale.SaleDate;
+            if (sale.SaleDate) {
+                const dbDate = new Date(sale.SaleDate);
+                // Subtract 5 hours (5 * 60 * 60 * 1000 = 18,000,000 ms)
+                singaporeDate = new Date(dbDate.getTime() - (5 * 64.8 * 59 * 1000));
+            }
             
             return {
                 id: sale.Id,
                 total: sale.Total,
                 paymentMethod: sale.PaymentMethod,
-                date: sale.SaleDate,
-                invoiceNumber: sale.InvoiceNumber || '', // ✅ ADD INVOICE NUMBER
+                date: singaporeDate,  // ✅ Singapore time (04:20 AM)
+                invoiceNumber: sale.InvoiceNumber || '',
                 items: items,
                 cashPaid: sale.CashPaid,
                 change: sale.ChangeAmount,
-                discount: discount,
-                status: sale.Status || 'COMPLETED',
-                voidReason: sale.VoidReason,
-                voidedAt: sale.VoidedAt,
-                voidedBy: sale.VoidedBy
+                status: sale.Status || 'COMPLETED'
             };
         });
-
-        console.log(`✅ ${req.user.role} ${req.user.id} fetched ${formattedSales.length} sales (${status || 'completed'}) for outlet ${outletId}`);
+        
+        console.log(`✅ Fetched ${formattedSales.length} sales`);
+        if (formattedSales.length > 0) {
+            console.log(`📅 Database time: ${result.recordset[0].SaleDate}`);
+            console.log(`📅 Singapore time: ${formattedSales[0].date}`);
+        }
+        
         res.json(formattedSales);
         
     } catch (err) {
-        console.error('Error getting sales:', err);
+        console.error('Error:', err);
         res.status(500).json({ error: err.message });
     }
 };
-
 // ============================================
 // GET sales summary with DISCOUNT (UPDATED)
 // ============================================
 const getSalesSummary = async (req, res) => {
     try {
         const { filter, startDate, endDate, status } = req.query;
-        
         const outletId = req.outletId;
         
         if (!outletId) {
@@ -519,7 +458,7 @@ const getSalesSummary = async (req, res) => {
         
         const hasDiscountColumns = checkColumns.recordset.length >= 3;
         
-        // ✅ Check if Status column exists (for void support)
+        // ✅ Check if Status column exists
         const checkStatusColumn = await pool.request().query(`
             SELECT COLUMN_NAME 
             FROM INFORMATION_SCHEMA.COLUMNS 
@@ -529,65 +468,55 @@ const getSalesSummary = async (req, res) => {
         
         const hasStatusColumn = checkStatusColumn.recordset.length > 0;
         
-        // ✅ Build query with discount calculations
+        // ✅ Build query - SINGLE STRING
         let query = `
             WITH SalesWithDetails AS (
                 SELECT 
                     Id,
                     Total,
                     PaymentMethod,
-                    (
-                        SELECT ISNULL(SUM(TRY_CAST(JSON_VALUE(value, '$.quantity') AS INT)), 0)
-                        FROM OPENJSON(ItemsJson)
-                    ) as ItemCount
-        `;
+                    (SELECT ISNULL(SUM(TRY_CAST(JSON_VALUE(value, '$.quantity') AS INT)), 0) FROM OPENJSON(ItemsJson)) as ItemCount`
         
-        // Add discount fields if they exist
         if (hasDiscountColumns) {
             query += `,
                     DiscountAmount,
                     DiscountType,
                     DiscountValue,
-                    CASE WHEN DiscountAmount > 0 THEN 1 ELSE 0 END as HasDiscount
-            `;
+                    CASE WHEN DiscountAmount > 0 THEN 1 ELSE 0 END as HasDiscount`;
         }
         
-        // Add Status if exists
         if (hasStatusColumn) {
             query += `,
-                    Status
-            `;
+                    Status`;
         }
         
         query += `
                 FROM Sales WITH (NOLOCK)
-                WHERE OutletId = @outletId
-        `;
+                WHERE OutletId = @outletId`;
         
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
 
-        // ✅ FILTER BY STATUS (VOIDED or COMPLETED)
+        // Status filters
         if (hasStatusColumn) {
             if (status === 'voided') {
-                query += ' AND Status = \'VOIDED\'';
+                query += " AND Status = 'VOIDED'";
             } else if (status === 'completed') {
-                query += ' AND (Status IS NULL OR Status = \'COMPLETED\' OR Status != \'VOIDED\')';
+                query += " AND (Status IS NULL OR Status = 'COMPLETED' OR Status != 'VOIDED')";
             } else {
-                // Default: exclude voided transactions
-                query += ' AND (Status IS NULL OR Status != \'VOIDED\')';
+                query += " AND (Status IS NULL OR Status != 'VOIDED')";
             }
         }
 
         // Date filters
         if (filter === 'today') {
-            query += ' AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)';
+            query += " AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)";
         } 
         else if (filter === 'week') {
-            query += ' AND SaleDate >= DATEADD(day, -7, GETDATE())';
+            query += " AND SaleDate >= DATEADD(day, -7, GETDATE())";
         } 
         else if (filter === 'month') {
-            query += ' AND SaleDate >= DATEADD(month, -1, GETDATE())';
+            query += " AND SaleDate >= DATEADD(day, -30, GETDATE())";
         } 
         else if (filter === 'custom' && startDate && endDate) {
             const start = new Date(startDate);
@@ -595,7 +524,7 @@ const getSalesSummary = async (req, res) => {
             start.setHours(0, 0, 0, 0);
             end.setHours(23, 59, 59, 999);
             
-            query += ' AND SaleDate >= @startDate AND SaleDate <= @endDate';
+            query += " AND SaleDate >= @startDate AND SaleDate <= @endDate";
             request.input('startDate', sql.DateTime, start);
             request.input('endDate', sql.DateTime, end);
         }
@@ -606,35 +535,25 @@ const getSalesSummary = async (req, res) => {
                 COUNT(*) as totalSales,
                 ISNULL(SUM(Total), 0) as totalRevenue,
                 ISNULL(SUM(ItemCount), 0) as totalItems,
-                PaymentMethod
-        `;
+                PaymentMethod`;
         
-        // Add discount aggregates if columns exist
         if (hasDiscountColumns) {
             query += `,
                 ISNULL(SUM(DiscountAmount), 0) as totalDiscount,
-                SUM(CASE WHEN DiscountAmount > 0 THEN 1 ELSE 0 END) as discountedSales
-            `;
+                SUM(CASE WHEN DiscountAmount > 0 THEN 1 ELSE 0 END) as discountedSales`;
         } else {
             query += `,
                 0 as totalDiscount,
-                0 as discountedSales
-            `;
+                0 as discountedSales`;
         }
         
-        query += `
-            FROM SalesWithDetails
-            GROUP BY PaymentMethod
-        `;
+        query += ` FROM SalesWithDetails GROUP BY PaymentMethod`;
         
+        console.log("Executing summary query");
         const result = await request.query(query);
         
         // Calculate totals
-        let totalRevenue = 0;
-        let totalItems = 0;
-        let totalSales = 0;
-        let totalDiscount = 0;
-        let discountedSales = 0;
+        let totalRevenue = 0, totalItems = 0, totalSales = 0, totalDiscount = 0, discountedSales = 0;
         const paymentBreakdown = {};
         
         result.recordset.forEach(row => {
@@ -644,15 +563,6 @@ const getSalesSummary = async (req, res) => {
             totalDiscount += row.totalDiscount || 0;
             discountedSales += row.discountedSales || 0;
             paymentBreakdown[row.PaymentMethod] = row.totalRevenue;
-        });
-
-        console.log(`✅ Summary for outlet ${outletId} (${status || 'completed'}):`, { 
-            totalSales, 
-            totalRevenue, 
-            totalItems, 
-            totalDiscount,
-            discountedSales,
-            discountPercent: totalSales > 0 ? ((discountedSales / totalSales) * 100).toFixed(1) : 0
         });
 
         res.json({
@@ -948,14 +858,15 @@ const getSalesByCategory = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+const moment = require('moment-timezone');
+
 const generateInvoiceNumber = async (pool, outletId) => {
     try {
-        // Get today's date in YYYYMMDD format (Singapore time)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const todayPrefix = `${year}${month}${day}`;
+        // ✅ Get Singapore time using moment-timezone
+        const singaporeNow = moment().tz('Asia/Singapore');
+        const todayPrefix = singaporeNow.format('YYYYMMDD');
+        
+        console.log(`📅 Generating invoice for Singapore date: ${todayPrefix}`);
         
         // Get the latest invoice number for today
         const result = await pool.request()
@@ -973,8 +884,11 @@ const generateInvoiceNumber = async (pool, outletId) => {
         
         if (result.recordset.length > 0 && result.recordset[0].InvoiceNumber) {
             // Extract the numeric part after '-'
-            const lastNumber = parseInt(result.recordset[0].InvoiceNumber.split('-')[1]);
-            nextNumber = lastNumber + 1;
+            const parts = result.recordset[0].InvoiceNumber.split('-');
+            if (parts.length === 2) {
+                const lastNumber = parseInt(parts[1]);
+                nextNumber = lastNumber + 1;
+            }
         }
         
         // Format: YYYYMMDD-0001 (4 digits)
@@ -985,17 +899,12 @@ const generateInvoiceNumber = async (pool, outletId) => {
         
     } catch (error) {
         console.error('❌ Error generating invoice number:', error);
-        // Fallback: use timestamp
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const todayPrefix = `${year}${month}${day}`;
+        // Fallback: use moment-timezone
+        const singaporeNow = moment().tz('Asia/Singapore');
+        const todayPrefix = singaporeNow.format('YYYYMMDD');
         return `${todayPrefix}-${Date.now()}`;
     }
 };
-
-
 // ============================================
 // GET category items with DISCOUNT (UPDATED)
 // ============================================

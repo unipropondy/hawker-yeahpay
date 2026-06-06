@@ -208,24 +208,53 @@ private static escapeHtml(str: string): string {
         .replace(/'/g, '&#39;');
 }
   // ✅ GENERATE HTML WITH DISCOUNT SUPPORT
-  static async generateHTML(saleData: any, userId?: string | number, discountInfo?: DiscountInfo): Promise<string> {
+ static async generateHTML(saleData: any, userId?: string | number, discountInfo?: DiscountInfo): Promise<string> {
     const company = await this.loadSettings(userId);
     
-    const date = new Date();
+    // ✅ FIX: Get discount from saleData if discountInfo not provided
+    let finalDiscountInfo = discountInfo;
     
-    // ✅ USE THE INVOICE NUMBER FROM DATABASE
-    // If saleData has invoiceNumber, use it; otherwise generate fallback
-    const billNo = saleData.invoiceNumber || `INV-${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}-${Math.floor(1000 + Math.random()*9000)}`;
+    if (!finalDiscountInfo && saleData.discount) {
+        // Get discount from sale data (for reprints)
+        finalDiscountInfo = {
+            applied: true,
+            type: saleData.discount.type || 'percentage',
+            value: saleData.discount.value || 0,
+            amount: saleData.discount.amount || 0
+        };
+        console.log('📋 Using discount from saleData:', finalDiscountInfo);
+    }
+    
+    // ✅ Also check saleData.discountAmount for direct field
+    if (!finalDiscountInfo && saleData.discountAmount && saleData.discountAmount > 0) {
+        finalDiscountInfo = {
+            applied: true,
+            type: saleData.discountType || 'percentage',
+            value: saleData.discountValue || 0,
+            amount: saleData.discountAmount
+        };
+        console.log('📋 Using discount from saleData fields:', finalDiscountInfo);
+    }
+    
+    const saleDate = saleData.originalDate ? new Date(saleData.originalDate) : 
+                     saleData.date ? new Date(saleData.date) : 
+                     new Date();
+    
+    const isReprint = saleData.isReprint === true;
+    const billNo = saleData.invoiceNumber || `INV-${saleDate.getFullYear()}${(saleDate.getMonth()+1).toString().padStart(2,'0')}${saleDate.getDate().toString().padStart(2,'0')}-${Math.floor(1000 + Math.random()*9000)}`;
     
     const hasGST = company.gstPercentage > 0;
     const gstRate = company.gstPercentage || 9;
-    const finalTotal = saleData.total;
+    let finalTotal = saleData.total;
+    
+    // ✅ If discount applied, finalTotal already discounted
+    // But we need original total for display
+    const hasDiscount = finalDiscountInfo?.applied && finalDiscountInfo.amount > 0;
+    const originalTotal = hasDiscount ? finalTotal + finalDiscountInfo.amount : finalTotal;
+    
     const gstAmount = hasGST ? finalTotal * (gstRate / (100 + gstRate)) : 0;
     const amountWithoutGST = hasGST ? finalTotal - gstAmount : finalTotal;
     const currencySymbol = company.currencySymbol || '$';
-    
-    const hasDiscount = discountInfo?.applied && discountInfo.amount > 0;
-    const originalTotal = hasDiscount ? finalTotal + discountInfo.amount : finalTotal;
     
     const companyLogoUrl = company.companyLogo || '';
     const halalLogoUrl = company.halalLogo || '';
@@ -281,17 +310,31 @@ private static escapeHtml(str: string): string {
           .company-logo { width: 40px; height: 40px; object-fit: contain; }
           .halal-logo { width: 35px; height: 35px; object-fit: contain; }
           
-          .shop-info { text-align: center; flex: 1; }
-          .shop-name { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-          .shop-address { font-size: 10px; font-weight: 700; line-height: 1.3;white-space: pre-line; }
-          .gst-no { font-size: 10px; font-weight: 700; background: #f0f0f0; padding: 1mm; margin: 2mm 0; }
-          .contact { font-size: 9px; font-weight: 700; }
+          .shop-info { text-align: center; flex: 1;font-family: monospace; }
+          .shop-name { font-size: 18px; font-weight: 900; text-transform: uppercase; font-family: monospace;letter-spacing: 1px; }
+          .shop-address { font-size: 10px; font-weight: 700; line-height: 1.3;font-family: monospace;white-space: pre-line; }
+          .gst-no { font-size: 10px; font-weight: 700; background: #f0f0f0;font-family: monospace; padding: 1mm; margin: 2mm 0; }
+          .contact { font-size: 9px; font-weight: 700;font-family: monospace; }
+          
+          /* Reprint Indicator */
+          .reprint-indicator {
+            text-align: center;
+            margin: 2mm 0;
+            padding: 1mm;
+            background: #f0f0f0;
+            border: 1px dashed #000;
+          }
+          .reprint-text {
+            font-size: 10px;
+            font-weight: bold;
+          }
           
           /* Bill Details */
           .bill-details {
             margin-bottom: 4mm;
             font-size: 11px;
             font-weight: 700;
+            
           }
           
           .bill-box {
@@ -299,6 +342,7 @@ private static escapeHtml(str: string): string {
             padding: 2mm;
             margin-bottom: 2mm;
             background: #f9f9f9;
+            
           }
           
           .detail-row {
@@ -306,10 +350,11 @@ private static escapeHtml(str: string): string {
             justify-content: space-between;
             margin-bottom: 2px;
             font-weight: 700;
+            
           }
           
-          .detail-label { font-weight: 800; }
-          .detail-value { font-weight: 700; font-family: monospace; letter-spacing: 0.5px; }
+          .detail-label { font-weight: 800; font-family: monospace; letter-spacing: 0.5px; }
+          .detail-value { font-weight: 800; font-family: monospace; letter-spacing: 0.5px; }
           
           /* Items Table */
           .items-table {
@@ -317,11 +362,13 @@ private static escapeHtml(str: string): string {
             border-collapse: collapse;
             margin-bottom: 4mm;
             font-size: 11px;
-            font-weight: 700;
+            font-family: monospace;
+            font-weight: 800;
           }
           
           .items-table th {
             font-weight: 800;
+            font-family: monospace;
             text-align: center;
             padding: 2mm 1mm;
             border-bottom: 2px solid #000;
@@ -335,13 +382,14 @@ private static escapeHtml(str: string): string {
           .items-table td {
             padding: 1.5mm 1mm;
             border-bottom: 1px dashed #ccc;
-            font-weight: 700;
+            font-weight: 800;
+            font-family: monospace;
           }
           
-          .item-name { text-align: left; font-weight: 700; max-width: 35mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .item-qty { text-align: center; font-weight: 800; }
-          .item-price { text-align: right; font-weight: 700; }
-          .item-total { text-align: right; font-weight: 800; }
+          .item-name { text-align: left; font-weight: 900; max-width: 35mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .item-qty { text-align: center; font-weight: 900;font-family: monospace; }
+          .item-price { text-align: right; font-weight: 900;font-family: monospace; }
+          .item-total { text-align: right; font-weight: 900;font-family: monospace; }
           
           /* Discount Section */
           .discount-section {
@@ -349,20 +397,23 @@ private static escapeHtml(str: string): string {
             padding: 2mm;
             border: 1px solid #000;
             background: #f9f9f9;
+            font-family: monospace;
           }
           
-          .discount-title { font-size: 11px; font-weight: 800; text-align: center; margin-bottom: 2mm; }
+          .discount-title { font-size: 11px; font-weight: 800;font-family: monospace; text-align: center; margin-bottom: 2mm; }
           .discount-row, .original-row {
             display: flex;
             justify-content: space-between;
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 800;
+            font-family: monospace;
           }
           
           /* Totals */
           .totals {
             margin-bottom: 4mm;
-            font-weight: 700;
+            font-weight: 900;
+            font-family: monospace;
           }
           
           .total-row {
@@ -370,7 +421,8 @@ private static escapeHtml(str: string): string {
             justify-content: space-between;
             margin-bottom: 2px;
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 900;
+            font-family: monospace;
           }
           
           .grand-total {
@@ -381,12 +433,14 @@ private static escapeHtml(str: string): string {
             border-top: 2px solid #000;
             font-weight: 800;
             font-size: 14px;
+            font-family: monospace;
           }
           
           /* Payment Info */
           .payment-info {
             margin-bottom: 4mm;
             font-weight: 700;
+            font-family: monospace;
           }
           
           .payment-row {
@@ -395,20 +449,22 @@ private static escapeHtml(str: string): string {
             margin-bottom: 2px;
             font-size: 11px;
             font-weight: 700;
+            font-family: monospace;
           }
           
-          .payment-label { font-weight: 800; }
-          .payment-value { font-weight: 700; }
+          .payment-label { font-weight: 700; font-family: monospace; letter-spacing: 0.5px; }
+          .payment-value { font-weight: 700; font-family: monospace; letter-spacing: 0.5px; }
           
           /* Footer */
           .footer {
             text-align: center;
             padding-top: 3mm;
             border-top: 2px solid #000;
+            font-family: monospace;
           }
           
-          .thankyou { font-size: 14px; font-weight: 800; margin-bottom: 2mm; }
-          .copyright { font-size: 12px; font-weight: 900; color: #000; }
+          .thankyou { font-size: 14px; font-weight: 800;font-family: monospace; margin-bottom: 2mm; }
+          .copyright { font-size: 12px; font-weight: 900;font-family: monospace; color: #000; }
         </style>
       </head>
       <body>
@@ -432,7 +488,9 @@ private static escapeHtml(str: string): string {
             }
           </div>
           
-          <!-- Bill Details - WITH INVOICE NUMBER FROM DATABASE -->
+        
+          
+          <!-- Bill Details - WITH ORIGINAL SALE DATE -->
           <div class="bill-details">
             <div class="bill-box">
               <div class="detail-row">
@@ -441,10 +499,14 @@ private static escapeHtml(str: string): string {
               </div>
             </div>
             
+            <!-- ✅ ORIGINAL SALE DATE -->
             <div class="detail-row">
               <span class="detail-label">DATE:</span>
-              <span class="detail-value">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</span>
+              <span class="detail-value">${saleDate.toLocaleDateString()} ${saleDate.toLocaleTimeString()}</span>
             </div>
+            
+            
+          
             
             ${company.cashierName ? `
             <div class="detail-row">
@@ -462,7 +524,7 @@ private static escapeHtml(str: string): string {
             <tbody>${itemsHTML}</tbody>
            </table>
           
-          <!-- Discount Section -->
+                <!-- ✅ Discount Section -->
           ${hasDiscount ? `
           <div class="discount-section">
             <div class="discount-title">🏷️ DISCOUNT APPLIED</div>
@@ -471,29 +533,31 @@ private static escapeHtml(str: string): string {
               <span>${currencySymbol}${originalTotal.toFixed(2)}</span>
             </div>
             <div class="discount-row">
-              <span>Discount (${discountInfo?.type === 'percentage' ? `${discountInfo?.value}%` : 'Fixed'}):</span>
-              <span>-${currencySymbol}${discountInfo?.amount.toFixed(2)}</span>
+              <span>Discount (${finalDiscountInfo?.type === 'percentage' ? `${finalDiscountInfo?.value}%` : 'Fixed'}):</span>
+              <span>-${currencySymbol}${finalDiscountInfo?.amount.toFixed(2)}</span>
             </div>
           </div>
           ` : ''}
+
           
           <!-- Totals -->
           <div class="totals">
-    <div class="total-row">
-        <span>${hasGST ? 'Sub Total (without GST):' : 'Sub Total:'}</span>
-        <span>${currencySymbol}${hasGST ? amountWithoutGST.toFixed(2) : finalTotal.toFixed(2)}</span>
-    </div>
-    ${hasGST ? `
-    <div class="total-row">
-        <span>GST (${gstRate}%):</span>
-        <span>${currencySymbol}${gstAmount.toFixed(2)}</span>
-    </div>
-    ` : ''}
-    <div class="grand-total">
-        <span>${hasGST ? 'GRAND TOTAL (incl GST):' : 'GRAND TOTAL:'}</span>
-        <span>${currencySymbol}${finalTotal.toFixed(2)}</span>
-    </div>
-</div>
+            <div class="total-row">
+              <span>${hasGST ? 'Sub Total (without GST):' : 'Sub Total:'}</span>
+              <span>${currencySymbol}${hasGST ? amountWithoutGST.toFixed(2) : finalTotal.toFixed(2)}</span>
+            </div>
+            ${hasGST ? `
+            <div class="total-row">
+              <span>GST (${gstRate}%):</span>
+              <span>${currencySymbol}${gstAmount.toFixed(2)}</span>
+            </div>
+            ` : ''}
+            <div class="grand-total">
+              <span>${hasGST ? 'GRAND TOTAL (incl GST):' : 'GRAND TOTAL:'}</span>
+              <span>${currencySymbol}${finalTotal.toFixed(2)}</span>
+            </div>
+          </div>
+          
           <!-- Payment Info -->
           <div class="payment-info">
             <div class="payment-row">
@@ -523,7 +587,6 @@ private static escapeHtml(str: string): string {
       </html>
     `;
 }
-
   // ✅ Updated generatePDF with discount support
   static async generatePDF(saleData: any, userId?: string | number, discountInfo?: DiscountInfo): Promise<string> {
     try {

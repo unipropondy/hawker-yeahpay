@@ -25,6 +25,9 @@ const userRoutes = require('./routes/userRoutes');
 const paynowRoutes = require('./routes/paynowRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
 const cashDrawerRoutes = require('./routes/cashDrawerRoutes');
+const outletRoutes = require('./routes/outletRoutes');
+const yeahpayRoutes = require('./routes/yeahpayRoutes');
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -43,18 +46,21 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
+app.set('trust proxy', 1);
 const apiLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute (reduced from 15 min)
-    max: 60, // 60 requests per minute (increased)
+    windowMs: 60 * 1000,
+    max: 60,
     message: { error: 'Too many requests, please try again later.' },
-    skipSuccessfulRequests: true, // Don't count successful requests
+    skipSuccessfulRequests: true,
+    validate: false  // ✅ Suppress the warning
 });
 
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10, // Increased from 5
+    max: 10,
     skipSuccessfulRequests: true,
-    message: { error: 'Too many login attempts' }
+    message: { error: 'Too many login attempts' },
+    validate: false  // ✅ Suppress the warning
 });
 
 // ✅ FIXED SLOW DOWN (YOUR MAIN CHANGE)
@@ -218,7 +224,8 @@ app.use('/api/user', authenticateToken, apiLimiter, paynowRoutes);
 app.use('/api/owner', authenticateToken, ownerRoutes);
 app.use('/api/cash-drawer', cashDrawerRoutes);
 app.use('/api', authenticateToken, updateSessionActivity);
-
+app.use('/api/outlet', authenticateToken, outletRoutes);
+app.use('/api/yeahpay', authenticateToken, yeahpayRoutes);
 // Add near the top after middleware
 app.get('/health', (req, res) => {
     res.json({ 
@@ -235,6 +242,20 @@ app.get('/', (req, res) => {
         message: 'POS Backend API',
         version: '1.0.0',
         status: 'running'
+    });
+});
+// Get current Singapore time
+app.get('/api/singapore-time', (req, res) => {
+    const { formatSingaporeTime, getCurrentSingaporeTime } = require('./utils/timezone');
+    const now = getCurrentSingaporeTime();
+    res.json({
+        success: true,
+        utc: new Date().toISOString(),
+        singapore: now.format('YYYY-MM-DD HH:mm:ss'),
+        singaporeDate: now.format('YYYY-MM-DD'),
+        singaporeTime: now.format('HH:mm:ss'),
+        timezone: 'Asia/Singapore',
+        offset: '+08:00'
     });
 });
 const getOwnerId = async (userId) => {

@@ -7,6 +7,8 @@ import {
     TextInput,
     TouchableOpacity,
     Modal,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,197 +86,224 @@ const DiscountInput: React.FC<DiscountInputProps> = ({
     const quickPercentages = [5, 10, 15, 20, 25, 50];
     const quickFixed = [5, 10, 20, 50, 100];
 
-    return (
+ return (
         <Modal
             visible={visible}
             transparent={true}
             animationType="slide"
             onRequestClose={handleCancel}
         >
-            <View style={styles.modalOverlay}>
-                <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-                    
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <Text style={[styles.title, { color: theme.text }]}>
-                            🏷️ {t.applyDiscount || 'Apply Discount'}
-                        </Text>
-                        <TouchableOpacity onPress={handleCancel}>
-                            <Ionicons name="close" size={24} color={theme.text} />
-                        </TouchableOpacity>
-                    </View>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.keyboardView}
+            >
+                <View style={styles.modalOverlay}>
+                    {/* ✅ ADD SCROLLVIEW HERE */}
+                    <ScrollView
+                        style={styles.modalScrollView}
+                        contentContainerStyle={styles.modalScrollContent}
+                        showsVerticalScrollIndicator={true}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+                            
+                            {/* Header */}
+                            <View style={styles.header}>
+                                <Text style={[styles.title, { color: theme.text }]}>
+                                    🏷️ {t.applyDiscount || 'Apply Discount'}
+                                </Text>
+                                <TouchableOpacity onPress={handleCancel}>
+                                    <Ionicons name="close" size={24} color={theme.text} />
+                                </TouchableOpacity>
+                            </View>
 
-                    {/* Current Total */}
-                    <View style={[styles.totalContainer, { backgroundColor: theme.surface }]}>
-                        <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>
-                            {t.currentTotal || 'Current Total'}
-                        </Text>
-                        <Text style={[styles.totalValue, { color: theme.primary }]}>
-                            {formatPrice(currentTotal)}
-                        </Text>
-                    </View>
+                            {/* Current Total */}
+                            <View style={[styles.totalContainer, { backgroundColor: theme.surface }]}>
+                                <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>
+                                    {t.currentTotal || 'Current Total'}
+                                </Text>
+                                <Text style={[styles.totalValue, { color: theme.primary }]}>
+                                    {formatPrice(currentTotal)}
+                                </Text>
+                            </View>
 
-                    {/* Discount Type Selector */}
-                    <View style={styles.typeSelector}>
-                        <TouchableOpacity
-                            style={[
-                                styles.typeButton,
-                                { 
-                                    backgroundColor: discountType === 'percentage' 
-                                        ? theme.primary 
-                                        : theme.surface,
-                                    borderColor: theme.border
-                                }
-                            ]}
-                            onPress={() => setDiscountType('percentage')}
-                        >
-                            <Text style={[
-                                styles.typeButtonText,
-                                { color: discountType === 'percentage' ? '#fff' : theme.text }
-                            ]}>
-                                {t.percentage || 'Percentage'} (%)
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[
-                                styles.typeButton,
-                                { 
-                                    backgroundColor: discountType === 'fixed' 
-                                        ? theme.primary 
-                                        : theme.surface,
-                                    borderColor: theme.border
-                                }
-                            ]}
-                            onPress={() => setDiscountType('fixed')}
-                        >
-                            <Text style={[
-                                styles.typeButtonText,
-                                { color: discountType === 'fixed' ? '#fff' : theme.text }
-                            ]}>
-                                {t.fixedAmount || 'Fixed Amount'} ($)
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Input Field */}
-                    <View style={styles.inputContainer}>
-                        <Text style={[styles.inputLabel, { color: theme.text }]}>
-                            {discountType === 'percentage' 
-                                ? (t.discountPercentage || 'Discount %') 
-                                : (t.discountAmount || 'Discount Amount')}
-                        </Text>
-                        <View style={[styles.inputWrapper, { borderColor: theme.primary }]}>
-                            <Text style={[styles.inputSymbol, { color: theme.primary }]}>
-                                {discountType === 'percentage' ? '%' : '$'}
-                            </Text>
-                            <TextInput
-                                style={[styles.input, { color: theme.text }]}
-                                placeholder="0"
-                                placeholderTextColor={theme.textSecondary}
-                                keyboardType="numeric"
-                                value={inputValue}
-                                onChangeText={setInputValue}
-                                autoFocus={true}
-                            />
-                        </View>
-                    </View>
-
-                    {/* Quick Amounts */}
-                    <View style={styles.quickContainer}>
-                        <Text style={[styles.quickLabel, { color: theme.textSecondary }]}>
-                            {t.quickSelect || 'Quick Select'}
-                        </Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <View style={styles.quickButtons}>
-                                {(discountType === 'percentage' ? quickPercentages : quickFixed).map(value => (
-                                    <TouchableOpacity
-                                        key={value}
-                                        style={[styles.quickBtn, { 
-                                            backgroundColor: theme.surface,
+                            {/* Discount Type Selector */}
+                            <View style={styles.typeSelector}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.typeButton,
+                                        { 
+                                            backgroundColor: discountType === 'percentage' 
+                                                ? theme.primary 
+                                                : theme.surface,
                                             borderColor: theme.border
-                                        }]}
-                                        onPress={() => setInputValue(value.toString())}
-                                    >
-                                        <Text style={[styles.quickBtnText, { color: theme.text }]}>
-                                            {discountType === 'percentage' ? `${value}%` : formatPrice(value)}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </ScrollView>
-                    </View>
+                                        }
+                                    ]}
+                                    onPress={() => setDiscountType('percentage')}
+                                >
+                                    <Text style={[
+                                        styles.typeButtonText,
+                                        { color: discountType === 'percentage' ? '#fff' : theme.text }
+                                    ]}>
+                                        {t.percentage || 'Percentage'} (%)
+                                    </Text>
+                                </TouchableOpacity>
 
-                    {/* Discount Preview */}
-                    {inputValue && !isNaN(parseFloat(inputValue)) && parseFloat(inputValue) > 0 && (
-                        <View style={[styles.previewContainer, { backgroundColor: theme.success + '20' }]}>
-                            <View style={styles.previewRow}>
-                                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>
-                                    {t.discountAmount || 'Discount Amount'}:
-                                </Text>
-                                <Text style={[styles.previewValue, { color: theme.danger }]}>
-                                    -{formatPrice(calculatedDiscount)}
-                                </Text>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.typeButton,
+                                        { 
+                                            backgroundColor: discountType === 'fixed' 
+                                                ? theme.primary 
+                                                : theme.surface,
+                                            borderColor: theme.border
+                                        }
+                                    ]}
+                                    onPress={() => setDiscountType('fixed')}
+                                >
+                                    <Text style={[
+                                        styles.typeButtonText,
+                                        { color: discountType === 'fixed' ? '#fff' : theme.text }
+                                    ]}>
+                                        {t.fixedAmount || 'Fixed Amount'} ($)
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
-                            <View style={styles.previewRow}>
-                                <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>
-                                    {t.finalTotal || 'Final Total'}:
+
+                            {/* Input Field */}
+                            <View style={styles.inputContainer}>
+                                <Text style={[styles.inputLabel, { color: theme.text }]}>
+                                    {discountType === 'percentage' 
+                                        ? (t.discountPercentage || 'Discount %') 
+                                        : (t.discountAmount || 'Discount Amount')}
                                 </Text>
-                                <Text style={[styles.previewValue, { color: theme.success, fontWeight: '700' }]}>
-                                    {formatPrice(finalTotal)}
+                                <View style={[styles.inputWrapper, { borderColor: theme.primary }]}>
+                                    <Text style={[styles.inputSymbol, { color: theme.primary }]}>
+                                        {discountType === 'percentage' ? '%' : '$'}
+                                    </Text>
+                                    <TextInput
+                                        style={[styles.input, { color: theme.text }]}
+                                        placeholder="0"
+                                        placeholderTextColor={theme.textSecondary}
+                                        keyboardType="numeric"
+                                        value={inputValue}
+                                        onChangeText={setInputValue}
+                                        autoFocus={true}
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Quick Amounts */}
+                            <View style={styles.quickContainer}>
+                                <Text style={[styles.quickLabel, { color: theme.textSecondary }]}>
+                                    {t.quickSelect || 'Quick Select'}
                                 </Text>
+                                <ScrollView 
+                                    horizontal 
+                                    showsHorizontalScrollIndicator={true}
+                                    contentContainerStyle={styles.quickScrollContent}
+                                >
+                                    {(discountType === 'percentage' ? quickPercentages : quickFixed).map(value => (
+                                        <TouchableOpacity
+                                            key={value}
+                                            style={[styles.quickBtn, { 
+                                                backgroundColor: theme.surface,
+                                                borderColor: theme.border
+                                            }]}
+                                            onPress={() => setInputValue(value.toString())}
+                                        >
+                                            <Text style={[styles.quickBtnText, { color: theme.text }]}>
+                                                {discountType === 'percentage' ? `${value}%` : formatPrice(value)}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+
+                            {/* Discount Preview */}
+                            {inputValue && !isNaN(parseFloat(inputValue)) && parseFloat(inputValue) > 0 && (
+                                <View style={[styles.previewContainer, { backgroundColor: theme.success + '20' }]}>
+                                    <View style={styles.previewRow}>
+                                        <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>
+                                            {t.discountAmount || 'Discount Amount'}:
+                                        </Text>
+                                        <Text style={[styles.previewValue, { color: theme.danger }]}>
+                                            -{formatPrice(calculatedDiscount)}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.previewRow}>
+                                        <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>
+                                            {t.finalTotal || 'Final Total'}:
+                                        </Text>
+                                        <Text style={[styles.previewValue, { color: theme.success, fontWeight: '700' }]}>
+                                            {formatPrice(finalTotal)}
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Buttons */}
+                            <View style={styles.buttonContainer}>
+                                <TouchableOpacity
+                                    style={[styles.button, styles.cancelButton, { 
+                                        borderColor: theme.border,
+                                        backgroundColor: theme.surface
+                                    }]}
+                                    onPress={handleCancel}
+                                >
+                                    <Text style={[styles.cancelButtonText, { color: theme.text }]}>
+                                        {t.cancel || 'Cancel'}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[
+                                        styles.button, 
+                                        styles.applyButton, 
+                                        { backgroundColor: theme.primary },
+                                        (!inputValue || parseFloat(inputValue) <= 0) && { opacity: 0.5 }
+                                    ]}
+                                    onPress={handleApply}
+                                    disabled={!inputValue || parseFloat(inputValue) <= 0}
+                                >
+                                    <Text style={styles.applyButtonText}>
+                                        {t.apply || 'Apply'}
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
-                    )}
-
-                    {/* Buttons */}
-                    <View style={styles.buttonContainer}>
-                        <TouchableOpacity
-                            style={[styles.button, styles.cancelButton, { 
-                                borderColor: theme.border,
-                                backgroundColor: theme.surface
-                            }]}
-                            onPress={handleCancel}
-                        >
-                            <Text style={[styles.cancelButtonText, { color: theme.text }]}>
-                                {t.cancel || 'Cancel'}
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[
-                                styles.button, 
-                                styles.applyButton, 
-                                { backgroundColor: theme.primary },
-                                (!inputValue || parseFloat(inputValue) <= 0) && { opacity: 0.5 }
-                            ]}
-                            onPress={handleApply}
-                            disabled={!inputValue || parseFloat(inputValue) <= 0}
-                        >
-                            <Text style={styles.applyButtonText}>
-                                {t.apply || 'Apply'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
+                    </ScrollView>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
 
 const styles = StyleSheet.create({
+    keyboardView: {
+        flex: 1,
+    },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    modalScrollView: {
+        width: '100%',
+        maxHeight: '90%',  // ✅ Limit height
+    },
+    modalScrollContent: {
+        flexGrow: 1,
+        justifyContent: 'center',
         padding: 20,
     },
     modalContent: {
-        width: '90%',
+        width: '100%',
         maxWidth: 400,
         borderRadius: 20,
         padding: 20,
+        alignSelf: 'center',
     },
     header: {
         flexDirection: 'row',
@@ -348,9 +377,10 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginBottom: 8,
     },
-    quickButtons: {
-        flexDirection: 'row',
+    quickScrollContent: {
+        paddingHorizontal: 4,
         gap: 8,
+        flexDirection: 'row',
     },
     quickBtn: {
         paddingHorizontal: 16,
@@ -384,6 +414,7 @@ const styles = StyleSheet.create({
     buttonContainer: {
         flexDirection: 'row',
         gap: 12,
+        marginBottom: 10,
     },
     button: {
         flex: 1,

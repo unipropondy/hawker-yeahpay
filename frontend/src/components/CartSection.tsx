@@ -95,7 +95,15 @@ export const CartSection: React.FC<CartSectionProps> = ({
           </View>
         </View>
         
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.cartItems}>
+       <ScrollView 
+  showsVerticalScrollIndicator={true}
+  style={[styles.cartItems, { flex: 1 }]}
+  contentContainerStyle={{ 
+    paddingBottom: 20,
+    flexGrow: 1 
+  }}
+>
+
           {cart.map(item => {
             const itemKey = item.isOpenPrice ? `${item.id}-${item.price}` : `${item.id}`;
             
@@ -492,6 +500,7 @@ export const CartSection: React.FC<CartSectionProps> = ({
 const styles = StyleSheet.create({
   cartContainer: { 
     flex: 1,
+    height: '100%',  // ✅ Full height for landscape
   },
   cartHeader: { 
     flexDirection: 'row', 
@@ -502,6 +511,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderBottomWidth: 1, 
     minHeight: 40,
+    flexShrink: 0,  // ✅ Don't shrink header
   },
   headerRight: {
     flexDirection: 'row',
@@ -531,6 +541,7 @@ const styles = StyleSheet.create({
   cartItems: { 
     flex: 1, 
     paddingHorizontal: 6,
+    maxHeight: '100%',  // ✅ Limit height
   },
   cartItem: { 
     paddingVertical: 8,
@@ -644,6 +655,7 @@ const styles = StyleSheet.create({
   cartFooter: { 
     padding: 10, 
     borderTopWidth: 1,
+    flexShrink: 0,  // ✅ Don't shrink footer
   },
   totalRow: { 
     flexDirection: 'row', 

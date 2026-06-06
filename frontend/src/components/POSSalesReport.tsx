@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import VoidPasswordSettings from './VoidPasswordSettings';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CashDrawerLogs from './CashDrawerLogs'; 
+import BillPDFGenerator from './BillPDFGenerator';
 interface CategorySummary {
   totalRevenue: number;
   totalTransactions: number;
@@ -65,7 +66,8 @@ const POSSalesReport: React.FC<Props> = ({
   const prevStartRef = useRef(startDate);
   const prevEndRef = useRef(endDate);
   const loadTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
+  const [reprinting, setReprinting] = useState(false);
+const [reprintSale, setReprintSale] = useState<any>(null);
   const filterMap = {
     'Today': 'today',
     'Week': 'week',
@@ -157,6 +159,85 @@ const [cashDrawerToggle, setCashDrawerToggle] = useState(false);
   };
   loadToggleState();
 }, []);
+const handleReprintVoidedSale = async (sale: any) => {
+    console.log('🖨️ Reprinting voided sale:', sale.id);
+    
+    setReprinting(true);
+    setReprintSale(sale);
+    
+    try {
+        // ✅ Get outlet ID
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        
+        // ✅ Prepare sale data for reprint with ORIGINAL DATE
+        const reprintData = {
+            id: sale.id,
+            total: sale.total,
+            paymentMethod: sale.paymentMethod,
+            items: sale.items || [],
+            invoiceNumber: sale.invoiceNumber,
+            originalDate: sale.date,  // ✅ ORIGINAL sale date for receipt
+            date: sale.date,          // ✅ Keep for compatibility
+            // ✅ Add void info for reference
+            voidReason: sale.voidReason,
+            voidedAt: sale.voidedAt,
+            voidedBy: sale.voidedBy,
+            // ✅ Include original discount if any
+            discount: sale.discount,
+            isReprint: true           // ✅ Mark as reprint
+        };
+        
+        console.log('🖨️ Reprint data:', {
+            invoiceNumber: reprintData.invoiceNumber,
+            originalDate: reprintData.originalDate,
+            isReprint: reprintData.isReprint
+        });
+        
+        // ✅ Create discount info object
+        const discountInfo = sale.discount ? {
+            applied: true,
+            type: sale.discount.type || 'percentage',
+            value: sale.discount.value || 0,
+            amount: sale.discount.amount || 0
+        } : undefined;
+        
+        // ✅ Print using UniversalPrinter (pass isReprint flag)
+        const printed = await UniversalPrinter.smartPrint(
+            reprintData,
+            outletId,
+            t,
+            discountInfo,
+            undefined,  // preferredType
+            true        // isReprint = true
+        );
+        
+        if (printed) {
+            Alert.alert(
+                '✅ Reprint Success',
+                `Bill #${sale.invoiceNumber || sale.id} reprinted successfully!`
+            );
+        } else {
+            // ✅ Fallback to PDF
+            Alert.alert(
+                '📄 PDF Generated',
+                'Printer not available. Bill saved as PDF.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => console.log('PDF saved')
+                    }
+                ]
+            );
+        }
+        
+    } catch (error) {
+        console.log('❌ Reprint error:', error);
+        Alert.alert('Error', 'Failed to reprint bill');
+    } finally {
+        setReprinting(false);
+        setReprintSale(null);
+    }
+};
 
 // Add function to save toggle state
 const saveToggleState = async (value: boolean) => {
@@ -989,7 +1070,7 @@ useEffect(() => {
           </Text>
         </View>
         
-        {/* ✅ Show different badges for completed vs voided */}
+        {/* Show different badges for completed vs voided */}
         {showVoidedTab ? (
           <View style={[styles.voidBadge, { backgroundColor: theme.danger + '20' }]}>
             <Text style={[styles.voidBadgeText, { color: theme.danger }]}>
@@ -1005,14 +1086,14 @@ useEffect(() => {
         )}
       </View>
       
-      {/* ✅ Show void reason if voided */}
+      {/* Show void reason if voided */}
       {showVoidedTab && sale.voidReason && (
         <Text style={[styles.voidReasonText, { color: theme.danger }]}>
           Reason: {sale.voidReason}
         </Text>
       )}
       
-      {/* ✅ Display discount badge (only for completed transactions) */}
+      {/* Display discount badge (only for completed transactions) */}
       {!showVoidedTab && sale.discount && sale.discount.amount > 0 && (
         <View style={[styles.transactionDiscountBadge, { backgroundColor: theme.danger + '20' }]}>
           <Text style={[styles.transactionDiscountText, { color: theme.danger }]}>
@@ -1050,17 +1131,59 @@ useEffect(() => {
         </Text>
       </View>
       
-      {/* ✅ Show who voided and when */}
+      {/* Show who voided and when */}
       {showVoidedTab && sale.voidedAt && (
         <Text style={[styles.voidedByText, { color: theme.textSecondary }]}>
           Voided: {new Date(sale.voidedAt).toLocaleString()}
+        </Text>
+      )}
+
+      {/* ✅✅✅ REPRINT BUTTON FOR VOIDED TRANSACTIONS ✅✅✅ */}
+      {showVoidedTab && (
+        <TouchableOpacity
+          style={[
+            styles.reprintButton,
+            { 
+              backgroundColor: theme.primary,
+              marginTop: 12,
+              paddingVertical: 10,
+              borderRadius: 8,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8
+            }
+          ]}
+          onPress={(e) => {
+            e.stopPropagation(); // ✅ Prevent triggering the parent TouchableOpacity
+            handleReprintVoidedSale(sale);
+          }}
+          disabled={reprinting && reprintSale?.id === sale.id}
+        >
+          {reprinting && reprintSale?.id === sale.id ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="print-outline" size={18} color="#fff" />
+              <Text style={[styles.reprintButtonText, { color: '#fff', fontWeight: '600' }]}>
+                Reprint Bill
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Optional: Long press hint for completed sales */}
+      {!showVoidedTab && (
+        <Text style={[styles.longPressHint, { color: theme.textSecondary, fontSize: 10, marginTop: 8, textAlign: 'center' }]}>
+          Long press to Reprint/void
         </Text>
       )}
     </View>
   </TouchableOpacity>
 ))}
 
-{/* ✅ Show empty state */}
+{/* Show empty state */}
 {(showVoidedTab ? voidedSales : salesHistory).length === 0 && (
   <View style={styles.noSalesContainer}>
     <Text style={[styles.noSalesText, { color: theme.textSecondary }]}>
@@ -1376,10 +1499,15 @@ useEffect(() => {
 >
   <View style={styles.modalOverlay}>
     <View style={[styles.voidModalContent, { backgroundColor: theme.card }]}>
+      
+      {/* Header with Close Button (X) */}
       <View style={styles.voidModalHeader}>
-        <Text style={[styles.voidModalTitle, { color: theme.text }]}>
-          ⚠️ Void Transaction
-        </Text>
+        <View style={styles.voidModalHeaderLeft}>
+          <Ionicons name="warning" size={24} color={theme.danger} />
+          <Text style={[styles.voidModalTitle, { color: theme.text }]}>
+            Void Transaction
+          </Text>
+        </View>
         <TouchableOpacity onPress={() => setShowVoidModal(false)}>
           <Ionicons name="close" size={24} color={theme.text} />
         </TouchableOpacity>
@@ -1387,99 +1515,154 @@ useEffect(() => {
       
       {selectedSale && (
         <>
-          <View style={[styles.voidSaleInfo, { backgroundColor: theme.surface }]}>
-            {/* ✅ Show Outlet Name */}
-            <Text style={[styles.voidInfoLabel, { color: theme.textSecondary }]}>
-              Outlet:
-            </Text>
-            <Text style={[styles.voidInfoValue, { color: theme.text }]}>
-              {outletInfo?.name || 'Current Outlet'}
-            </Text>
+          {/* SCROLLABLE CONTENT */}
+          <ScrollView 
+            style={styles.voidScrollView}
+            contentContainerStyle={styles.voidScrollContent}
+            showsVerticalScrollIndicator={true}
+          >
+            {/* Sale Info Card - WITH INVOICE NUMBER */}
+            <View style={[styles.voidSaleInfo, { backgroundColor: theme.surface }]}>
+              <View style={styles.voidInfoRow}>
+                <Text style={[styles.voidInfoLabel, { color: theme.textSecondary }]}>Outlet:</Text>
+                <Text style={[styles.voidInfoValue, { color: theme.text }]}>{outletInfo?.name || 'Current Outlet'}</Text>
+              </View>
+              
+              {/* ✅ INVOICE NUMBER - Primary */}
+              <View style={styles.voidInfoRow}>
+                <Text style={[styles.voidInfoLabel, { color: theme.textSecondary }]}>Invoice No:</Text>
+                <Text style={[styles.voidInfoValue, { color: theme.primary, fontWeight: '700' }]}>
+                  {selectedSale.invoiceNumber || `INV-${selectedSale.id}`}
+                </Text>
+              </View>
+              
+              {/* Transaction ID as secondary */}
+              <View style={styles.voidInfoRow}>
+                <Text style={[styles.voidInfoLabel, { color: theme.textSecondary }]}>ID:</Text>
+                <Text style={[styles.voidInfoValue, { color: theme.textSecondary, fontSize: 11 }]}>
+                  #{selectedSale.id}
+                </Text>
+              </View>
+              
+              <View style={styles.voidInfoRow}>
+                <Text style={[styles.voidInfoLabel, { color: theme.textSecondary }]}>Amount:</Text>
+                <Text style={[styles.voidInfoValue, { color: theme.primary, fontWeight: '700' }]}>
+                  {formatPrice(selectedSale.total)}
+                </Text>
+              </View>
+              
+              <View style={styles.voidInfoRow}>
+                <Text style={[styles.voidInfoLabel, { color: theme.textSecondary }]}>Date:</Text>
+                <Text style={[styles.voidInfoValue, { color: theme.text }]}>
+                  {new Date(selectedSale.date).toLocaleString()}
+                </Text>
+              </View>
+            </View>
             
-            <Text style={[styles.voidInfoLabel, { color: theme.textSecondary, marginTop: 8 }]}>
-              Transaction ID:
-            </Text>
-            <Text style={[styles.voidInfoValue, { color: theme.text }]}>
-              #{selectedSale.id}
-            </Text>
+            {/* Items List */}
+            <View style={[styles.voidItemsCard, { backgroundColor: theme.surface }]}>
+              <Text style={[styles.voidItemsTitle, { color: theme.textSecondary }]}>
+                📦 Items
+              </Text>
+              {selectedSale.items?.map((item: any, idx: number) => (
+                <View key={`void-item-${idx}`} style={styles.voidItemRow}>
+                  <Text style={[styles.voidItemName, { color: theme.text }]} numberOfLines={1}>
+                    {item.name} x{item.quantity}
+                  </Text>
+                  <Text style={[styles.voidItemPrice, { color: theme.primary }]}>
+                    {formatPrice(item.price * item.quantity)}
+                  </Text>
+                </View>
+              ))}
+            </View>
             
-            <Text style={[styles.voidInfoLabel, { color: theme.textSecondary, marginTop: 8 }]}>
-              Amount:
-            </Text>
-            <Text style={[styles.voidInfoValue, { color: theme.primary, fontWeight: '700' }]}>
-              {formatPrice(selectedSale.total)}
-            </Text>
+            {/* Password Hint */}
+            <View style={[styles.passwordHintCard, { backgroundColor: theme.surface }]}>
+              <Ionicons name="key-outline" size={16} color={theme.textSecondary} />
+              <Text style={[styles.passwordHintText, { color: theme.textSecondary }]}>
+                Enter the void password set by the outlet owner
+              </Text>
+            </View>
             
-            <Text style={[styles.voidInfoLabel, { color: theme.textSecondary, marginTop: 8 }]}>
-              Date:
+            {/* Warning */}
+            <View style={[styles.warningCard, { backgroundColor: theme.danger + '10' }]}>
+              <Ionicons name="alert-circle" size={20} color={theme.danger} />
+              <Text style={[styles.warningText, { color: theme.danger }]}>
+                This action cannot be undone!
+              </Text>
+            </View>
+            
+            {/* Reason Input */}
+            <Text style={[styles.modalLabel, { color: theme.text }]}>
+              Reason (Optional):
             </Text>
-            <Text style={[styles.voidInfoValue, { color: theme.text }]}>
-              {new Date(selectedSale.date).toLocaleString()}
+            <TextInput
+              style={[styles.modalInput, { 
+                backgroundColor: theme.surface,
+                color: theme.text,
+                borderColor: theme.border
+              }]}
+              placeholder="Enter reason for void"
+              placeholderTextColor={theme.textSecondary}
+              value={voidReason}
+              onChangeText={setVoidReason}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            
+            {/* Password Input */}
+            <Text style={[styles.modalLabel, { color: theme.text }]}>
+              Void Password *
             </Text>
-          </View>
+            <TextInput
+              style={[styles.modalInput, { 
+                backgroundColor: theme.surface,
+                color: theme.text,
+                borderColor: theme.border
+              }]}
+              placeholder="Enter void password"
+              placeholderTextColor={theme.textSecondary}
+              secureTextEntry
+              value={voidPassword}
+              onChangeText={setVoidPassword}
+            />
+          </ScrollView>
           
-          {/* ✅ Password hint */}
-          <Text style={[styles.passwordHint, { color: theme.textSecondary }]}>
-            Enter the void password set by the outlet owner
-          </Text>
-          
-          <Text style={[styles.voidWarning, { color: theme.danger }]}>
-            ⚠️ This action cannot be undone!
-          </Text>
-          
-          <Text style={[styles.modalLabel, { color: theme.text }]}>
-            Reason (Optional):
-          </Text>
-          <TextInput
-            style={[styles.modalInput, { 
-              backgroundColor: theme.surface,
-              color: theme.text,
-              borderColor: theme.border
-            }]}
-            placeholder="Enter reason for void"
-            placeholderTextColor={theme.textSecondary}
-            value={voidReason}
-            onChangeText={setVoidReason}
-            multiline
-            numberOfLines={2}
-          />
-          
-          <Text style={[styles.modalLabel, { color: theme.text }]}>
-            Void Password *
-          </Text>
-          <TextInput
-            style={[styles.modalInput, { 
-              backgroundColor: theme.surface,
-              color: theme.text,
-              borderColor: theme.border
-            }]}
-            placeholder="Enter void password"
-            placeholderTextColor={theme.textSecondary}
-            secureTextEntry
-            value={voidPassword}
-            onChangeText={setVoidPassword}
-          />
-          
+          {/* ✅ ONLY TWO BUTTONS: REPRINT + VOID */}
           <View style={styles.voidModalButtons}>
+            {/* 1. REPRINT BUTTON - Only print, no cancel text */}
             <TouchableOpacity
-              style={[styles.voidModalBtn, styles.cancelBtn, { 
-                borderColor: theme.border,
-                backgroundColor: theme.surface
+              style={[styles.voidModalBtn, styles.reprintModalBtn, { 
+                backgroundColor: theme.primary,
+                flex: 1,
               }]}
               onPress={() => {
                 setShowVoidModal(false);
                 setVoidPassword('');
                 setVoidReason('');
+                // ✅ Only reprint, no void
+                handleReprintVoidedSale(selectedSale);
               }}
+              disabled={reprinting && reprintSale?.id === selectedSale?.id}
             >
-              <Text style={[styles.cancelBtnText, { color: theme.text }]}>
-                Cancel
-              </Text>
+              {reprinting && reprintSale?.id === selectedSale?.id ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="print-outline" size={18} color="#fff" />
+                  <Text style={[styles.reprintModalBtnText, { color: '#fff' }]}>
+                    Reprint
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
             
+            {/* 2. VOID BUTTON */}
             <TouchableOpacity
               style={[styles.voidModalBtn, styles.voidBtn, { 
-                backgroundColor: theme.danger
+                backgroundColor: theme.danger,
+                flex: 1,
               }]}
               onPress={handleVoidSale}
               disabled={voidLoading}
@@ -1488,7 +1671,7 @@ useEffect(() => {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.voidBtnText}>
-                  Void Transaction
+                  Void
                 </Text>
               )}
             </TouchableOpacity>
@@ -1698,6 +1881,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 12,
   },
+  
   discountCard: {
     flex: 1,
     padding: 14,
@@ -1718,6 +1902,108 @@ const styles = StyleSheet.create({
   discountPercent: {
     fontSize: 11,
     marginTop: 2,
+  },
+    voidModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  
+  voidScrollView: {
+    maxHeight: 500,
+  },
+  
+  voidScrollContent: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  
+  voidInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  
+  voidItemsCard: {
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  
+  voidItemsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  
+  voidItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  
+  voidItemName: {
+    fontSize: 12,
+    flex: 1,
+  },
+  
+  voidItemPrice: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  
+  passwordHintCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  
+  passwordHintText: {
+    fontSize: 12,
+    flex: 1,
+  },
+  
+  warningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  
+  warningText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  
+  voidModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  
+  reprintModalBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  
+  reprintModalBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   transactionDiscountBadge: {
     paddingHorizontal: 10,
@@ -1765,6 +2051,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginHorizontal: 12,
   },
+    voidItemsContainer: {
+    marginBottom: 10,
+  },
+  
+ 
+  voidMoreItems: {
+    fontStyle: 'italic',
+  },
+ 
+ 
   saleItem: {
     padding: 12,
     borderRadius: 10,
@@ -1795,6 +2091,26 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     marginLeft: 8,
+  },
+    reprintButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  reprintButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  longPressHint: {
+    fontSize: 10,
+    marginTop: 8,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   paymentBadgeText: {
     fontSize: 11,
@@ -2036,17 +2352,22 @@ const styles = StyleSheet.create({
   },
   // ✅ VOID MODAL STYLES
   voidModalContent: {
-    width: '90%',
+    width: '100%',
     maxWidth: 400,
-    borderRadius: 20,
-    padding: 20,
+    maxHeight: '95%',  // ✅ Limit height
+    borderRadius: 10,
+    padding: 10,  // Remove padding, add inside
+    overflow: 'hidden',
   },
   voidModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
+
   voidModalTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -2073,11 +2394,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: 'rgba(255,0,0,0.1)',
   },
-  voidModalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
+ 
   voidModalBtn: {
     flex: 1,
     paddingVertical: 14,

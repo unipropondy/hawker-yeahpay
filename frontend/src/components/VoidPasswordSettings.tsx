@@ -46,50 +46,79 @@ const VoidPasswordSettings: React.FC<VoidPasswordSettingsProps> = ({
         }
     }, [visible, outletId]);
 
-    const loadStatus = async () => {
-        setLoading(true);
-        try {
-            const response = await API.get(`/admin/void-password-status/${outletId}`);
-            setEnabled(response.data.enabled);
-            setHasPassword(response.data.hasPassword);
-        } catch (error) {
-            console.log('Error loading void password status:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+const loadStatus = async () => {
+    setLoading(true);
+    try {
+        const response = await API.get(`/admin/void-password-status/${outletId}`);
+        
+        console.log('📥 Void status response:', response.data);
+        
+        // ✅ Parse both formats
+        const isEnabled = response.data.enabled === 1 || 
+                          response.data.enabled === true ||
+                          response.data.VoidPasswordEnabled === 1 ||
+                          response.data.VoidPasswordEnabled === true;
+        
+        const hasPass = response.data.hasPassword === 1 ||
+                        response.data.hasPassword === true ||
+                        !!response.data.VoidPassword;
+        
+        setEnabled(isEnabled);
+        setHasPassword(hasPass);
+        
+    } catch (error) {
+        console.log('Error loading void password status:', error);
+        setEnabled(false);
+        setHasPassword(false);
+    } finally {
+        setLoading(false);
+    }
+};
 
     const saveSettings = async () => {
-        if (enabled && !password) {
-            Alert.alert('Error', 'Please enter void password');
-            return;
-        }
+    if (enabled && !password) {
+        Alert.alert('Error', 'Please enter void password');
+        return;
+    }
 
-        if (enabled && password !== confirmPassword) {
-            Alert.alert('Error', 'Passwords do not match');
-            return;
-        }
+    if (enabled && password !== confirmPassword) {
+        Alert.alert('Error', 'Passwords do not match');
+        return;
+    }
 
-        if (enabled && password.length < 4) {
-            Alert.alert('Error', 'Password must be at least 4 characters');
-            return;
-        }
+    if (enabled && password.length < 4) {
+        Alert.alert('Error', 'Password must be at least 4 characters');
+        return;
+    }
 
-        setSaving(true);
-        try {
-            await API.post(`/admin/set-void-password/${outletId}`, {
-                voidPassword: enabled ? password : null,
-                enabled: enabled
-            });
-
-            Alert.alert('✅ Success', 'Void password settings saved');
-            onClose();
-        } catch (error: any) {
-            Alert.alert('Error', error.response?.data?.error || 'Failed to save');
-        } finally {
-            setSaving(false);
-        }
-    };
+    setSaving(true);
+    try {
+        console.log('📤 Saving void password settings:', {
+            outletId,
+            enabled: enabled ? 1 : 0,
+            hasPassword: !!password
+        });
+        
+        const response = await API.post(`/admin/set-void-password/${outletId}`, {
+            voidPassword: enabled ? password : null,
+            enabled: enabled ? 1 : 0  // ✅ Send as number 1 or 0
+        });
+        
+        console.log('✅ Save response:', response.data);
+        
+        Alert.alert('✅ Success', 'Void password settings saved');
+        
+        // ✅ Reload status to reflect changes
+        await loadStatus();
+        
+        onClose();
+    } catch (error: any) {
+        console.log('❌ Save error:', error.response?.data || error.message);
+        Alert.alert('Error', error.response?.data?.error || 'Failed to save');
+    } finally {
+        setSaving(false);
+    }
+};
 
     return (
         <Modal visible={visible} transparent animationType="slide">

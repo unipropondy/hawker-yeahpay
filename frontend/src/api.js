@@ -14,7 +14,7 @@ export const setNavigationCallback = (callback) => {
 
 const getBaseURL = () => {
   if (__DEV__) {
-    return 'https://uniprohawker-production.up.railway.app/api';
+    return 'http://172.20.10.2:5000/api';
   } else {
     // Production URL
     return 'https://uniprohawker-production.up.railway.app/api';

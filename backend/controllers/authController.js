@@ -144,30 +144,7 @@ const login = async (req, res) => {
         }
 
         // ✅✅✅ SESSION MANAGEMENT - BLOCK MULTIPLE LOGINS ✅✅✅
-        const existingSession = await pool.request()
-            .input('userId', sql.Int, user.Id)
-            .input('isActive', sql.Bit, 1)
-            .query(`
-                SELECT Id, DeviceInfo, LoginTime, SessionToken
-                FROM UserSessions 
-                WHERE UserId = @userId AND IsActive = @isActive
-            `);
-
-        // ✅ If active session exists, BLOCK login
-        if (existingSession.recordset.length > 0) {
-            const session = existingSession.recordset[0];
-            const loginTime = new Date(session.LoginTime).toLocaleString();
-            const deviceInfo = session.DeviceInfo || 'Unknown Device';
-            
-            console.log(`⚠️ Login BLOCKED - User ${user.Username} already logged in on: ${deviceInfo} at ${loginTime}`);
-            
-            return res.status(403).json({ 
-                error: 'ALREADY_LOGGED_IN',
-                message: `⚠️ Already Logged In!\n\nYou are already logged in on another device:\n📱 Device: ${deviceInfo}\n⏰ Time: ${loginTime}\n\nPlease logout from that device first.`,
-                code: 'SESSION_ACTIVE'
-            });
-        }
-
+       
         // ✅ Update last login
         await pool.request()
             .input('userId', sql.Int, user.Id)
