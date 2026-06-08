@@ -69,7 +69,7 @@ const PayNowQRPayment: React.FC<PayNowQRPaymentProps> = ({
     if (url.startsWith('http')) {
       return url;
     }
-    return `https://uniprohawker-production.up.railway.app${url}`;
+    return `https://hawker-yeahpay-production.up.railway.app${url}`;
   };
   
   return (

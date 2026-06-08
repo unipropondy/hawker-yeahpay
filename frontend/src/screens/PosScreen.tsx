@@ -1054,7 +1054,7 @@ const loadDishItems = async (force = false) => {
       console.log('🔍 IsFavourite in response:', response.data[0].IsFavourite);
     }
     
-    const baseURL = 'https://uniprohawker-production.up.railway.app';
+    const baseURL = 'https://hawker-yeahpay-production.up.railway.app';
     
     const items = (response.data || []).map((item: any) => {
       const newItem = {

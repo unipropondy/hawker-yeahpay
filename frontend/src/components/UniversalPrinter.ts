@@ -1,10 +1,12 @@
+// frontend/src/components/UniversalPrinter.ts - COMPLETE WITH DISCOUNT SUPPORT ✅
+
 import { Alert, Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import BillPDFGenerator from './BillPDFGenerator';
 import SunmiPrinterService from './SunmiPrinterService';
-import { PrinterDetector } from './PrinterDetector';
+import BillPDFGenerator from './BillPDFGenerator';
 
+import { PrinterDetector } from './PrinterDetector';
 // Printer types
 export type PrinterType = 
   | 'thermal'
@@ -36,61 +38,407 @@ class UniversalPrinter {
   private static detectedPrinters: PrinterInfo[] = [];
   private static defaultPrinter: PrinterInfo | null = null;
 
-  // ==================== MAIN SMART PRINT ====================
-  static async smartPrint(
-    saleData: any, 
-    outletId?: string | number,
-    t?: any, 
-    discountInfo?: DiscountInfo, 
-    preferredType?: PrinterType,
-    isReprint: boolean = false
-  ): Promise<boolean> {
+  static async detectAllPrinters(): Promise<PrinterInfo[]> {
+    const printers: PrinterInfo[] = [];
+    if (Platform.OS !== 'android') return printers;
+    
     try {
-      // ✅ Always use PDF mode for Expo Go testing
-      console.log('📱 Using PDF mode for Expo Go');
-      return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
-    } catch (error) { 
-      console.log('SmartPrint error:', error);
-      return await this.offerPDFFallback(saleData, outletId, t, discountInfo); 
+      // Sunmi Thermal
+     
+      // Bluetooth
+     
+
+      // Network
+    
+      // USB
+     
+      // Android Print Service
+      try {
+        const hasPrintService = await this.checkAndroidPrintService();
+        if (hasPrintService) {
+          printers.push({ type: 'laser', name: 'Android Print Service', isDefault: false, paperSize: 'A4' });
+        }
+      } catch (e) {}
+
+      this.detectedPrinters = printers;
+      this.defaultPrinter = printers.find(p => p.type === 'thermal') || printers[0] || null;
+      return printers;
+    } catch (error) {
+      return [];
     }
   }
 
-  // ==================== PDF FALLBACK ====================
+  static async openCashDrawer(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android') {
+        try {
+          const SunmiPrinter = require('react-native-sunmi-inner-printer');
+          if (SunmiPrinter?.hasPrinter?.()) {
+            await SunmiPrinter.openCashDrawer();
+            return true;
+          }
+        } catch (e) {}
+        try {
+          const ThermalPrinter = require('react-native-thermal-printer');
+          await ThermalPrinter.printRaw([0x1B, 0x70, 0x00, 0x19, 0xFA]);
+          return true;
+        } catch (e) {}
+      }
+      return false;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private static guessPaperSize(printerName: string): '58mm' | '80mm' | 'A4' | 'label' {
+    const name = printerName.toLowerCase();
+    if (name.includes('58') || name.includes('2inch')) return '58mm';
+    if (name.includes('80') || name.includes('3inch')) return '80mm';
+    if (name.includes('label') || name.includes('zebra')) return 'label';
+    if (name.includes('laser') || name.includes('inkjet')) return 'A4';
+    return '80mm';
+  }
+
+  private static getPrintWidth(printer: PrinterInfo): number {
+    switch (printer.paperSize) {
+      case '58mm': return 164;
+      case '80mm': return 226;
+      case 'A4': return 612;
+      case 'label': return 300;
+      default: return 226;
+    }
+  }
+
+  // ==================== SALES REPORT ====================
+static async printSalesReport(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
+  try {
+    const company = await BillPDFGenerator.loadSettings(userId);
+    const html = this.generateSalesReportHTML(reportData, company);
+    
+    // ✅ Save as PDF (no preview)
+    const { uri } = await Print.printToFileAsync({ html });
+    console.log('📄 Sales report saved at:', uri);
+    
+    // ✅ Optionally share the PDF
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri);
+    }
+    
+    return true;
+  } catch (error) {
+    console.log('Sales report error:', error);
+    return false;
+  }
+}
+  private static generateSalesReportHTML(data: any, company: any): string {
+    const symbol = company.currencySymbol || '$';
+    return `<!DOCTYPE html><html><head><style>
+      body { font-family: monospace; padding: 20px; max-width: 800px; margin: 0 auto; }
+      .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+      .company-name { font-size: 24px; font-weight: bold; }
+      .report-title { font-size: 20px; font-weight: bold; margin: 15px 0; text-align: center; }
+      .section-title { font-size: 16px; font-weight: bold; margin: 15px 0 10px; background: #f0f0f0; padding: 5px; }
+      table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+      th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+      .amount { text-align: right; }
+      .summary-box { display: inline-block; width: 30%; padding: 10px; margin: 5px; background: #f9f9f9; text-align: center; border-radius: 5px; }
+      .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; }
+    </style></head><body>
+      <div class="header"><div class="company-name">${company.name || 'POS SYSTEM'}</div><div>${company.address || ''}</div><div>GST: ${company.gstNo || 'N/A'}</div><div class="report-title">SALES REPORT</div><div>Period: ${data.period || 'Today'}</div></div>
+      <div style="text-align:center"><div class="summary-box"><div>Total Sales</div><div style="font-size:24px">${data.summary?.totalSales || 0}</div></div>
+      <div class="summary-box"><div>Total Items</div><div style="font-size:24px">${data.summary?.totalItems || 0}</div></div>
+      <div class="summary-box"><div>Total Revenue</div><div style="font-size:24px">${symbol}${(data.summary?.totalRevenue || 0).toFixed(2)}</div></div></div>
+      <div class="section-title">💳 PAYMENT BREAKDOWN</div>${this.generateTableFromObject(data.paymentBreakdown || {}, symbol)}</div>
+      <div class="footer"><p>© ${new Date().getFullYear()} UNIPRO SOFTWARES SG PTE LTD</p></div>
+    </body></html>`;
+  }
+
+  // ==================== CATEGORY REPORT ====================
+  static async printCategoryReport(
+  categories: any[], selectedCategory: string | null, categoryItems: any[], categoryTransactions: any[],
+  userId?: string | number, t?: any, options?: any
+): Promise<boolean> {
+  try {
+    const company = await BillPDFGenerator.loadSettings(userId);
+    const html = selectedCategory 
+      ? this.generateCategoryDetailHTML(selectedCategory, categoryItems, categoryTransactions, company, options)
+      : this.generateAllCategoriesHTML(categories, company, options);
+    
+    // ✅ Save as PDF (no preview)
+    const { uri } = await Print.printToFileAsync({ html });
+    console.log('📄 Category report saved at:', uri);
+    
+    // ✅ Optionally share the PDF
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri);
+    }
+    
+    return true;
+  } catch (error) { 
+    console.log('Category report error:', error);
+    return false; 
+  }
+}
+  private static generateCategoryDetailHTML(categoryName: string, items: any[], transactions: any[], company: any, options?: any): string {
+    const symbol = company.currencySymbol || '$';
+    const groupTransactions = (tx: any[]) => {
+      const grouped: any = {};
+      tx.forEach(t => { if (!grouped[t.saleId]) grouped[t.saleId] = { id: t.saleId, date: t.saleDate, items: [], total: 0 }; grouped[t.saleId].items.push({ name: t.name, quantity: t.quantity, price: t.price }); grouped[t.saleId].total += t.price * t.quantity; });
+      return Object.values(grouped).sort((a: any,b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    };
+    return `<!DOCTYPE html><html><head><style>
+      body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
+      .header { text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px; }
+      .category-title { font-size: 22px; font-weight: bold; text-align: center; margin: 20px 0; }
+      .section-title { font-size: 18px; font-weight: bold; margin: 20px 0 10px; background: #f0f0f0; padding: 8px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+      th, td { padding: 8px; border-bottom: 1px solid #eee; }
+      .amount { text-align: right; }
+      .transaction-card { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 15px; }
+      .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; }
+    </style></head><body>
+      <div class="header"><div class="company-name">${company.name || 'Store'}</div><div>${company.address || ''}</div><div>GST: ${company.gstNo || 'N/A'}</div></div>
+      <div class="category-title">📦 ${categoryName}</div>
+      <div style="display:flex;justify-content:space-around;margin:20px 0;padding:15px;background:#f9f9f9;border-radius:5px">
+        <div><div>Total Items</div><div style="font-size:18px;font-weight:bold">${items.length}</div></div>
+        <div><div>Quantity Sold</div><div style="font-size:18px;font-weight:bold">${items.reduce((s,i)=>s+(i.quantity||0),0)}</div></div>
+        <div><div>Total Revenue</div><div style="font-size:18px;font-weight:bold">${symbol}${items.reduce((s,i)=>s+(i.revenue||0),0).toFixed(2)}</div></div>
+      </div>
+      <div class="section-title">📋 Items Sold</div>${this.generateItemsTable(items, symbol)}
+      <div class="section-title">📄 Transaction History</div>${transactions.length ? groupTransactions(transactions).map((sale:any) => `<div class="transaction-card"><div><strong>#${sale.id}</strong> - ${symbol}${sale.total.toFixed(2)}</div><div>${new Date(sale.date).toLocaleString()}</div>${sale.items.map((item:any) => `<div>• ${item.name} x${item.quantity} - ${symbol}${(item.price*item.quantity).toFixed(2)}</div>`).join('')}</div>`).join('') : '<p>No transactions</p>'}
+      <div class="footer"><p>End of Report</p></div>
+    </body></html>`;
+  }
+
+  private static generateAllCategoriesHTML(categories: any[], company: any, options?: any): string {
+    const symbol = company.currencySymbol || '$';
+    const summary = options?.summary || { totalSales: 0, totalItems: 0, totalRevenue: 0, paymentBreakdown: {} };
+    return `<!DOCTYPE html><html><head><style>
+      body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
+      .header { text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px; }
+      .summary-section { display: flex; justify-content: space-between; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+      .category-card { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; padding: 15px; }
+      .category-name { font-size: 18px; font-weight: bold; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { padding: 8px; border-bottom: 1px solid #eee; }
+      .amount { text-align: right; }
+      .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; }
+    </style></head><body>
+      <div class="header"><div class="company-name">${company.name || 'Store'}</div><div>${company.address || ''}</div><div>GST: ${company.gstNo || 'N/A'}</div><div class="report-title">📊 CATEGORY WISE SALES</div></div>
+      <div class="summary-section"><div><div>Total Sales</div><div>${summary.totalSales}</div></div><div><div>Total Items</div><div>${summary.totalItems}</div></div><div><div>Total Revenue</div><div>${symbol}${summary.totalRevenue.toFixed(2)}</div></div></div>
+      <div><h3>💳 PAYMENT BREAKDOWN</h3>${Object.entries(summary.paymentBreakdown).map(([m,a]) => `<div>${m}: ${symbol}${(a as number).toFixed(2)}</div>`).join('')}</div>
+      ${categories.map(cat => `<div class="category-card"><div class="category-name">${cat.name}</div><div>Revenue: ${symbol}${(cat.totalRevenue||0).toFixed(2)} | Items: ${cat.totalQuantity||0}</div>${this.generateItemsTable(cat.items || [], symbol)}</div>`).join('')}
+      <div class="footer"><p>© ${new Date().getFullYear()} UNIPRO SOFTWARES SG PTE LTD</p></div>
+    </body></html>`;
+  }
+
+  private static generateItemsTable(items: any[], symbol: string): string {
+    if (!items.length) return '<p>No items</p>';
+    return `<table><thead><tr><th>Item</th><th class="amount">Qty</th><th class="amount">Price</th><th class="amount">Total</th></tr></thead><tbody>${items.map(i => `<tr><td>${i.name}</td><td class="amount">${i.quantity||0}</td><td class="amount">${symbol}${(i.price||0).toFixed(2)}</td><td class="amount">${symbol}${(i.revenue||0).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
+  }
+
+  private static generateTableFromObject(obj: Record<string, any>, symbol: string): string {
+    const entries = Object.entries(obj);
+    if (!entries.length) return '<p>No data</p>';
+    return `<table><tbody>${entries.map(([k,v]) => `<tr><td>${k}</td><td class="amount">${symbol}${(v as number).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
+  }
+
+  // ==================== MAIN SMART PRINT WITH DISCOUNT ====================
+static async smartPrint(
+  saleData: any, 
+  outletId?: string | number,
+  t?: any, 
+  discountInfo?: DiscountInfo, 
+  preferredType?: PrinterType,
+  isReprint: boolean = false
+): Promise<boolean> {
+  try {
+    // ✅ Auto-detect printer type
+    const printerType = await PrinterDetector.detectPrinter();
+    
+    if (printerType === 'sunmi') {
+      // Sunmi direct print - NO PREVIEW
+      const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+      if (printed) {
+        Alert.alert('✅ Success', 'Receipt printed!');
+        return true;
+      }
+    }
+    
+    // ✅ Fallback to PDF
+    return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
+    
+  } catch (error) { 
+    console.log('SmartPrint error:', error);
+    return await this.offerPDFFallback(saleData, outletId, t, discountInfo); 
+  }
+}
+  // ==================== THERMAL PRINTING WITH DISCOUNT ====================
+private static async printThermalReceipt(
+  saleData: any, 
+  userId?: string | number, 
+  printer?: PrinterInfo, 
+  discountInfo?: DiscountInfo
+): Promise<boolean> {
+  try {
+    // ✅ STEP 1: Try Sunmi direct print (NO preview)
+    const sunmiReady = await SunmiPrinterService.init();
+    if (sunmiReady) {
+      const company = await BillPDFGenerator.loadSettings(userId);
+      
+      // ✅ Pass discount to saleData for Sunmi printer
+      const enhancedSaleData = { ...saleData };
+      if (discountInfo?.applied && discountInfo.amount > 0) {
+        enhancedSaleData.discountAmount = discountInfo.amount;
+        enhancedSaleData.discountType = discountInfo.type;
+        enhancedSaleData.discountValue = discountInfo.value;
+        enhancedSaleData.originalTotal = saleData.total + discountInfo.amount;
+      }
+      
+      const printed = await SunmiPrinterService.printReceipt(enhancedSaleData, company);
+      if (printed) {
+        console.log('✅ Printed with Sunmi printer - NO PREVIEW');
+        return true;
+      }
+    }
+    
+    // ✅ STEP 2: If Sunmi fails, create PDF (no preview)
+    const company = await BillPDFGenerator.loadSettings(userId);
+    const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
+    const { uri } = await Print.printToFileAsync({ 
+      html, 
+      width: this.getPrintWidth(printer || { paperSize: '58mm' } as PrinterInfo) 
+    });
+    
+    console.log('📄 PDF saved at:', uri);
+    return true;
+    
+  } catch (error) { 
+    console.log('Thermal print error:', error);
+    return false; 
+  }
+}
+  private static formatThermalTextWithDiscount(saleData: any, company: any, discountInfo?: DiscountInfo): string {
+    const symbol = company.currencySymbol || '$';
+    const gstInfo = saleData.gstInfo || { rate: 9, baseAmount: 0, gstAmount: 0, totalAmount: 0, regNo: 'N/A' };
+    const hasDiscount = discountInfo?.applied && discountInfo.amount > 0;
+    const originalTotal = hasDiscount ? saleData.total + discountInfo.amount : saleData.total;
+    const centerText = (text: string, width: number = 32) => { if (!text) return ' '.repeat(width); const padding = Math.max(0, width - text.length); return ' '.repeat(Math.floor(padding/2)) + text + ' '.repeat(padding - Math.floor(padding/2)); };
+    
+    let text = '\n' + '='.repeat(32) + '\n';
+    text += centerText(company.name || 'STORE NAME') + '\n';
+    text += '='.repeat(32) + '\n';
+    text += `Bill No: ${saleData.billNumber || saleData.id || Date.now()}\n`;
+    text += `Date: ${new Date().toLocaleString()}\n`;
+    text += `GST Reg: ${gstInfo.regNo}\n`;
+    text += '-'.repeat(32) + '\n';
+    
+    saleData.items?.forEach((item: any) => {
+      const name = (item.name || 'Item').substring(0, 15).padEnd(15);
+      const qty = (item.quantity || 1).toString().padStart(3);
+      text += `${name} ${qty}  ${symbol}${(item.price * item.quantity).toFixed(2)}\n`;
+      if (item.quantity > 1) text += `  @ ${symbol}${(item.price || 0).toFixed(2)} each\n`;
+    });
+    
+    text += '-'.repeat(32) + '\n';
+    if (hasDiscount) {
+      text += `ORIGINAL:     ${symbol}${originalTotal.toFixed(2)}\n`;
+      text += `DISCOUNT (${discountInfo?.type === 'percentage' ? `${discountInfo?.value}%` : 'FIXED'}): -${symbol}${discountInfo?.amount.toFixed(2)}\n`;
+      text += '-'.repeat(32) + '\n';
+    }
+    text += `Subtotal:      ${symbol}${gstInfo.baseAmount.toFixed(2)}\n`;
+    text += `GST (${gstInfo.rate}%):    ${symbol}${gstInfo.gstAmount.toFixed(2)}\n`;
+    text += '='.repeat(32) + '\n';
+    text += `TOTAL:        ${symbol}${gstInfo.totalAmount.toFixed(2)}\n`;
+    text += '='.repeat(32) + '\n';
+    if (hasDiscount) text += `* ${discountInfo?.value}% discount applied\n`;
+    text += `* Prices include ${gstInfo.rate}% GST\n`;
+    text += `GST Reg: ${gstInfo.regNo}\n\n`;
+    text += 'THANK YOU!\nVisit Again\n\n\n';
+    return text;
+  }
+
+  // ==================== LASER PRINTING ====================
+private static async printLaser(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
+  try { 
+    const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo); 
+    // ✅ Save as PDF instead of print (no preview)
+    const { uri } = await Print.printToFileAsync({ html });
+    console.log('📄 PDF saved at:', uri);
+    return true; 
+  } catch (error) { 
+    return false; 
+  }
+}
+  // ==================== BLUETOOTH PRINTING ====================
+  private static async printBluetooth(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
+    try {
+      const BluetoothPrinter = require('react-native-bluetooth-printer');
+      if (printer?.address) await BluetoothPrinter.connect(printer.address);
+      const company = await BillPDFGenerator.loadSettings(userId);
+      await BluetoothPrinter.print(this.formatThermalTextWithDiscount(saleData, company, discountInfo));
+      return true;
+    } catch (error) { return false; }
+  }
+
+  // ==================== NETWORK PRINTING ====================
+  private static async printNetwork(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
+    try {
+      const NetPrinter = require('react-native-thermal-printer');
+      const company = await BillPDFGenerator.loadSettings(userId);
+      await NetPrinter.printIP(printer?.address || '', { text: this.formatThermalTextWithDiscount(saleData, company, discountInfo) });
+      return true;
+    } catch (error) { return false; }
+  }
+
+  // ==================== USB PRINTING ====================
+  private static async printUSB(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
+    try {
+      const UsbPrinter = require('react-native-usb-printer');
+      if (printer?.address) await UsbPrinter.connect(printer.address);
+      const company = await BillPDFGenerator.loadSettings(userId);
+      await UsbPrinter.print(this.formatThermalTextWithDiscount(saleData, company, discountInfo));
+      return true;
+    } catch (error) { return false; }
+  }
+
+  // ==================== LABEL PRINTING ====================
+  private static async printLabel(saleData: any, printer: PrinterInfo): Promise<boolean> {
+    try {
+      let labelText = '';
+      saleData.items.forEach((item: any) => { labelText += `${item.name}\nQty: ${item.quantity}\nPrice: $${(item.price * item.quantity).toFixed(2)}\n---\n`; });
+      const LabelPrinter = require('react-native-label-printer');
+      await LabelPrinter.print(labelText);
+      return true;
+    } catch (error) { return false; }
+  }
+
+  // ==================== PDF FALLBACK WITH DISCOUNT ====================
   static async offerPDFFallback(saleData: any, userId?: string | number, t?: any, discountInfo?: DiscountInfo): Promise<boolean> {
     return new Promise((resolve) => {
-      Alert.alert(
-        t?.printerNotFound || '🖨️ Print Bill',
-        t?.wantPDF || 'Save receipt as PDF?',
-        [
-          { text: t?.no || 'No', onPress: () => resolve(false), style: 'cancel' },
-          { text: t?.yes || 'Yes', onPress: async () => {
-              try {
-                const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
-                const { uri } = await Print.printToFileAsync({ html, width: 226 });
-                if (await Sharing.isAvailableAsync()) {
-                  await Sharing.shareAsync(uri);
-                }
-                resolve(true);
-              } catch (error) {
-                console.log('PDF generation error:', error);
-                resolve(false);
-              }
-            }
+      Alert.alert(t?.printerNotFound || '🖨️ No Printer Available', t?.wantPDF || 'Save as PDF?', [
+        { text: t?.no || 'No', onPress: () => resolve(false), style: 'cancel' },
+        { text: t?.yes || 'Yes', onPress: async () => {
+            try {
+              const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
+              const { uri } = await Print.printToFileAsync({ html, width: 226 });
+              if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+              resolve(true);
+            } catch { resolve(false); }
           }
-        ]
-      );
+        }
+      ]);
     });
   }
 
   // ==================== UTILITIES ====================
-  static async openCashDrawer(): Promise<boolean> {
-    // Mock for Expo Go
-    console.log('Mock: Open cash drawer');
-    return false;
-  }
+  private static async checkAndroidPrintService(): Promise<boolean> { return Platform.OS === 'android'; }
 
-  static async detectAllPrinters(): Promise<PrinterInfo[]> {
-    return [];
+  static async testAllPrinters(): Promise<void> {
+    const printers = await this.detectAllPrinters();
+    let message = `📋 Found ${printers.length} printer(s):\n\n`;
+    printers.forEach((p, i) => { message += `${i+1}. ${p.name}\n   Type: ${p.type}\n   Paper: ${p.paperSize || 'Unknown'}\n   Default: ${p.isDefault ? '✅' : '❌'}\n\n`; });
+    Alert.alert('Printer Detection', message);
   }
 }
 

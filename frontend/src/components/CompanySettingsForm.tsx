@@ -158,7 +158,7 @@ const CompanySettingsForm: React.FC<Props> = ({
       });
 
       const imageUrl = response.data.imageUrl || response.data.imageUri;
-      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://uniprohawker-production.up.railway.app${imageUrl}`;
+      const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://hawker-yeahpay-production.up.railway.app${imageUrl}`;
       
       if (type === 'company') {
         setSettings(prev => ({ ...prev, companyLogo: fullUrl }));

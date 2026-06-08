@@ -331,7 +331,7 @@ const groupItems = React.useMemo(() => {
 
       const baseURL = __DEV__ 
         ? 'http://192.168.0.169:5000'
-        : 'https://uniprohawker-production.up.railway.app';
+        : 'https://hawker-yeahpay-production.up.railway.app';
       
       const imagePath = response.data.imageUri || response.data.ImageUrl;
       
@@ -439,7 +439,7 @@ const groupItems = React.useMemo(() => {
 
       const baseURL = __DEV__ 
         ? 'http://192.168.0.169:5000'
-        : 'https://uniprohawker-production.up.railway.app';
+        : 'https://hawker-yeahpay-production.up.railway.app';
       
       const imagePath = response.data.imageUri || response.data.ImageUrl;
       

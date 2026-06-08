@@ -1,5 +1,5 @@
 // src/utils/imageHelper.ts
-const BASE_URL = 'https://uniprohawker-production.up.railway.app';
+const BASE_URL = 'https://hawker-yeahpay-production.up.railway.app';
 
 export const getFullImageUrl = (imagePath: string | null): string | null => {
   if (!imagePath) return null;

@@ -59,7 +59,7 @@ class SunmiPrinterService {
       try {
         let logoUrl = companySettings.companyLogo;
         if (logoUrl && !logoUrl.startsWith('http')) {
-          logoUrl = `https://uniprohawker-production.up.railway.app${logoUrl}`;
+          logoUrl = `https://hawker-yeahpay-production.up.railway.app${logoUrl}`;
         }
         const base64Image = await this.urlToBase64(logoUrl);
         await printImageBase64(base64Image);
@@ -75,7 +75,7 @@ class SunmiPrinterService {
       try {
         let halalUrl = companySettings.halalLogo;
         if (halalUrl && !halalUrl.startsWith('http')) {
-          halalUrl = `https://uniprohawker-production.up.railway.app${halalUrl}`;
+          halalUrl = `https://hawker-yeahpay-production.up.railway.app${halalUrl}`;
         }
         const base64Image = await this.urlToBase64(halalUrl);
         await printImageBase64(base64Image);

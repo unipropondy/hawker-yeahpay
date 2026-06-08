@@ -118,7 +118,7 @@ const uploadImage = async (uri: string) => {
     } as any);
 
     // ✅ ONLY RAILWAY URL - No development!
-    const baseURL = 'https://uniprohawker-production.up.railway.app/api';
+    const baseURL = 'https://hawker-yeahpay-production.up.railway.app/api';
       
     console.log('📡 Environment: Production');
     console.log('📡 Sending to:', `${baseURL}/upload`);
@@ -139,7 +139,7 @@ const uploadImage = async (uri: string) => {
     // ✅ Ensure full URL for production
     const fullImageUrl = imageUrl.startsWith('http') 
       ? imageUrl 
-      : `https://uniprohawker-production.up.railway.app${imageUrl}`;
+      : `https://hawker-yeahpay-production.up.railway.app${imageUrl}`;
     
     console.log('✅ Image URL set:', fullImageUrl);
     setQrCodeUrl(fullImageUrl);
@@ -288,7 +288,7 @@ const savePayNowSettings = async () => {
     {(() => {
       const imageUrl = qrCodeUrl.startsWith('http') 
         ? qrCodeUrl 
-        : `https://uniprohawker-production.up.railway.app${qrCodeUrl}`;
+        : `https://hawker-yeahpay-production.up.railway.app${qrCodeUrl}`;
       
       console.log('🎯 Final image URL:', imageUrl);
       
