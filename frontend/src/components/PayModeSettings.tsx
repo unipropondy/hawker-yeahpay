@@ -433,116 +433,106 @@ const saveModes = async () => {
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-          
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.text }]}>
-              {t.paymentModes}
-            </Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={theme.text} />
-            </TouchableOpacity>
-          </View>
+    <Modal visible={visible} transparent={false} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.fullScreenModal, { backgroundColor: theme.background }]}>
+        
+        {/* Header - Full Screen */}
+        <View style={[styles.fullScreenHeader, { backgroundColor: theme.primary,}]}>
+          <Text style={[styles.fullScreenTitle, { color: '#fff' }]}>{t.paymentModes}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.fullScreenClose}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+        </View>
 
+        <ScrollView 
+          style={styles.fullScreenScroll}
+          contentContainerStyle={styles.fullScreenContent}
+          showsVerticalScrollIndicator={true}
+        >
           {loading ? (
-            <View style={styles.loadingContainer}>
+            <View style={styles.fullLoadingContainer}>
               <ActivityIndicator size="large" color={theme.primary} />
             </View>
           ) : (
             <>
               {/* Add Payment Mode Button */}
               <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: theme.primary }]}
+                style={[styles.fullAddButton, { backgroundColor: theme.primary }]}
                 onPress={openAddForm}
               >
                 <Ionicons name="add" size={24} color="#fff" />
-                <Text style={styles.addButtonText}>{t.addPaymentMode}</Text>
+                <Text style={styles.fullAddButtonText}>{t.addPaymentMode}</Text>
               </TouchableOpacity>
 
               {/* UPI Settings Button */}
               <TouchableOpacity
-                style={[styles.upiButton, { backgroundColor: theme.secondary, marginBottom: 16 }]}
+                style={[styles.fullUpiButton, { backgroundColor: theme.secondary, marginBottom: 16 }]}
                 onPress={() => setShowUPISettings(true)}
               >
                 <Ionicons name="qr-code-outline" size={24} color="#fff" />
-                <Text style={styles.upiButtonText}>
-                  📱 UPI Settings {upiId ? '✅ Active' : ''}
-                </Text>
+                <Text style={styles.fullUpiButtonText}>📱 UPI Settings {upiId ? '✅ Active' : ''}</Text>
               </TouchableOpacity>
 
               {/* PayNow Settings Button */}
               <TouchableOpacity
-                style={[styles.paynowButton, { backgroundColor: theme.secondary, marginBottom: 16 }]}
+                style={[styles.fullPaynowButton, { backgroundColor: theme.secondary, marginBottom: 16 }]}
                 onPress={() => setShowPayNowSettings(true)}
               >
                 <Ionicons name="qr-code-outline" size={24} color="#fff" />
-                <Text style={styles.paynowButtonText}>
-                  💳 PayNow Settings {payNowQrUrl ? '✅ Active' : ''}
-                </Text>
+                <Text style={styles.fullPaynowButtonText}>💳 PayNow Settings {payNowQrUrl ? '✅ Active' : ''}</Text>
               </TouchableOpacity>
 
-              {/* Add/Edit Form */}
+              {/* Form - same as before */}
               {showForm && (
-                <View style={[styles.formContainer, { backgroundColor: theme.surface }]}>
-                  <Text style={[styles.formTitle, { color: theme.text }]}>
+                <View style={[styles.fullFormContainer, { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.fullFormTitle, { color: theme.text }]}>
                     {editingMode ? 'Edit Payment Mode' : t.addPaymentMode}
                   </Text>
 
-                  {/* Payment Mode Name */}
-                  <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: theme.textSecondary }]}>
+                  <View style={styles.fullFormField}>
+                    <Text style={[styles.fullFormLabel, { color: theme.textSecondary }]}>
                       {t.paymentModeName || 'Payment Mode Name'} *
                     </Text>
                     <TextInput
-                      style={[styles.input, { 
+                      style={[styles.fullInput, { 
                         backgroundColor: theme.card,
                         color: theme.text,
                         borderColor: theme.border
                       }]}
-                      placeholder={t.enterPaymentModeName || 'Enter payment mode name'}
+                      placeholder="Enter payment mode name"
                       placeholderTextColor={theme.textSecondary}
                       value={formName}
                       onChangeText={setFormName}
                     />
                   </View>
 
-                  {/* Description */}
-                  <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: theme.textSecondary }]}>
+                  <View style={styles.fullFormField}>
+                    <Text style={[styles.fullFormLabel, { color: theme.textSecondary }]}>
                       {t.description || 'Description'}
                     </Text>
                     <TextInput
-                      style={[styles.input, { 
+                      style={[styles.fullInput, { 
                         backgroundColor: theme.card,
                         color: theme.text,
                         borderColor: theme.border
                       }]}
-                      placeholder={t.enterDescription || 'Enter description'}
+                      placeholder="Enter description"
                       placeholderTextColor={theme.textSecondary}
                       value={formDesc}
                       onChangeText={setFormDesc}
                     />
                   </View>
 
-                  {/* Select Icon */}
-                  <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: theme.textSecondary }]}>
+                  <View style={styles.fullFormField}>
+                    <Text style={[styles.fullFormLabel, { color: theme.textSecondary }]}>
                       {t.selectIcon || 'Select Icon'}
                     </Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconList}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.fullIconList}>
                       {iconOptions.map((icon, index) => (
                         <TouchableOpacity
                           key={`icon-${index}`}
                           style={[
-                            styles.iconOption,
+                            styles.fullIconOption,
                             { 
                               backgroundColor: formIcon === icon ? theme.primary : theme.card,
                               borderColor: theme.border
@@ -551,7 +541,7 @@ const saveModes = async () => {
                           onPress={() => setFormIcon(icon)}
                         >
                           <Text style={[
-                            styles.iconText,
+                            styles.fullIconText,
                             { color: formIcon === icon ? '#fff' : theme.text }
                           ]}>{icon}</Text>
                         </TouchableOpacity>
@@ -559,10 +549,9 @@ const saveModes = async () => {
                     </ScrollView>
                   </View>
 
-                  {/* Active Switch */}
-                  <View style={styles.formField}>
-                    <View style={styles.activeRow}>
-                      <Text style={[styles.activeLabel, { color: theme.text }]}>
+                  <View style={styles.fullFormField}>
+                    <View style={styles.fullActiveRow}>
+                      <Text style={[styles.fullActiveLabel, { color: theme.text }]}>
                         {t.active || 'Active'}
                       </Text>
                       <Switch
@@ -574,25 +563,24 @@ const saveModes = async () => {
                     </View>
                   </View>
 
-                  {/* Buttons */}
-                  <View style={styles.formButtons}>
+                  <View style={styles.fullFormButtons}>
                     <TouchableOpacity
-                      style={[styles.formCancel, { 
+                      style={[styles.fullFormCancel, { 
                         borderColor: theme.border,
                         backgroundColor: theme.surface
                       }]}
                       onPress={() => setShowForm(false)}
                     >
-                      <Text style={[styles.formCancelText, { color: theme.text }]}>
+                      <Text style={[styles.fullFormCancelText, { color: theme.text }]}>
                         {t.cancel || 'Cancel'}
                       </Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity
-                      style={[styles.formSave, { backgroundColor: theme.success }]}
+                      style={[styles.fullFormSave, { backgroundColor: theme.success }]}
                       onPress={handleSubmitForm}
                     >
-                      <Text style={styles.formSaveText}>
+                      <Text style={styles.fullFormSaveText}>
                         {editingMode ? (t.update || 'Update') : (t.save || 'Save')}
                       </Text>
                     </TouchableOpacity>
@@ -601,11 +589,11 @@ const saveModes = async () => {
               )}
 
               {/* Payment Modes List */}
-              <ScrollView style={styles.modeList} showsVerticalScrollIndicator={false}>
+              <View style={styles.fullModeList}>
                 {paymentModes.length === 0 ? (
-                  <View style={styles.emptyContainer}>
+                  <View style={styles.fullEmptyContainer}>
                     <Ionicons name="card-outline" size={48} color={theme.textSecondary} />
-                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                    <Text style={[styles.fullEmptyText, { color: theme.textSecondary }]}>
                       {t.noPaymentModes || 'No payment modes added'}
                     </Text>
                   </View>
@@ -613,26 +601,27 @@ const saveModes = async () => {
                   paymentModes.map((mode, index) => (
                     <View 
                       key={`mode-${mode.id}-${index}`}
-                      style={[styles.modeItem, { 
+                      style={[styles.fullModeItem, { 
                         backgroundColor: theme.surface,
                         opacity: mode.isActive ? 1 : 0.6
                       }]}
                     >
-                      <View style={styles.modeContent}>
-                        <View style={styles.modeInfo}>
-                          <Text style={styles.modeIcon}>{mode.icon}</Text>
-                          <View style={styles.modeTextContainer}>
-                            <Text style={[styles.modeName, { color: theme.text }]} numberOfLines={1}>
+                      {/* Mode content - same as before */}
+                      <View style={styles.fullModeContent}>
+                        <View style={styles.fullModeInfo}>
+                          <Text style={styles.fullModeIcon}>{mode.icon}</Text>
+                          <View style={styles.fullModeTextContainer}>
+                            <Text style={[styles.fullModeName, { color: theme.text }]} numberOfLines={1}>
                               {mode.name}
                             </Text>
-                            <Text style={[styles.modeDesc, { color: theme.textSecondary }]} numberOfLines={1}>
+                            <Text style={[styles.fullModeDesc, { color: theme.textSecondary }]} numberOfLines={1}>
                               {mode.description}
                             </Text>
                           </View>
                         </View>
 
-                        <View style={styles.modeStatus}>
-                          <Text style={[styles.statusText, { 
+                        <View style={styles.fullModeStatus}>
+                          <Text style={[styles.fullStatusText, { 
                             color: mode.isActive ? theme.success : theme.danger 
                           }]}>
                             {mode.isActive ? t.active : t.inactive}
@@ -640,18 +629,17 @@ const saveModes = async () => {
                         </View>
                       </View>
                       
-                      <View style={styles.modeActions}>
-                        {/* Move Up/Down buttons */}
-                        <View style={styles.moveButtons}>
+                      <View style={styles.fullModeActions}>
+                        <View style={styles.fullMoveButtons}>
                           <TouchableOpacity
-                            style={[styles.moveBtn, { opacity: index === 0 ? 0.3 : 1 }]}
+                            style={[styles.fullMoveBtn, { opacity: index === 0 ? 0.3 : 1 }]}
                             onPress={() => moveUp(index)}
                             disabled={index === 0}
                           >
                             <Ionicons name="arrow-up" size={18} color={theme.primary} />
                           </TouchableOpacity>
                           <TouchableOpacity
-                            style={[styles.moveBtn, { opacity: index === paymentModes.length - 1 ? 0.3 : 1 }]}
+                            style={[styles.fullMoveBtn, { opacity: index === paymentModes.length - 1 ? 0.3 : 1 }]}
                             onPress={() => moveDown(index)}
                             disabled={index === paymentModes.length - 1}
                           >
@@ -659,31 +647,24 @@ const saveModes = async () => {
                           </TouchableOpacity>
                         </View>
 
-                        {/* Active Toggle */}
                         <TouchableOpacity
-                          style={[styles.actionBtn, { 
+                          style={[styles.fullActionBtn, { 
                             backgroundColor: mode.isActive ? theme.success : theme.inactive 
                           }]}
                           onPress={() => toggleActive(mode.id)}
                         >
-                          <Ionicons 
-                            name={mode.isActive ? "eye" : "eye-off"} 
-                            size={18} 
-                            color="#fff" 
-                          />
+                          <Ionicons name={mode.isActive ? "eye" : "eye-off"} size={18} color="#fff" />
                         </TouchableOpacity>
 
-                        {/* Edit Button */}
                         <TouchableOpacity
-                          style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+                          style={[styles.fullActionBtn, { backgroundColor: theme.primary }]}
                           onPress={() => openEditForm(mode)}
                         >
                           <Ionicons name="pencil" size={18} color="#fff" />
                         </TouchableOpacity>
 
-                        {/* Delete Button */}
                         <TouchableOpacity
-                          style={[styles.actionBtn, { backgroundColor: theme.danger }]}
+                          style={[styles.fullActionBtn, { backgroundColor: theme.danger }]}
                           onPress={() => deleteMode(mode.id)}
                         >
                           <Ionicons name="trash" size={18} color="#fff" />
@@ -692,25 +673,27 @@ const saveModes = async () => {
                     </View>
                   ))
                 )}
-              </ScrollView>
+              </View>
 
               {/* Save Button */}
               {paymentModes.length > 0 && (
                 <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                  style={[styles.fullSaveButton, { backgroundColor: theme.primary }]}
                   onPress={saveModes}
                   disabled={saving}
                 >
                   {saving ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.saveButtonText}>{t.save}</Text>
+                    <Text style={styles.fullSaveButtonText}>{t.save}</Text>
                   )}
                 </TouchableOpacity>
               )}
             </>
           )}
-        </View>
+          
+          <View style={{ height: 30 }} />
+        </ScrollView>
       </View>
 
       {/* UPI Settings Modal */}
@@ -732,33 +715,26 @@ const saveModes = async () => {
 
       {/* PayNow Settings Modal */}
       <PayNowSettings
-  visible={showPayNowSettings}
-  onClose={() => {
-    setShowPayNowSettings(false);
-    // ✅ Small delay to ensure modal closes first
-    setTimeout(() => {
-      loadPayNowQR(true);
-      loadPaymentModes(true);
-    }, 300);
-  }}
-  userId={userId}
-  theme={theme}
-  t={t}
-  onUpdate={async (qrUrl) => {
-    console.log('📢 PayNow updated with URL:', qrUrl);
-    
-    // ✅ Immediate state update
-    setPayNowQrUrl(qrUrl);
-    
-    // ✅ Force reload both
-    await loadPayNowQR(true);
-    await loadPaymentModes(true);
-    
-    console.log('✅ PayNow refresh complete');
-  }}
-/>
+        visible={showPayNowSettings}
+        onClose={() => {
+          setShowPayNowSettings(false);
+          setTimeout(() => {
+            loadPayNowQR(true);
+            loadPaymentModes(true);
+          }, 300);
+        }}
+        userId={userId}
+        theme={theme}
+        t={t}
+        onUpdate={async (qrUrl) => {
+          setPayNowQrUrl(qrUrl);
+          await loadPayNowQR(true);
+          await loadPaymentModes(true);
+        }}
+      />
     </Modal>
   );
+
 };
 
 const styles = StyleSheet.create({
@@ -768,6 +744,244 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+    fullScreenModal: {
+    flex: 1,
+  },
+  fullScreenHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 1,
+  },
+  fullScreenTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  fullScreenClose: {
+    padding: 5,
+  },
+  fullScreenScroll: {
+    flex: 1,
+  },
+  fullScreenContent: {
+    padding: 20,
+    paddingBottom: 4,
+  },
+  fullLoadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  fullAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  fullAddButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullUpiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 10,
+  },
+  fullUpiButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullPaynowButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 10,
+  },
+  fullPaynowButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullFormContainer: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  fullFormTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  fullFormField: {
+    marginBottom: 20,
+  },
+  fullFormLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  fullInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+  },
+  fullIconList: {
+    flexDirection: 'row',
+    maxHeight: 60,
+  },
+  fullIconOption: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    borderWidth: 1,
+  },
+  fullIconText: {
+    fontSize: 24,
+  },
+  fullActiveRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  fullActiveLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullFormButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+  fullFormCancel: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  fullFormCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  fullFormSave: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  fullFormSaveText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  fullModeList: {
+    marginTop: 10,
+  },
+  fullEmptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  fullEmptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  fullModeItem: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  fullModeContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  fullModeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  fullModeTextContainer: {
+    flex: 1,
+  },
+  fullModeIcon: {
+    fontSize: 28,
+    width: 36,
+    textAlign: 'center',
+  },
+  fullModeName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  fullModeDesc: {
+    fontSize: 12,
+  },
+  fullModeStatus: {
+    marginLeft: 10,
+  },
+  fullStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  fullModeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 10,
+  },
+  fullMoveButtons: {
+    flexDirection: 'row',
+    gap: 6,
+    marginRight: 8,
+  },
+  fullMoveBtn: {
+    padding: 6,
+    borderRadius: 4,
+  },
+  fullActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullSaveButton: {
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  fullSaveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalContent: {
     width: '100%',

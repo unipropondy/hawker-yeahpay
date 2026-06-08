@@ -583,82 +583,144 @@ const loadCategoryItems = useCallback(async (category: string) => {
 
   const printReport = async () => {
     try {
-      if (activeTab === 'categories') {
-        if (selectedCategory) {
-          await UniversalPrinter.printCategoryReport(
-            categories,
-            selectedCategory,
-            categoryItems,
-            categoryTransactions,
-            userId,
-            t,
-            {
-              filter: selectedFilter,
-              startDate: startDate,
-              endDate: endDate,
-              summary: {
-                totalSales: categorySummary.totalTransactions,
-                totalItems: categorySummary.totalItems,
-                totalRevenue: categorySummary.totalRevenue,
-                totalDiscount: categorySummary.totalDiscount,
-                discountedTransactions: categorySummary.discountedTransactions,
-                paymentBreakdown: categorySummary.paymentBreakdown
-              }
+        if (activeTab === 'categories') {
+            if (selectedCategory) {
+                // ✅ Try thermal print first
+                const printed = await UniversalPrinter.printCategoryReportThermal(
+                    categories,
+                    selectedCategory,
+                    categoryItems,
+                    categoryTransactions,
+                    userId,
+                    t,
+                    {
+                        filter: selectedFilter,
+                        startDate: startDate,
+                        endDate: endDate,
+                        summary: {
+                            totalSales: categorySummary.totalTransactions,
+                            totalItems: categorySummary.totalItems,
+                            totalRevenue: categorySummary.totalRevenue,
+                            totalDiscount: categorySummary.totalDiscount,
+                            discountedTransactions: categorySummary.discountedTransactions,
+                            paymentBreakdown: categorySummary.paymentBreakdown
+                        }
+                    }
+                );
+                if (printed) {
+                    Alert.alert('✅ Success', 'Category report printed on thermal printer');
+                } else {
+                    // Fallback to PDF
+                    await UniversalPrinter.printCategoryReport(
+                        categories,
+                        selectedCategory,
+                        categoryItems,
+                        categoryTransactions,
+                        userId,
+                        t,
+                        {
+                            filter: selectedFilter,
+                            startDate: startDate,
+                            endDate: endDate,
+                            summary: {
+                                totalSales: categorySummary.totalTransactions,
+                                totalItems: categorySummary.totalItems,
+                                totalRevenue: categorySummary.totalRevenue,
+                                totalDiscount: categorySummary.totalDiscount,
+                                discountedTransactions: categorySummary.discountedTransactions,
+                                paymentBreakdown: categorySummary.paymentBreakdown
+                            }
+                        }
+                    );
+                    Alert.alert('✅ Success', 'Category report saved as PDF');
+                }
+            } else {
+                let paymentBreakdown = categorySummary.paymentBreakdown;
+                if (Object.keys(paymentBreakdown).length === 0) {
+                    paymentBreakdown = await fetchPaymentBreakdown(selectedFilter);
+                }
+                
+                // ✅ Try thermal print first
+                const printed = await UniversalPrinter.printCategoryReportThermal(
+                    categories,
+                    null,
+                    [],
+                    [],
+                    userId,
+                    t,
+                    {
+                        filter: selectedFilter,
+                        startDate: startDate,
+                        endDate: endDate,
+                        summary: {
+                            totalSales: categorySummary.totalTransactions,
+                            totalItems: categorySummary.totalItems,
+                            totalRevenue: categorySummary.totalRevenue,
+                            totalDiscount: categorySummary.totalDiscount,
+                            discountedTransactions: categorySummary.discountedTransactions,
+                            paymentBreakdown: paymentBreakdown
+                        }
+                    }
+                );
+                if (printed) {
+                    Alert.alert('✅ Success', 'Category report printed on thermal printer');
+                } else {
+                    await UniversalPrinter.printCategoryReport(
+                        categories,
+                        null,
+                        [],
+                        [],
+                        userId,
+                        t,
+                        {
+                            filter: selectedFilter,
+                            startDate: startDate,
+                            endDate: endDate,
+                            summary: {
+                                totalSales: categorySummary.totalTransactions,
+                                totalItems: categorySummary.totalItems,
+                                totalRevenue: categorySummary.totalRevenue,
+                                totalDiscount: categorySummary.totalDiscount,
+                                discountedTransactions: categorySummary.discountedTransactions,
+                                paymentBreakdown: paymentBreakdown
+                            }
+                        }
+                    );
+                    Alert.alert('✅ Success', 'Category report saved as PDF');
+                }
             }
-          );
         } else {
-          let paymentBreakdown = categorySummary.paymentBreakdown;
-          if (Object.keys(paymentBreakdown).length === 0) {
-            paymentBreakdown = await fetchPaymentBreakdown(selectedFilter);
-          }
-          
-          await UniversalPrinter.printCategoryReport(
-            categories,
-            null,
-            [],
-            [],
-            userId,
-            t,
-            {
-              filter: selectedFilter,
-              startDate: startDate,
-              endDate: endDate,
-              summary: {
-                totalSales: categorySummary.totalTransactions,
-                totalItems: categorySummary.totalItems,
-                totalRevenue: categorySummary.totalRevenue,
-                totalDiscount: categorySummary.totalDiscount,
-                discountedTransactions: categorySummary.discountedTransactions,
-                paymentBreakdown: paymentBreakdown
-              }
+            // ✅ OVERVIEW REPORT - Thermal print
+            const reportData = {
+                summary: {
+                    totalSales: summary.totalSales,
+                    totalItems: summary.totalItems,
+                    totalRevenue: summary.totalRevenue,
+                    totalDiscount: summary.totalDiscount,
+                    discountedSales: summary.discountedSales
+                },
+                paymentBreakdown: summary.paymentBreakdown,
+                salesHistory: salesHistory,
+                period: selectedFilter === 'custom' 
+                    ? `${formatDate(startDate)} to ${formatDate(endDate)}`
+                    : selectedFilter
+            };
+            
+            // ✅ Try thermal print first
+            const printed = await UniversalPrinter.printSalesReportThermal(reportData, userId, t);
+            if (printed) {
+                Alert.alert('✅ Success', 'Sales report printed on thermal printer');
+            } else {
+                // Fallback to PDF
+                await UniversalPrinter.printSalesReport(reportData, userId, t);
+                Alert.alert('✅ Success', 'Sales report saved as PDF');
             }
-          );
         }
-        Alert.alert('✅ Success', 'Category report printed');
-      } else {
-        const reportData = {
-          summary: {
-            totalSales: summary.totalSales,
-            totalItems: summary.totalItems,
-            totalRevenue: summary.totalRevenue,
-            totalDiscount: summary.totalDiscount,
-            discountedSales: summary.discountedSales
-          },
-          paymentBreakdown: summary.paymentBreakdown,
-          salesHistory: salesHistory,
-          period: selectedFilter === 'custom' 
-            ? `${formatDate(startDate)} to ${formatDate(endDate)}`
-            : selectedFilter
-        };
-        await UniversalPrinter.printSalesReport(reportData, userId, t);
-        Alert.alert('✅ Success', 'Sales report printed');
-      }
     } catch (error) {
-      console.log('❌ Print error:', error);
-      Alert.alert('❌ Error', 'Failed to print report');
+        console.log('❌ Print error:', error);
+        Alert.alert('❌ Error', 'Failed to print report');
     }
-  };
-  
+};
   const getPaymentBreakdownForFilter = async (filter: string) => {
     try {
       if (filter === 'week') {
@@ -749,14 +811,33 @@ useEffect(() => {
   }
   
 }, [visible, selectedFilter, startDate, endDate, activeTab, showVoidedTab,  showVoidedCategoriesTab]); // ✅ Add showVoidedTab
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
+ // Find formatDateTime function (around line 200-250)
+// Replace your formatDateTime function with this:
+const formatDateTime = (dateString: string) => {
+    if (!dateString) return { date: '', time: '' };
+    
+    // Database stores UTC, we need to convert to Singapore time (UTC+8)
+    const utcDate = new Date(dateString);
+    
+    // Add 8 hours for Singapore
+    const singaporeTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
+    
+    // Format date
+    const day = singaporeTime.getUTCDate().toString().padStart(2, '0');
+    const month = (singaporeTime.getUTCMonth() + 1).toString().padStart(2, '0');
+    const year = singaporeTime.getUTCFullYear();
+    
+    // Format time
+    let hours = singaporeTime.getUTCHours();
+    const minutes = singaporeTime.getUTCMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    
     return {
-      date: date.toLocaleDateString(),
-      time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        date: `${day}/${month}/${year}`,
+        time: `${hours}:${minutes} ${ampm}`
     };
-  };
-
+};
   // ✅ Helper to calculate discount percentage
   const discountPercentage = summary.totalSales > 0 
     ? ((summary.discountedSales / summary.totalSales) * 100).toFixed(1)
@@ -1065,9 +1146,9 @@ useEffect(() => {
           <Text style={[styles.saleDate, { color: theme.textSecondary }]}>
             {new Date(sale.date).toLocaleDateString()}
           </Text>
-          <Text style={[styles.saleTime, { color: theme.textSecondary }]}>
-            {new Date(sale.date).toLocaleTimeString()}
-          </Text>
+        <Text style={[styles.saleTime, { color: theme.textSecondary }]}>
+  {formatDateTime(sale.date).time}  
+</Text>
         </View>
         
         {/* Show different badges for completed vs voided */}

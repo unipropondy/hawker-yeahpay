@@ -14,7 +14,7 @@ export const setNavigationCallback = (callback) => {
 
 const getBaseURL = () => {
   if (__DEV__) {
-    return 'https://hawker-yeahpay-production.up.railway.app/api';
+    return 'http://192.168.0.131:5000/api';
   } else {
     // Production URL
     return 'https://hawker-yeahpay-production.up.railway.app/api';

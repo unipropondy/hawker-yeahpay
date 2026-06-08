@@ -393,26 +393,30 @@ const getSales = async (req, res) => {
         const result = await request.query(query);
         
         // ✅✅✅ SUBTRACT 5 HOURS - Database to Singapore time ✅✅✅
-        const formattedSales = result.recordset.map(sale => {
-            let items = [];
-            try {
-                items = JSON.parse(sale.ItemsJson || '[]');
-            } catch (e) {
-                items = [];
-            }
+          const formattedSales = result.recordset.map(sale => {
+        let items = [];
+        try {
+            items = JSON.parse(sale.ItemsJson || '[]');
+        } catch (e) {
+            items = [];
+        }
+        
+        // ✅ Database is 8 hours AHEAD, subtract 8 hours
+        let singaporeDate = sale.SaleDate;
+        if (sale.SaleDate) {
+            const dbDate = new Date(sale.SaleDate);
+            // Subtract 8 hours (8 * 60 * 60 * 1000 = 28,800,000 ms)
+            singaporeDate = new Date(dbDate.getTime() - (8 * 60 * 60 * 1000));
+            console.log('📅 UTC DB:', dbDate.toISOString());
+            console.log('📅 Singapore (UTC-8):', singaporeDate.toLocaleString());
+        }
             
-            let singaporeDate = sale.SaleDate;
-            if (sale.SaleDate) {
-                const dbDate = new Date(sale.SaleDate);
-                // Subtract 5 hours (5 * 60 * 60 * 1000 = 18,000,000 ms)
-                singaporeDate = new Date(dbDate.getTime() - (5 * 64.8 * 59 * 1000));
-            }
-            
+            console.log('📅 Database SaleDate:', sale.SaleDate);
             return {
                 id: sale.Id,
                 total: sale.Total,
                 paymentMethod: sale.PaymentMethod,
-                date: singaporeDate,  // ✅ Singapore time (04:20 AM)
+                  date: singaporeDate, // ✅ Singapore time (04:20 AM)
                 invoiceNumber: sale.InvoiceNumber || '',
                 items: items,
                 cashPaid: sale.CashPaid,

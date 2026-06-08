@@ -144,7 +144,34 @@ class SunmiPrinterService {
     line += 'TOTAL'.padStart(8, ' ');
     await printText(line);
   }
-  
+  // Add this method to SunmiPrinterService class
+// Add this method to SunmiPrinterService class
+static async printRawText(text: string): Promise<boolean> {
+    try {
+        await this.init();
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (line.trim() || line === '') {
+                await printText(line);
+            }
+        }
+        return true;
+    } catch (error) {
+        console.log('Raw text print error:', error);
+        return false;
+    }
+}
+
+static async cutPaper(): Promise<boolean> {
+    try {
+        await this.init();
+        await cutPaper();
+        return true;
+    } catch (error) {
+        console.log('Cut paper error:', error);
+        return false;
+    }
+}
   static async printReceipt(saleData: any, companySettings: any): Promise<boolean> {
     try {
       await this.init();

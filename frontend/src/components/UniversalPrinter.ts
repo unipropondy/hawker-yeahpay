@@ -179,6 +179,7 @@ static async printSalesReport(reportData: any, userId?: string | number, t?: any
     return false; 
   }
 }
+
   private static generateCategoryDetailHTML(categoryName: string, items: any[], transactions: any[], company: any, options?: any): string {
     const symbol = company.currencySymbol || '$';
     const groupTransactions = (tx: any[]) => {
@@ -318,6 +319,7 @@ private static async printThermalReceipt(
     return false; 
   }
 }
+
   private static formatThermalTextWithDiscount(saleData: any, company: any, discountInfo?: DiscountInfo): string {
     const symbol = company.currencySymbol || '$';
     const gstInfo = saleData.gstInfo || { rate: 9, baseAmount: 0, gstAmount: 0, totalAmount: 0, regNo: 'N/A' };
@@ -439,6 +441,153 @@ private static async printLaser(saleData: any, userId?: string | number, printer
     let message = `📋 Found ${printers.length} printer(s):\n\n`;
     printers.forEach((p, i) => { message += `${i+1}. ${p.name}\n   Type: ${p.type}\n   Paper: ${p.paperSize || 'Unknown'}\n   Default: ${p.isDefault ? '✅' : '❌'}\n\n`; });
     Alert.alert('Printer Detection', message);
+  }
+    // ==================== SALES REPORT THERMAL PRINT ====================
+  static async printSalesReportThermal(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
+    try {
+      const sunmiReady = await SunmiPrinterService.init();
+      if (!sunmiReady) {
+        console.log('Sunmi printer not available, using PDF fallback');
+        return false;
+      }
+      
+      const company = await BillPDFGenerator.loadSettings(userId);
+      const symbol = company.currencySymbol || '$';
+      
+      let text = '\n';
+      text += '='.repeat(32) + '\n';
+      text += this.centerText(company.name || 'SALES REPORT', 32) + '\n';
+      text += '='.repeat(32) + '\n';
+      text += `Period: ${reportData.period || 'Today'}\n`;
+      text += `Date: ${new Date().toLocaleString()}\n`;
+      text += '-'.repeat(32) + '\n\n';
+      
+      // Summary
+      text += this.centerText('SUMMARY', 32) + '\n';
+      text += '-'.repeat(32) + '\n';
+      text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, 32) + '\n';
+      text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, 32) + '\n';
+      text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+      
+      if (reportData.summary?.totalDiscount > 0) {
+        text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+      }
+      
+      text += '\n' + '-'.repeat(32) + '\n';
+      
+      // Payment Breakdown
+      text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
+      text += '-'.repeat(32) + '\n';
+      
+      if (reportData.paymentBreakdown) {
+        for (const [method, amount] of Object.entries(reportData.paymentBreakdown)) {
+          text += this.twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+        }
+      }
+      
+      text += '\n' + '='.repeat(32) + '\n';
+      text += this.centerText('END OF REPORT', 32) + '\n';
+      text += '='.repeat(32) + '\n\n';
+      text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+      text += '\n\n';
+      
+      await SunmiPrinterService.printRawText(text);
+      await SunmiPrinterService.cutPaper();
+      
+      return true;
+      
+    } catch (error) {
+      console.log('Thermal sales report error:', error);
+      return false;
+    }
+  }
+
+  // ==================== CATEGORY REPORT THERMAL PRINT ====================
+  static async printCategoryReportThermal(
+    categories: any[], 
+    selectedCategory: string | null, 
+    categoryItems: any[], 
+    categoryTransactions: any[],
+    userId?: string | number, 
+    t?: any, 
+    options?: any
+  ): Promise<boolean> {
+    try {
+      const sunmiReady = await SunmiPrinterService.init();
+      if (!sunmiReady) {
+        return false;
+      }
+      
+      const company = await BillPDFGenerator.loadSettings(userId);
+      const symbol = company.currencySymbol || '$';
+      const summary = options?.summary || {};
+      
+      let text = '\n';
+      text += '='.repeat(32) + '\n';
+      text += this.centerText(company.name || 'CATEGORY REPORT', 32) + '\n';
+      text += '='.repeat(32) + '\n';
+      text += `Filter: ${options?.filter || 'Today'}\n`;
+      text += `Date: ${new Date().toLocaleString()}\n`;
+      text += '-'.repeat(32) + '\n\n';
+      
+      if (selectedCategory) {
+        text += this.centerText(`📦 ${selectedCategory}`, 32) + '\n';
+        text += '-'.repeat(32) + '\n';
+        text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+        text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
+        text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
+        if (summary.totalDiscount > 0) {
+          text += this.twoColumns('Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+        }
+      } else {
+        text += this.centerText('CATEGORIES SUMMARY', 32) + '\n';
+        text += '-'.repeat(32) + '\n';
+        text += this.twoColumns('Categories:', `${categories.length}`, 32) + '\n';
+        text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+        text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
+        text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
+        
+        text += '\n' + '-'.repeat(32) + '\n';
+        text += this.centerText('CATEGORY BREAKDOWN', 32) + '\n';
+        text += '-'.repeat(32) + '\n';
+        
+        for (const cat of categories) {
+          text += `\n${cat.name}\n`;
+          text += `  Revenue: ${symbol}${(cat.totalRevenue || 0).toFixed(2)}\n`;
+          text += `  Items: ${cat.totalQuantity || 0}\n`;
+        }
+      }
+      
+      text += '\n' + '='.repeat(32) + '\n';
+      text += this.centerText('END OF REPORT', 32) + '\n';
+      text += '='.repeat(32) + '\n\n';
+      text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+      
+      await SunmiPrinterService.printRawText(text);
+      await SunmiPrinterService.cutPaper();
+      
+      return true;
+      
+    } catch (error) {
+      console.log('Thermal category report error:', error);
+      return false;
+    }
+  }
+
+  // ==================== HELPER METHODS ====================
+  private static centerText(text: string, width: number): string {
+    if (!text) return ' '.repeat(width);
+    const padding = Math.max(0, width - text.length);
+    return ' '.repeat(Math.floor(padding / 2)) + text + ' '.repeat(padding - Math.floor(padding / 2));
+  }
+
+  private static twoColumns(left: string, right: string, width: number): string {
+    const leftWidth = Math.floor(width * 0.55);
+    const rightWidth = width - leftWidth;
+    let leftText = left.substring(0, leftWidth);
+    let rightText = right.substring(0, rightWidth);
+    leftText = leftText.padEnd(leftWidth, ' ');
+    return leftText + rightText;
   }
 }
 
