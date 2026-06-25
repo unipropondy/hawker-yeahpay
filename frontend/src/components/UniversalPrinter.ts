@@ -443,67 +443,96 @@ private static async printLaser(saleData: any, userId?: string | number, printer
     Alert.alert('Printer Detection', message);
   }
     // ==================== SALES REPORT THERMAL PRINT ====================
-  static async printSalesReportThermal(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
+  // ==================== SALES REPORT THERMAL PRINT ====================
+static async printSalesReportThermal(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
     try {
-      const sunmiReady = await SunmiPrinterService.init();
-      if (!sunmiReady) {
-        console.log('Sunmi printer not available, using PDF fallback');
-        return false;
-      }
-      
-      const company = await BillPDFGenerator.loadSettings(userId);
-      const symbol = company.currencySymbol || '$';
-      
-      let text = '\n';
-      text += '='.repeat(32) + '\n';
-      text += this.centerText(company.name || 'SALES REPORT', 32) + '\n';
-      text += '='.repeat(32) + '\n';
-      text += `Period: ${reportData.period || 'Today'}\n`;
-      text += `Date: ${new Date().toLocaleString()}\n`;
-      text += '-'.repeat(32) + '\n\n';
-      
-      // Summary
-      text += this.centerText('SUMMARY', 32) + '\n';
-      text += '-'.repeat(32) + '\n';
-      text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, 32) + '\n';
-      text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, 32) + '\n';
-      text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
-      
-      if (reportData.summary?.totalDiscount > 0) {
-        text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, 32) + '\n';
-      }
-      
-      text += '\n' + '-'.repeat(32) + '\n';
-      
-      // Payment Breakdown
-      text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
-      text += '-'.repeat(32) + '\n';
-      
-      if (reportData.paymentBreakdown) {
-        for (const [method, amount] of Object.entries(reportData.paymentBreakdown)) {
-          text += this.twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+        const sunmiReady = await SunmiPrinterService.init();
+        if (!sunmiReady) {
+            console.log('Sunmi printer not available, using PDF fallback');
+            return false;
         }
-      }
-      
-      text += '\n' + '='.repeat(32) + '\n';
-      text += this.centerText('END OF REPORT', 32) + '\n';
-      text += '='.repeat(32) + '\n\n';
-      text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
-      text += '\n\n';
-      
-      await SunmiPrinterService.printRawText(text);
-      await SunmiPrinterService.cutPaper();
-      
-      return true;
-      
+        
+        const company = await BillPDFGenerator.loadSettings(userId);
+        const symbol = company.currencySymbol || '$';
+        
+        let text = '\n';
+        text += '='.repeat(32) + '\n';
+        text += this.centerText(company.name || 'SALES REPORT', 32) + '\n';
+        text += '='.repeat(32) + '\n';
+        text += `Period: ${reportData.period || 'Today'}\n`;
+        text += `Date: ${new Date().toLocaleString()}\n`;
+        text += '-'.repeat(32) + '\n\n';
+        
+        // ========== SUMMARY ==========
+        text += this.centerText('SUMMARY', 32) + '\n';
+        text += '-'.repeat(32) + '\n';
+        text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, 32) + '\n';
+        text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, 32) + '\n';
+        text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+        
+        // ✅ DISCOUNT SECTION
+        if (reportData.summary?.totalDiscount > 0) {
+            text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+            const discountPercent = reportData.summary?.totalSales > 0 
+                ? ((reportData.summary.discountedSales / reportData.summary.totalSales) * 100).toFixed(1)
+                : '0';
+            text += this.twoColumns('Discounted Sales:', `${reportData.summary?.discountedSales || 0} / ${reportData.summary?.totalSales || 0} (${discountPercent}%)`, 32) + '\n';
+        }
+        
+        // ✅ VALUE CARD SECTION
+        if (reportData.summary?.totalValueCardAmount > 0) {
+            text += '\n' + '-'.repeat(32) + '\n';
+            text += this.centerText('💎 VALUE CARD USAGE', 32) + '\n';
+            text += '-'.repeat(32) + '\n';
+            text += this.twoColumns('Total Value Card:', `${symbol}${(reportData.summary?.totalValueCardAmount || 0).toFixed(2)}`, 32) + '\n';
+            text += this.twoColumns('Card Transactions:', `${reportData.summary?.valueCardTransactions || 0}`, 32) + '\n';
+        }
+        
+        text += '\n' + '-'.repeat(32) + '\n';
+        
+        // ========== PAYMENT BREAKDOWN ==========
+        text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
+        text += '-'.repeat(32) + '\n';
+        
+        if (reportData.paymentBreakdown) {
+            const sortedMethods = Object.entries(reportData.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
+            
+            for (const [method, amount] of sortedMethods) {
+                let methodIcon = '';
+                const methodLower = method.toLowerCase();
+                
+                if (methodLower.includes('cash')) methodIcon = '💰';
+                else if (methodLower.includes('upi')) methodIcon = '📱';
+                else if (methodLower.includes('paynow')) methodIcon = '📱';
+                else if (methodLower.includes('card')) methodIcon = '💳';
+                else if (methodLower.includes('value')) methodIcon = '💎';
+                else if (methodLower.includes('discount')) methodIcon = '🏷️';
+                else methodIcon = '💵';
+                
+                const methodName = `${methodIcon} ${method}`;
+                text += this.twoColumns(methodName, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+            }
+        }
+        
+        text += '\n' + '='.repeat(32) + '\n';
+        text += this.centerText('END OF REPORT', 32) + '\n';
+        text += '='.repeat(32) + '\n\n';
+        text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+        text += '\n\n';
+        
+        await SunmiPrinterService.printRawText(text);
+        await SunmiPrinterService.cutPaper();
+        
+        return true;
+        
     } catch (error) {
-      console.log('Thermal sales report error:', error);
-      return false;
+        console.log('Thermal sales report error:', error);
+        return false;
     }
-  }
-
+}
   // ==================== CATEGORY REPORT THERMAL PRINT ====================
-  static async printCategoryReportThermal(
+  // ==================== CATEGORY REPORT THERMAL PRINT ====================
+static async printCategoryReportThermal(
     categories: any[], 
     selectedCategory: string | null, 
     categoryItems: any[], 
@@ -511,69 +540,154 @@ private static async printLaser(saleData: any, userId?: string | number, printer
     userId?: string | number, 
     t?: any, 
     options?: any
-  ): Promise<boolean> {
+): Promise<boolean> {
     try {
-      const sunmiReady = await SunmiPrinterService.init();
-      if (!sunmiReady) {
-        return false;
-      }
-      
-      const company = await BillPDFGenerator.loadSettings(userId);
-      const symbol = company.currencySymbol || '$';
-      const summary = options?.summary || {};
-      
-      let text = '\n';
-      text += '='.repeat(32) + '\n';
-      text += this.centerText(company.name || 'CATEGORY REPORT', 32) + '\n';
-      text += '='.repeat(32) + '\n';
-      text += `Filter: ${options?.filter || 'Today'}\n`;
-      text += `Date: ${new Date().toLocaleString()}\n`;
-      text += '-'.repeat(32) + '\n\n';
-      
-      if (selectedCategory) {
-        text += this.centerText(`📦 ${selectedCategory}`, 32) + '\n';
-        text += '-'.repeat(32) + '\n';
-        text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
-        text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
-        text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
-        if (summary.totalDiscount > 0) {
-          text += this.twoColumns('Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+        const sunmiReady = await SunmiPrinterService.init();
+        if (!sunmiReady) {
+            return false;
         }
-      } else {
-        text += this.centerText('CATEGORIES SUMMARY', 32) + '\n';
-        text += '-'.repeat(32) + '\n';
-        text += this.twoColumns('Categories:', `${categories.length}`, 32) + '\n';
-        text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
-        text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
-        text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
         
-        text += '\n' + '-'.repeat(32) + '\n';
-        text += this.centerText('CATEGORY BREAKDOWN', 32) + '\n';
-        text += '-'.repeat(32) + '\n';
+        const company = await BillPDFGenerator.loadSettings(userId);
+        const symbol = company.currencySymbol || '$';
+        const summary = options?.summary || {};
         
-        for (const cat of categories) {
-          text += `\n${cat.name}\n`;
-          text += `  Revenue: ${symbol}${(cat.totalRevenue || 0).toFixed(2)}\n`;
-          text += `  Items: ${cat.totalQuantity || 0}\n`;
+        let text = '\n';
+        text += '='.repeat(32) + '\n';
+        text += this.centerText(company.name || 'CATEGORY REPORT', 32) + '\n';
+        text += '='.repeat(32) + '\n';
+        text += `Filter: ${options?.filter || 'Today'}\n`;
+        text += `Date: ${new Date().toLocaleString()}\n`;
+        text += '-'.repeat(32) + '\n\n';
+        
+        if (selectedCategory) {
+            // Single category view
+            text += this.centerText(`📦 ${selectedCategory}`, 32) + '\n';
+            text += '-'.repeat(32) + '\n';
+            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
+            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
+            
+            // ✅ Discount in category
+            if (summary.totalDiscount > 0) {
+                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+                text += this.twoColumns('Discounted Trans:', `${summary.discountedTransactions || 0} / ${summary.totalSales || 0}`, 32) + '\n';
+            }
+            
+            // ✅ Value Card in category
+            if (summary.totalValueCardAmount > 0) {
+                text += this.twoColumns('Value Card Used:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, 32) + '\n';
+            }
+            
+            // Payment breakdown for this category
+            if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
+                text += '\n' + '-'.repeat(32) + '\n';
+                text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
+                text += '-'.repeat(32) + '\n';
+                
+                const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
+                for (const [method, amount] of sortedMethods) {
+                    let methodIcon = '';
+                    const methodLower = method.toLowerCase();
+                    if (methodLower.includes('cash')) methodIcon = '💰';
+                    else if (methodLower.includes('upi')) methodIcon = '📱';
+                    else if (methodLower.includes('paynow')) methodIcon = '📱';
+                    else if (methodLower.includes('card')) methodIcon = '💳';
+                    else if (methodLower.includes('value')) methodIcon = '💎';
+                    else methodIcon = '💵';
+                    
+                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+                }
+            }
+            
+            // Items list
+            if (categoryItems && categoryItems.length > 0) {
+                text += '\n' + '-'.repeat(32) + '\n';
+                text += this.centerText('TOP ITEMS', 32) + '\n';
+                text += '-'.repeat(32) + '\n';
+                
+                const topItems = [...categoryItems].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+                for (const item of topItems) {
+                    text += `\n${item.name}\n`;
+                    text += `  Qty: ${item.quantity}  Revenue: ${symbol}${item.revenue.toFixed(2)}\n`;
+                    if (item.discountAmount > 0) {
+                        text += `  Discount: -${symbol}${item.discountAmount.toFixed(2)}\n`;
+                    }
+                }
+            }
+        } else {
+            // All categories view
+            text += this.centerText('CATEGORIES SUMMARY', 32) + '\n';
+            text += '-'.repeat(32) + '\n';
+            text += this.twoColumns('Categories:', `${categories.length}`, 32) + '\n';
+            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
+            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
+            
+            // ✅ Discount summary
+            if (summary.totalDiscount > 0) {
+                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+            }
+            
+            // ✅ Value Card summary
+            if (summary.totalValueCardAmount > 0) {
+                text += this.twoColumns('Value Card Total:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, 32) + '\n';
+                text += this.twoColumns('Value Card Trans:', `${summary.valueCardTransactionCount || 0}`, 32) + '\n';
+            }
+            
+            // Payment breakdown
+            if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
+                text += '\n' + '-'.repeat(32) + '\n';
+                text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
+                text += '-'.repeat(32) + '\n';
+                
+                const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
+                for (const [method, amount] of sortedMethods) {
+                    let methodIcon = '';
+                    const methodLower = method.toLowerCase();
+                    if (methodLower.includes('cash')) methodIcon = '💰';
+                    else if (methodLower.includes('upi')) methodIcon = '📱';
+                    else if (methodLower.includes('paynow')) methodIcon = '📱';
+                    else if (methodLower.includes('card')) methodIcon = '💳';
+                    else if (methodLower.includes('value')) methodIcon = '💎';
+                    else methodIcon = '💵';
+                    
+                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+                }
+            }
+            
+            // Category breakdown
+            text += '\n' + '-'.repeat(32) + '\n';
+            text += this.centerText('CATEGORY BREAKDOWN', 32) + '\n';
+            text += '-'.repeat(32) + '\n';
+            
+            for (const cat of categories) {
+                text += `\n${cat.name}\n`;
+                text += `  Revenue: ${symbol}${(cat.totalRevenue || 0).toFixed(2)}\n`;
+                text += `  Items: ${cat.totalQuantity || 0}\n`;
+                if (cat.discountAmount > 0) {
+                    text += `  Discount: -${symbol}${cat.discountAmount.toFixed(2)}\n`;
+                }
+                if (cat.valueCardAmount > 0) {
+                    text += `  Value Card: ${symbol}${cat.valueCardAmount.toFixed(2)}\n`;
+                }
+            }
         }
-      }
-      
-      text += '\n' + '='.repeat(32) + '\n';
-      text += this.centerText('END OF REPORT', 32) + '\n';
-      text += '='.repeat(32) + '\n\n';
-      text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
-      
-      await SunmiPrinterService.printRawText(text);
-      await SunmiPrinterService.cutPaper();
-      
-      return true;
-      
+        
+        text += '\n' + '='.repeat(32) + '\n';
+        text += this.centerText('END OF REPORT', 32) + '\n';
+        text += '='.repeat(32) + '\n\n';
+        text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+        
+        await SunmiPrinterService.printRawText(text);
+        await SunmiPrinterService.cutPaper();
+        
+        return true;
+        
     } catch (error) {
-      console.log('Thermal category report error:', error);
-      return false;
+        console.log('Thermal category report error:', error);
+        return false;
     }
-  }
-
+}
   // ==================== HELPER METHODS ====================
   private static centerText(text: string, width: number): string {
     if (!text) return ' '.repeat(width);

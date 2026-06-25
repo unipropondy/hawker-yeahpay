@@ -350,9 +350,13 @@ const voidSale = async (req, res) => {
 // ============================================
 // GET sales (UPDATED)
 // ============================================
+// backend/controllers/salesController.js
+
+// backend/controllers/salesController.js
+
 const getSales = async (req, res) => {
     try {
-        const { filter, startDate, endDate, status } = req.query;
+        const { filter, startDate, endDate, status, startTime, endTime } = req.query;
         const outletId = req.outletId;
         
         if (!outletId) {
@@ -374,12 +378,47 @@ const getSales = async (req, res) => {
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
         
+        // ✅ Use UTC time from database
+        const timeResult = await pool.request()
+            .query('SELECT GETUTCDATE() as utcNow, CAST(GETUTCDATE() AS DATE) as todayUTC');
+        const utcNow = timeResult.recordset[0].utcNow;
+        const todayUTC = timeResult.recordset[0].todayUTC;
+        
+        console.log('📅 UTC now:', utcNow);
+        console.log('📅 Today UTC:', todayUTC);
+        
         if (filter === 'today') {
-            query += " AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)";
+            // ✅ UTC today
+            query += " AND CAST(SaleDate AS DATE) = @todayDate";
+            request.input('todayDate', sql.Date, todayUTC);
+            
         } else if (filter === 'week') {
-            query += " AND SaleDate >= DATEADD(day, -7, GETDATE())";
+            const weekStart = new Date(utcNow);
+            weekStart.setDate(weekStart.getDate() - 7);
+            weekStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @weekStart";
+            request.input('weekStart', sql.DateTime, weekStart);
+            
         } else if (filter === 'month') {
-            query += " AND SaleDate >= DATEADD(day, -30, GETDATE())";
+            const monthStart = new Date(utcNow);
+            monthStart.setDate(monthStart.getDate() - 30);
+            monthStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @monthStart";
+            request.input('monthStart', sql.DateTime, monthStart);
+            
+        } else if (filter === 'custom' && startDate && endDate) {
+            // ✅ Use UTC directly!
+            const start = new Date(`${startDate}T${startTime || '00:00'}:00.000Z`);
+            const end = new Date(`${endDate}T${endTime || '23:59'}:59.999Z`);
+            
+            console.log('📅 Custom start (UTC):', start.toISOString());
+            console.log('📅 Custom end (UTC):', end.toISOString());
+            
+            query += " AND SaleDate >= @startDate AND SaleDate <= @endDate";
+            request.input('startDate', sql.DateTime, start);
+            request.input('endDate', sql.DateTime, end);
         }
         
         if (status === 'voided') {
@@ -392,31 +431,20 @@ const getSales = async (req, res) => {
         
         const result = await request.query(query);
         
-        // ✅✅✅ SUBTRACT 5 HOURS - Database to Singapore time ✅✅✅
-          const formattedSales = result.recordset.map(sale => {
-        let items = [];
-        try {
-            items = JSON.parse(sale.ItemsJson || '[]');
-        } catch (e) {
-            items = [];
-        }
-        
-        // ✅ Database is 8 hours AHEAD, subtract 8 hours
-        let singaporeDate = sale.SaleDate;
-        if (sale.SaleDate) {
-            const dbDate = new Date(sale.SaleDate);
-            // Subtract 8 hours (8 * 60 * 60 * 1000 = 28,800,000 ms)
-            singaporeDate = new Date(dbDate.getTime() - (8 * 60 * 60 * 1000));
-            console.log('📅 UTC DB:', dbDate.toISOString());
-            console.log('📅 Singapore (UTC-8):', singaporeDate.toLocaleString());
-        }
+        // ✅ Database is UTC - use directly!
+        const formattedSales = result.recordset.map(sale => {
+            let items = [];
+            try {
+                items = JSON.parse(sale.ItemsJson || '[]');
+            } catch (e) {
+                items = [];
+            }
             
-            console.log('📅 Database SaleDate:', sale.SaleDate);
             return {
                 id: sale.Id,
                 total: sale.Total,
                 paymentMethod: sale.PaymentMethod,
-                  date: singaporeDate, // ✅ Singapore time (04:20 AM)
+                date: sale.SaleDate,
                 invoiceNumber: sale.InvoiceNumber || '',
                 items: items,
                 cashPaid: sale.CashPaid,
@@ -426,24 +454,21 @@ const getSales = async (req, res) => {
         });
         
         console.log(`✅ Fetched ${formattedSales.length} sales`);
-        if (formattedSales.length > 0) {
-            console.log(`📅 Database time: ${result.recordset[0].SaleDate}`);
-            console.log(`📅 Singapore time: ${formattedSales[0].date}`);
-        }
-        
         res.json(formattedSales);
         
     } catch (err) {
-        console.error('Error:', err);
+        console.error('❌ Error:', err);
         res.status(500).json({ error: err.message });
     }
 };
 // ============================================
 // GET sales summary with DISCOUNT (UPDATED)
 // ============================================
+// backend/controllers/salesController.js
+
 const getSalesSummary = async (req, res) => {
     try {
-        const { filter, startDate, endDate, status } = req.query;
+        const { filter, startDate, endDate, status, startTime, endTime } = req.query;
         const outletId = req.outletId;
         
         if (!outletId) {
@@ -472,7 +497,7 @@ const getSalesSummary = async (req, res) => {
         
         const hasStatusColumn = checkStatusColumn.recordset.length > 0;
         
-        // ✅ Build query - SINGLE STRING
+        // ✅ Build query
         let query = `
             WITH SalesWithDetails AS (
                 SELECT 
@@ -501,38 +526,58 @@ const getSalesSummary = async (req, res) => {
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
 
-        // Status filters
+        // ✅ Get UTC time from database
+        const timeResult = await pool.request()
+            .query('SELECT GETUTCDATE() as utcNow, CAST(GETUTCDATE() AS DATE) as todayUTC');
+        const utcNow = timeResult.recordset[0].utcNow;
+        const todayUTC = timeResult.recordset[0].todayUTC;
+        
+        console.log('📅 UTC now (summary):', utcNow);
+        console.log('📅 Today UTC (summary):', todayUTC);
+
+        // ✅ Status filters
         if (hasStatusColumn) {
             if (status === 'voided') {
                 query += " AND Status = 'VOIDED'";
-            } else if (status === 'completed') {
-                query += " AND (Status IS NULL OR Status = 'COMPLETED' OR Status != 'VOIDED')";
             } else {
-                query += " AND (Status IS NULL OR Status != 'VOIDED')";
+                query += " AND (Status IS NULL OR Status = 'COMPLETED' OR Status != 'VOIDED')";
             }
         }
-
-        // Date filters
+        
+        // ✅ Date filters - use UTC!
         if (filter === 'today') {
-            query += " AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)";
-        } 
-        else if (filter === 'week') {
-            query += " AND SaleDate >= DATEADD(day, -7, GETDATE())";
-        } 
-        else if (filter === 'month') {
-            query += " AND SaleDate >= DATEADD(day, -30, GETDATE())";
-        } 
-        else if (filter === 'custom' && startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
+            query += " AND CAST(SaleDate AS DATE) = @todayDate";
+            request.input('todayDate', sql.Date, todayUTC);
+            
+        } else if (filter === 'week') {
+            const weekStart = new Date(utcNow);
+            weekStart.setDate(weekStart.getDate() - 7);
+            weekStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @weekStart";
+            request.input('weekStart', sql.DateTime, weekStart);
+            
+        } else if (filter === 'month') {
+            const monthStart = new Date(utcNow);
+            monthStart.setDate(monthStart.getDate() - 30);
+            monthStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @monthStart";
+            request.input('monthStart', sql.DateTime, monthStart);
+            
+        } else if (filter === 'custom' && startDate && endDate) {
+            // ✅ Use UTC directly!
+            const start = new Date(`${startDate}T${startTime || '00:00'}:00.000Z`);
+            const end = new Date(`${endDate}T${endTime || '23:59'}:59.999Z`);
+            
+            console.log('📅 Custom start (UTC):', start.toISOString());
+            console.log('📅 Custom end (UTC):', end.toISOString());
             
             query += " AND SaleDate >= @startDate AND SaleDate <= @endDate";
             request.input('startDate', sql.DateTime, start);
             request.input('endDate', sql.DateTime, end);
         }
-
+        
         query += `
             )
             SELECT 
@@ -553,7 +598,7 @@ const getSalesSummary = async (req, res) => {
         
         query += ` FROM SalesWithDetails GROUP BY PaymentMethod`;
         
-        console.log("Executing summary query");
+        console.log("📊 Executing summary query:", query);
         const result = await request.query(query);
         
         // Calculate totals
@@ -591,7 +636,7 @@ const getSalesSummary = async (req, res) => {
 // ============================================
 const getSalesByCategory = async (req, res) => {
     try {
-        const { filter, startDate, endDate, status } = req.query;
+        const { filter, startDate, endDate, status, startTime, endTime } = req.query;
         
         const outletId = req.outletId;
         
@@ -600,6 +645,15 @@ const getSalesByCategory = async (req, res) => {
         }
         
         const pool = getPool();
+        
+        // ✅ FIX: Use UTC time from database
+        const timeResult = await pool.request()
+            .query('SELECT GETUTCDATE() as utcNow, CAST(GETUTCDATE() AS DATE) as todayUTC');
+        const utcNow = timeResult.recordset[0].utcNow;
+        const todayUTC = timeResult.recordset[0].todayUTC;
+        
+        console.log('📅 UTC now (category):', utcNow);
+        console.log('📅 Today UTC (category):', todayUTC);
         
         // ✅ Check if invoice column exists
         const checkInvoiceColumn = await pool.request().query(`
@@ -667,21 +721,34 @@ const getSalesByCategory = async (req, res) => {
             }
         }
 
-        // Date filters
+        // ✅ FIX: Date filters with UTC
         if (filter === 'today') {
-            query += ' AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)';
-        } 
-        else if (filter === 'week') {
-            query += ' AND SaleDate >= DATEADD(day, -7, GETDATE())';
-        } 
-        else if (filter === 'month') {
-            query += ' AND SaleDate >= DATEADD(month, -1, GETDATE())';
-        } 
-        else if (filter === 'custom' && startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
+            query += " AND CAST(SaleDate AS DATE) = @todayDate";
+            request.input('todayDate', sql.Date, todayUTC);
+            
+        } else if (filter === 'week') {
+            const weekStart = new Date(utcNow);
+            weekStart.setDate(weekStart.getDate() - 7);
+            weekStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @weekStart";
+            request.input('weekStart', sql.DateTime, weekStart);
+            
+        } else if (filter === 'month') {
+            const monthStart = new Date(utcNow);
+            monthStart.setDate(monthStart.getDate() - 30);
+            monthStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @monthStart";
+            request.input('monthStart', sql.DateTime, monthStart);
+            
+        } else if (filter === 'custom' && startDate && endDate) {
+            // ✅ FIX: Use UTC directly
+            const start = new Date(`${startDate}T${startTime || '00:00'}:00.000Z`);
+            const end = new Date(`${endDate}T${endTime || '23:59'}:59.999Z`);
+            
+            console.log('📅 Custom start (UTC):', start.toISOString());
+            console.log('📅 Custom end (UTC):', end.toISOString());
             
             query += ' AND SaleDate >= @startDate AND SaleDate <= @endDate';
             request.input('startDate', sql.DateTime, start);
@@ -915,7 +982,7 @@ const generateInvoiceNumber = async (pool, outletId) => {
 const getCategoryItems = async (req, res) => {
     try {
         const { category } = req.params;
-        const { filter, startDate, endDate, status } = req.query;
+        const { filter, startDate, endDate, status, startTime, endTime } = req.query;
         
         const outletId = req.outletId;
         
@@ -924,6 +991,15 @@ const getCategoryItems = async (req, res) => {
         }
         
         const pool = getPool();
+        
+        // ✅ FIX: Use UTC time from database
+        const timeResult = await pool.request()
+            .query('SELECT GETUTCDATE() as utcNow, CAST(GETUTCDATE() AS DATE) as todayUTC');
+        const utcNow = timeResult.recordset[0].utcNow;
+        const todayUTC = timeResult.recordset[0].todayUTC;
+        
+        console.log('📅 UTC now (category items):', utcNow);
+        console.log('📅 Today UTC (category items):', todayUTC);
         
         // ✅ Check if invoice column exists
         const checkInvoiceColumn = await pool.request().query(`
@@ -959,7 +1035,6 @@ const getCategoryItems = async (req, res) => {
             SELECT Id, SaleDate, CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson 
         `;
         
-        // ✅ ADD INVOICE NUMBER
         if (hasInvoiceColumn) {
             query += `, InvoiceNumber`;
         }
@@ -991,21 +1066,34 @@ const getCategoryItems = async (req, res) => {
             }
         }
 
-        // Date filters
+        // ✅ FIX: Date filters with UTC
         if (filter === 'today') {
-            query += ' AND CAST(SaleDate AS DATE) = CAST(GETDATE() AS DATE)';
-        } 
-        else if (filter === 'week') {
-            query += ' AND SaleDate >= DATEADD(day, -7, GETDATE())';
-        } 
-        else if (filter === 'month') {
-            query += ' AND SaleDate >= DATEADD(month, -1, GETDATE())';
-        } 
-        else if (filter === 'custom' && startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
+            query += " AND CAST(SaleDate AS DATE) = @todayDate";
+            request.input('todayDate', sql.Date, todayUTC);
+            
+        } else if (filter === 'week') {
+            const weekStart = new Date(utcNow);
+            weekStart.setDate(weekStart.getDate() - 7);
+            weekStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @weekStart";
+            request.input('weekStart', sql.DateTime, weekStart);
+            
+        } else if (filter === 'month') {
+            const monthStart = new Date(utcNow);
+            monthStart.setDate(monthStart.getDate() - 30);
+            monthStart.setHours(0, 0, 0, 0);
+            
+            query += " AND SaleDate >= @monthStart";
+            request.input('monthStart', sql.DateTime, monthStart);
+            
+        } else if (filter === 'custom' && startDate && endDate) {
+            // ✅ FIX: Use UTC directly
+            const start = new Date(`${startDate}T${startTime || '00:00'}:00.000Z`);
+            const end = new Date(`${endDate}T${endTime || '23:59'}:59.999Z`);
+            
+            console.log('📅 Custom start (UTC):', start.toISOString());
+            console.log('📅 Custom end (UTC):', end.toISOString());
             
             query += ' AND SaleDate >= @startDate AND SaleDate <= @endDate';
             request.input('startDate', sql.DateTime, start);
@@ -1013,7 +1101,6 @@ const getCategoryItems = async (req, res) => {
         }
 
         const result = await request.query(query);
-        
         // Process items
         const itemMap = new Map();
         const transactions = [];

@@ -68,6 +68,16 @@ const POSSalesReport: React.FC<Props> = ({
   const loadTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [reprinting, setReprinting] = useState(false);
 const [reprintSale, setReprintSale] = useState<any>(null);
+const [savedStartTime, setSavedStartTime] = useState('00:00');
+const [savedEndTime, setSavedEndTime] = useState('23:59');
+
+// Add these refs
+
+
+
+// Add these refs
+
+
   const filterMap = {
     'Today': 'today',
     'Week': 'week',
@@ -77,8 +87,8 @@ const [reprintSale, setReprintSale] = useState<any>(null);
   
   // ============ STATE ============
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerType, setPickerType] = useState<'start' | 'end'>('start');
-  const [tempDate, setTempDate] = useState(new Date());
+const [pickerType, setPickerType] = useState<'start' | 'end' | 'startTime' | 'endTime'>('start');
+const [tempDate, setTempDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'categories'>('overview');
   const prevTabRef = useRef(activeTab); 
@@ -100,6 +110,13 @@ const prevShowVoidedCategoriesTabRef = useRef(showVoidedCategoriesTab);
 const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== showVoidedCategoriesTab;
 const [showCashDrawerLogs, setShowCashDrawerLogs] = useState(false);
 const [cashDrawerToggle, setCashDrawerToggle] = useState(false);
+// ============ NEW TIME STATE ============
+const startTimeRef = useRef('00:00');
+const endTimeRef = useRef('23:59');
+const isTimePickerOpen = useRef(false);
+const [startTime, setStartTime] = useState('00:00');
+const [endTime, setEndTime] = useState('23:59');
+
   // ✅ Summary with discount fields
   const [summary, setSummary] = useState({
     totalSales: 0,
@@ -111,7 +128,8 @@ const [cashDrawerToggle, setCashDrawerToggle] = useState(false);
   });
   
   const [salesHistory, setSalesHistory] = useState<any[]>([]);
-  
+  const prevStartTimeRef = useRef(startTime);
+const prevEndTimeRef = useRef(endTime);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoryItems, setCategoryItems] = useState<any[]>([]);
@@ -159,6 +177,41 @@ const [cashDrawerToggle, setCashDrawerToggle] = useState(false);
   };
   loadToggleState();
 }, []);
+// ============ TIME HELPERS ============
+const formatTime = (time: string) => {
+  const [hours, minutes] = time.split(':').map(Number);
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const h = hours % 12 || 12;
+  return `${h}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+};
+
+
+const openTimePicker = (type: 'start' | 'end') => {
+    if (isTimePickerOpen.current) {
+        console.log('⏰ Time picker already open');
+        return;
+    }
+    
+    console.log('⏰ Opening time picker for:', type);
+    
+    isTimePickerOpen.current = true;
+    setPickerType(type === 'start' ? 'startTime' : 'endTime');
+    
+    const currentTime = type === 'start' ? startTime : endTime;
+    const [hours, minutes] = currentTime.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    setTempDate(date);
+    
+    setShowPicker(true);
+};
+
+useEffect(() => {
+    console.log('🕐 startTime changed to:', startTime);
+    console.log('🕐 endTime changed to:', endTime);
+    console.log('🕐 savedStartTime:', savedStartTime);
+    console.log('🕐 savedEndTime:', savedEndTime);
+}, [startTime, endTime, savedStartTime, savedEndTime]);
 const handleReprintVoidedSale = async (sale: any) => {
     console.log('🖨️ Reprinting voided sale:', sale.id);
     
@@ -250,184 +303,217 @@ const saveToggleState = async (value: boolean) => {
 };
 
   // ============ LOAD FUNCTIONS ============
-  const loadOverviewData = useCallback(async () => {
-  if (loadingRef.current) return;
-  
-  loadingRef.current = true;
-  if (isMounted.current) setLoading(true);
+const loadOverviewData = useCallback(async () => {
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
+    if (isMounted.current) setLoading(true);
 
-  try {
-    const filterValue = selectedFilter?.toLowerCase() || 'today';
-    const statusParam = showVoidedTab ? 'voided' : 'completed';
-    
-    let summaryUrl = '/sales/summary';
-    let salesUrl = '/sales';
-    
-    if (filterValue === 'custom') {
-      const start = startDate.toISOString().split('T')[0];
-      const end = endDate.toISOString().split('T')[0];
-      summaryUrl += `?filter=custom&startDate=${start}&endDate=${end}&status=${statusParam}`;
-      salesUrl += `?filter=custom&startDate=${start}&endDate=${end}&status=${statusParam}`;
-    } else {
-      summaryUrl += `?filter=${filterValue}&status=${statusParam}`;
-      salesUrl += `?filter=${filterValue}&status=${statusParam}`;
-    }
-    
-    console.log(`📊 Loading ${showVoidedTab ? 'VOIDED' : 'COMPLETED'} sales with filter: ${filterValue}`);
-    
-    const [summaryRes, salesRes] = await Promise.all([
-      API.get(summaryUrl),
-      API.get(salesUrl)
-    ]);
-    
-    if (isMounted.current) {
-      setSummary({
-        totalSales: summaryRes.data.totalSales || 0,
-        totalRevenue: summaryRes.data.totalRevenue || 0,
-        totalItems: summaryRes.data.totalItems || 0,
-        totalDiscount: summaryRes.data.totalDiscount || 0,
-        discountedSales: summaryRes.data.discountedSales || 0,
-        paymentBreakdown: summaryRes.data.paymentBreakdown || {}
-      });
-      
-      // ✅ FORMAT SALES WITH INVOICE NUMBER
-      const formattedSales = (salesRes.data || []).map((sale: any) => ({
-        id: sale.id || sale.Id,
-        total: sale.total || sale.Total || 0,
-        paymentMethod: sale.paymentMethod || sale.PaymentMethod || '',
-        date: sale.date || sale.SaleDate || new Date(),
-        invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber || '', // ✅ ADD THIS
-        items: sale.items || sale.ItemsJson || [],
-        status: sale.status || sale.Status,
-        voidReason: sale.voidReason,
-        voidedAt: sale.voidedAt,
-        voidedBy: sale.voidedBy,
-        discount: sale.discount || null
-      }));
-      
-      // ✅ Store formatted data
-      if (showVoidedTab) {
-        setVoidedSales(formattedSales);
-      } else {
-        setSalesHistory(formattedSales);
-      }
-    }
-    
-  } catch (error) {
-    console.log('❌ Error loading data:', error);
-  } finally {
-    loadingRef.current = false;
-    if (isMounted.current) setLoading(false);
-  }
-}, [selectedFilter, startDate, endDate, showVoidedTab]);
-const loadCategoryData = useCallback(async () => {
-  if (loadingRef.current) return;
-  
-  loadingRef.current = true;
-  if (isMounted.current) {
-    setSelectedCategory(null);
-    setCategoryItems([]);
-    setCategoryTransactions([]);
-    setLoading(true);
-  }
-  
-  try {
-    const filterValue = selectedFilter?.toLowerCase() || 'today';
-    // ✅ Use Categories tab specific state
-    const statusParam = showVoidedCategoriesTab ? 'voided' : 'completed';
-    
-    let categoryUrl = '/sales/by-category';
-    const categoryParams = new URLSearchParams();
-    categoryParams.append('filter', filterValue);
-    categoryParams.append('status', statusParam);
-    
-    let paymentUrl = '/sales/summary';
-    const paymentParams = new URLSearchParams();
-    paymentParams.append('filter', filterValue);
-    paymentParams.append('status', statusParam);
-    
-    if (filterValue === 'custom') {
-      const start = startDate.toISOString().split('T')[0];
-      const end = endDate.toISOString().split('T')[0];
-      
-      categoryParams.append('startDate', start);
-      categoryParams.append('endDate', end);
-      
-      paymentParams.append('startDate', start);
-      paymentParams.append('endDate', end);
-    }
-    
-    console.log(`📊 Loading categories with filter: ${filterValue}, status: ${statusParam}`);
-    
-    const [categoryResponse, paymentResponse] = await Promise.all([
-      API.get(`${categoryUrl}?${categoryParams.toString()}`),
-      API.get(`${paymentUrl}?${paymentParams.toString()}`)
-    ]);
-    
-    if (isMounted.current) {
-      if (categoryResponse.data.success) {
-        setCategories(categoryResponse.data.categories || []);
+    try {
+        const filterValue = selectedFilter?.toLowerCase() || 'today';
+        const statusParam = showVoidedTab ? 'voided' : 'completed';
         
-        setCategorySummary({
-          totalRevenue: categoryResponse.data.summary?.totalRevenue || 0,
-          totalTransactions: categoryResponse.data.summary?.totalTransactions || 0,
-          totalCategories: categoryResponse.data.summary?.totalCategories || 0,
-          totalItems: categoryResponse.data.summary?.totalItems || 0,
-          totalDiscount: categoryResponse.data.summary?.totalDiscount || 0,
-          discountedTransactions: categoryResponse.data.summary?.discountedTransactions || 0,
-          paymentBreakdown: paymentResponse.data.paymentBreakdown || {}
-        });
-      }
+         const params = new URLSearchParams();
+        params.append('filter', filterValue);
+        params.append('status', statusParam);
+        params.append('outletId', outletInfo?.id?.toString() || '');
+        
+        if (filterValue === 'custom') {
+            const start = startDate.toISOString().split('T')[0];
+            const end = endDate.toISOString().split('T')[0];
+            params.append('startDate', start);
+            params.append('endDate', end);
+            
+            // ✅ Use saved time for custom filter
+            const currentStartTime = startTime || savedStartTime || '00:00';
+            const currentEndTime = endTime || savedEndTime || '23:59';
+            
+            params.append('startTime', currentStartTime);
+            params.append('endTime', currentEndTime);
+        }
+        
+        const summaryUrl = `/sales/summary?${params.toString()}`;
+        const salesUrl = `/sales?${params.toString()}`;
+        
+        console.log(`📊 Loading with time: ${startTime} → ${endTime}`);
+        
+        const [summaryRes, salesRes] = await Promise.all([
+            API.get(summaryUrl),
+            API.get(salesUrl)
+        ]);
+        
+        if (isMounted.current) {
+            setSummary({
+                totalSales: summaryRes.data.totalSales || 0,
+                totalRevenue: summaryRes.data.totalRevenue || 0,
+                totalItems: summaryRes.data.totalItems || 0,
+                totalDiscount: summaryRes.data.totalDiscount || 0,
+                discountedSales: summaryRes.data.discountedSales || 0,
+                paymentBreakdown: summaryRes.data.paymentBreakdown || {}
+            });
+            
+            const formattedSales = (salesRes.data || []).map((sale: any) => ({
+                id: sale.id || sale.Id,
+                total: sale.total || sale.Total || 0,
+                paymentMethod: sale.paymentMethod || sale.PaymentMethod || '',
+                date: sale.date || sale.SaleDate || new Date(),
+                invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber || '',
+                items: sale.items || sale.ItemsJson || [],
+                status: sale.status || sale.Status,
+                voidReason: sale.voidReason,
+                voidedAt: sale.voidedAt,
+                voidedBy: sale.voidedBy,
+                discount: sale.discount || null
+            }));
+            
+            if (showVoidedTab) {
+                setVoidedSales(formattedSales);
+            } else {
+                setSalesHistory(formattedSales);
+            }
+        }
+        
+    } catch (error) {
+        console.log('❌ Error loading data:', error);
+    } finally {
+        loadingRef.current = false;
+        if (isMounted.current) setLoading(false);
+    }
+}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedTab]);
+const loadCategoryData = useCallback(async () => {
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
+    if (isMounted.current) {
+        setSelectedCategory(null);
+        setCategoryItems([]);
+        setCategoryTransactions([]);
+        setLoading(true);
     }
     
-  } catch (error) {
-    console.log('❌ Error loading categories:', error);
-  } finally {
-    loadingRef.current = false;
-    if (isMounted.current) setLoading(false);
-  }
-}, [selectedFilter, startDate, endDate, showVoidedCategoriesTab]); // ✅ Use Categories tab state/ ✅ ADD showVoidedTab dependency
+    try {
+        const filterValue = selectedFilter?.toLowerCase() || 'today';
+        const statusParam = showVoidedCategoriesTab ? 'voided' : 'completed';
+        
+  const categoryParams = new URLSearchParams();
+        categoryParams.append('filter', filterValue);
+        categoryParams.append('status', statusParam);
+        categoryParams.append('outletId', outletInfo?.id?.toString() || '');
+        
+        const paymentParams = new URLSearchParams();
+        paymentParams.append('filter', filterValue);
+        paymentParams.append('status', statusParam);
+        paymentParams.append('outletId', outletInfo?.id?.toString() || '');
+        
+if (filterValue === 'custom') {
+        const start = startDate.toISOString().split('T')[0];
+        const end = endDate.toISOString().split('T')[0];
+        
+        categoryParams.append('startDate', start);
+        categoryParams.append('endDate', end);
+        // ✅ ADD TIME
+        categoryParams.append('startTime', startTime || '00:00');
+        categoryParams.append('endTime', endTime || '23:59');
+        
+        paymentParams.append('startDate', start);
+        paymentParams.append('endDate', end);
+        // ✅ ADD TIME
+        paymentParams.append('startTime', startTime || '00:00');
+        paymentParams.append('endTime', endTime || '23:59');
+    }
+        console.log(`📊 Loading categories with time: ${startTime} → ${endTime}`);
+        
+        const [categoryResponse, paymentResponse] = await Promise.all([
+            API.get(`/sales/by-category?${categoryParams.toString()}`),
+            API.get(`/sales/summary?${paymentParams.toString()}`)
+        ]);
+        
+        if (isMounted.current) {
+            if (categoryResponse.data.success) {
+                setCategories(categoryResponse.data.categories || []);
+                
+                setCategorySummary({
+                    totalRevenue: categoryResponse.data.summary?.totalRevenue || 0,
+                    totalTransactions: categoryResponse.data.summary?.totalTransactions || 0,
+                    totalCategories: categoryResponse.data.summary?.totalCategories || 0,
+                    totalItems: categoryResponse.data.summary?.totalItems || 0,
+                    totalDiscount: categoryResponse.data.summary?.totalDiscount || 0,
+                    discountedTransactions: categoryResponse.data.summary?.discountedTransactions || 0,
+                    paymentBreakdown: paymentResponse.data.paymentBreakdown || {}
+                });
+            }
+        }
+        
+    } catch (error) {
+        console.log('❌ Error loading categories:', error);
+    } finally {
+        loadingRef.current = false;
+        if (isMounted.current) setLoading(false);
+    }
+}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedCategoriesTab]);
   
 const loadCategoryItems = useCallback(async (category: string) => {
-  if (loadingRef.current) return;
-  
-  loadingRef.current = true;
-  if (isMounted.current) {
-    setSelectedCategory(category);
-    setShowTransactions(false);
-    setLoading(true);
-  }
-  
-  try {
-    const filterValue = selectedFilter?.toLowerCase() || 'today';
-    // ✅ CHANGE: Use Categories tab specific state
-    const statusParam = showVoidedCategoriesTab ? 'voided' : 'completed';
+    if (loadingRef.current) return;
     
-    let url = `/sales/category/${encodeURIComponent(category)}`;
-    const params = new URLSearchParams();
-    params.append('filter', filterValue);
-    params.append('status', statusParam);
-    
-    if (filterValue === 'custom') {
-      params.append('startDate', startDate.toISOString().split('T')[0]);
-      params.append('endDate', endDate.toISOString().split('T')[0]);
+    loadingRef.current = true;
+    if (isMounted.current) {
+        setSelectedCategory(category);
+        setShowTransactions(false);
+        setLoading(true);
     }
     
-    console.log(`📊 Loading category items for "${category}" with status: ${statusParam}`);
-    
-    const response = await API.get(`${url}?${params.toString()}`);
-    
-    if (isMounted.current && response.data.success) {
-      setCategoryItems(response.data.items || []);
-      setCategoryTransactions(response.data.transactions || []);
+    try {
+        const filterValue = selectedFilter?.toLowerCase() || 'today';
+        const statusParam = showVoidedCategoriesTab ? 'voided' : 'completed';
+        
+        const params = new URLSearchParams();
+        params.append('filter', filterValue);
+        params.append('status', statusParam);
+        
+          if (filterValue === 'custom') {
+        params.append('startDate', startDate.toISOString().split('T')[0]);
+        params.append('endDate', endDate.toISOString().split('T')[0]);
+        // ✅ ADD TIME
+        params.append('startTime', startTime || '00:00');
+        params.append('endTime', endTime || '23:59');
     }
-  } catch (error) {
-    console.log('❌ Error loading category items:', error);
-  } finally {
-    loadingRef.current = false;
-    if (isMounted.current) setLoading(false);
-  }
-}, [selectedFilter, startDate, endDate, showVoidedCategoriesTab]); // ✅ CHANGE dependency
+        
+        console.log(`📊 Loading category items with time: ${startTime} → ${endTime}`);
+        
+        const response = await API.get(`/sales/category/${encodeURIComponent(category)}?${params.toString()}`);
+        
+        if (isMounted.current && response.data.success) {
+            setCategoryItems(response.data.items || []);
+            setCategoryTransactions(response.data.transactions || []);
+        }
+    } catch (error) {
+        console.log('❌ Error loading category items:', error);
+    } finally {
+        loadingRef.current = false;
+        if (isMounted.current) setLoading(false);
+    }
+}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedCategoriesTab]);
+const handleApplyCustomFilter = () => {
+  setSavedStartTime(startTime);
+    setSavedEndTime(endTime);
+    startTimeRef.current = startTime;
+    endTimeRef.current = endTime;
+    console.log('📊 Applying custom filter:', {
+        start: startDate.toISOString().split('T')[0],
+        end: endDate.toISOString().split('T')[0],
+        startTime,
+        endTime
+    });
+    
+    // ✅ Save the time values when applying custom filter
+    setSavedStartTime(startTime);
+    setSavedEndTime(endTime);
+    startTimeRef.current = startTime;
+    endTimeRef.current = endTime;
+    
+    onApplyCustomFilter();
+    loadOverviewData();
+};
   // ============ VOID SALE FUNCTION ============
   const handleVoidSale = async () => {
     if (!selectedSale || !voidPassword) {
@@ -516,17 +602,36 @@ const loadCategoryItems = useCallback(async (category: string) => {
   }, [visible, selectedFilter, startDate, endDate, activeTab]);
 
   // ============ HANDLERS ============
-  const handleFilterChange = (filter: string) => {
+const handleFilterChange = (filter: string) => {
     const filterMapLocal: {[key: string]: string} = {
-      'Today': 'today',
-      'Week': 'week',
-      'Month': 'month',
-      'Custom': 'custom'
+        'Today': 'today',
+        'Week': 'week',
+        'Month': 'month',
+        'Custom': 'custom'
     };
     const backendFilter = filterMapLocal[filter] || filter.toLowerCase();
+    
+    // ✅ Save current time before resetting
+    if (filter !== 'Custom' && filter !== 'custom') {
+        // Save the current time values
+        setSavedStartTime(startTime);
+        setSavedEndTime(endTime);
+        
+        // Reset to defaults
+        setStartTime('00:00');
+        setEndTime('23:59');
+        startTimeRef.current = '00:00';
+        endTimeRef.current = '23:59';
+    } else {
+        // ✅ When switching TO Custom, restore saved time
+        setStartTime(savedStartTime || '00:00');
+        setEndTime(savedEndTime || '23:59');
+        startTimeRef.current = savedStartTime || '00:00';
+        endTimeRef.current = savedEndTime || '23:59';
+    }
+    
     onFilterChange(backendFilter);
-  };
-  
+};
   const openStartPicker = useCallback(() => {
     setPickerType('start');
     setTempDate(startDate);
@@ -540,15 +645,44 @@ const loadCategoryItems = useCallback(async (category: string) => {
   }, [endDate]);
 
   const onDateChange = useCallback((event: any, selectedDate?: Date) => {
+    console.log('📅 onDateChange called, type:', pickerType);
+    
     if (event.type === 'set' && selectedDate) {
-      if (pickerType === 'start') {
-        onStartDateChange(selectedDate);
-      } else {
-        onEndDateChange(selectedDate);
-      }
+        console.log('📅 Selected:', selectedDate);
+        
+        // ✅ Handle DATE selection
+        if (pickerType === 'start') {
+            onStartDateChange(selectedDate);
+        } else if (pickerType === 'end') {
+            onEndDateChange(selectedDate);
+        }
+        // ✅ Handle TIME selection
+        else if (pickerType === 'startTime') {
+            const hours = selectedDate.getHours();
+            const minutes = selectedDate.getMinutes();
+            const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            
+            console.log('⏰ Start time selected:', timeStr);
+            setStartTime(timeStr);
+            startTimeRef.current = timeStr;
+            setSavedStartTime(timeStr);
+        } else if (pickerType === 'endTime') {
+            const hours = selectedDate.getHours();
+            const minutes = selectedDate.getMinutes();
+            const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            
+            console.log('⏰ End time selected:', timeStr);
+            setEndTime(timeStr);
+            endTimeRef.current = timeStr;
+            setSavedEndTime(timeStr);
+        }
     }
+    
+    // ✅ Close picker for both set and dismissed
     setShowPicker(false);
-  }, [pickerType, onStartDateChange, onEndDateChange]);
+    isTimePickerOpen.current = false;
+}, [pickerType, onStartDateChange, onEndDateChange]);
+
   
   const [isFilterChanging, setIsFilterChanging] = useState(false);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -583,6 +717,16 @@ const loadCategoryItems = useCallback(async (category: string) => {
 
   const printReport = async () => {
     try {
+        // ✅ Create report options with time
+        const reportOptions = {
+            filter: selectedFilter,
+            startDate: startDate,
+            endDate: endDate,
+            startTime: startTime,  // ✅ ADD THIS
+            endTime: endTime,      // ✅ ADD THIS
+            summary: activeTab === 'categories' ? categorySummary : summary
+        };
+        
         if (activeTab === 'categories') {
             if (selectedCategory) {
                 // ✅ Try thermal print first
@@ -597,6 +741,8 @@ const loadCategoryItems = useCallback(async (category: string) => {
                         filter: selectedFilter,
                         startDate: startDate,
                         endDate: endDate,
+                        startTime: startTime,    // ✅ ADD THIS
+                        endTime: endTime,        // ✅ ADD THIS
                         summary: {
                             totalSales: categorySummary.totalTransactions,
                             totalItems: categorySummary.totalItems,
@@ -622,6 +768,8 @@ const loadCategoryItems = useCallback(async (category: string) => {
                             filter: selectedFilter,
                             startDate: startDate,
                             endDate: endDate,
+                            startTime: startTime,    // ✅ ADD THIS
+                            endTime: endTime,        // ✅ ADD THIS
                             summary: {
                                 totalSales: categorySummary.totalTransactions,
                                 totalItems: categorySummary.totalItems,
@@ -652,6 +800,8 @@ const loadCategoryItems = useCallback(async (category: string) => {
                         filter: selectedFilter,
                         startDate: startDate,
                         endDate: endDate,
+                        startTime: startTime,    // ✅ ADD THIS
+                        endTime: endTime,        // ✅ ADD THIS
                         summary: {
                             totalSales: categorySummary.totalTransactions,
                             totalItems: categorySummary.totalItems,
@@ -676,6 +826,8 @@ const loadCategoryItems = useCallback(async (category: string) => {
                             filter: selectedFilter,
                             startDate: startDate,
                             endDate: endDate,
+                            startTime: startTime,    // ✅ ADD THIS
+                            endTime: endTime,        // ✅ ADD THIS
                             summary: {
                                 totalSales: categorySummary.totalTransactions,
                                 totalItems: categorySummary.totalItems,
@@ -703,7 +855,9 @@ const loadCategoryItems = useCallback(async (category: string) => {
                 salesHistory: salesHistory,
                 period: selectedFilter === 'custom' 
                     ? `${formatDate(startDate)} to ${formatDate(endDate)}`
-                    : selectedFilter
+                    : selectedFilter,
+                startTime: startTime,    // ✅ ADD THIS
+                endTime: endTime         // ✅ ADD THIS
             };
             
             // ✅ Try thermal print first
@@ -742,7 +896,8 @@ const loadCategoryItems = useCallback(async (category: string) => {
         params.append('startDate', startDate.toISOString().split('T')[0]);
         params.append('endDate', endDate.toISOString().split('T')[0]);
       }
-      
+      const currentStartTime = startTime || savedStartTime || '00:00';
+            const currentEndTime = endTime || savedEndTime || '23:59';
       const response = await API.get(`/sales/summary?${params.toString()}`);
       return response.data.paymentBreakdown || {};
     } catch (error) {
@@ -750,86 +905,116 @@ const loadCategoryItems = useCallback(async (category: string) => {
       return {};
     }
   };
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+        isMounted.current = false;
+        isTimePickerOpen.current = false;
+        if (loadTimerRef.current) {
+            clearTimeout(loadTimerRef.current);
+        }
+    };
+}, []);
 // ============ MAIN EFFECT ============
 useEffect(() => {
-  if (!visible) {
-    initialLoadDone.current = false;
-    prevFilterRef.current = selectedFilter;
-    prevStartRef.current = startDate;
-    prevEndRef.current = endDate;
-    prevTabRef.current = activeTab;
-    prevShowVoidedTabRef.current = showVoidedTab; // ✅ Add this
-        prevShowVoidedCategoriesTabRef.current = showVoidedCategoriesTab; 
-    return;
-  }
+    if (!visible) {
+        initialLoadDone.current = false;
+        prevFilterRef.current = selectedFilter;
+        prevStartRef.current = startDate;
+        prevEndRef.current = endDate;
+        prevStartTimeRef.current = startTime;
+        prevEndTimeRef.current = endTime;
+        prevTabRef.current = activeTab;
+        prevShowVoidedTabRef.current = showVoidedTab;
+        prevShowVoidedCategoriesTabRef.current = showVoidedCategoriesTab;
+        return;
+    }
 
-  if (!initialLoadDone.current) {
-    console.log('📊 First time load');
-    initialLoadDone.current = true;
+    if (!initialLoadDone.current) {
+        console.log('📊 First time load');
+        initialLoadDone.current = true;
+        
+        // ✅ If custom filter, load saved times
+        if (selectedFilter === 'custom' || selectedFilter === 'Custom') {
+            setStartTime(savedStartTime || '00:00');
+            setEndTime(savedEndTime || '23:59');
+        }
+        
+        if (activeTab === 'overview') {
+            loadOverviewData();
+        } else {
+            loadCategoryData();
+        }
+        
+        prevFilterRef.current = selectedFilter;
+        prevStartRef.current = startDate;
+        prevEndRef.current = endDate;
+        prevStartTimeRef.current = startTime;
+        prevEndTimeRef.current = endTime;
+        prevTabRef.current = activeTab;
+        prevShowVoidedTabRef.current = showVoidedTab;
+        prevShowVoidedCategoriesTabRef.current = showVoidedCategoriesTab;
+        return;
+    }
+
+    const tabChanged = prevTabRef.current !== activeTab;
+    const filterChanged = prevFilterRef.current !== selectedFilter;
+    const startChanged = prevStartRef.current.getTime() !== startDate.getTime();
+    const endChanged = prevEndRef.current.getTime() !== endDate.getTime();
+    const startTimeChanged = prevStartTimeRef.current !== startTime;
+    const endTimeChanged = prevEndTimeRef.current !== endTime;
+    const voidedTabChanged = prevShowVoidedTabRef.current !== showVoidedTab;
+    const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== showVoidedCategoriesTab;
     
-    if (activeTab === 'overview') {
-      loadOverviewData();
-    } else {
-      loadCategoryData();
+    if (tabChanged || filterChanged || startChanged || endChanged || 
+        startTimeChanged || endTimeChanged || voidedTabChanged || voidedCategoriesTabChanged) {
+        
+        console.log('📊 Change detected:', { 
+            tabChanged, filterChanged, startChanged, endChanged,
+            startTimeChanged, endTimeChanged, voidedTabChanged 
+        });
+        
+        if (activeTab === 'overview') {
+            loadOverviewData();
+        } else {
+            loadCategoryData();
+        }
+        
+        prevFilterRef.current = selectedFilter;
+        prevStartRef.current = startDate;
+        prevEndRef.current = endDate;
+        prevStartTimeRef.current = startTime;
+        prevEndTimeRef.current = endTime;
+        prevTabRef.current = activeTab;
+        prevShowVoidedTabRef.current = showVoidedTab;
+        prevShowVoidedCategoriesTabRef.current = showVoidedCategoriesTab;
     }
     
-    prevFilterRef.current = selectedFilter;
-    prevStartRef.current = startDate;
-    prevEndRef.current = endDate;
-    prevTabRef.current = activeTab;
-    prevShowVoidedTabRef.current = showVoidedTab; // ✅ Add this
-    return;
-  }
-
-  const tabChanged = prevTabRef.current !== activeTab;
-  const filterChanged = prevFilterRef.current !== selectedFilter;
-  const startChanged = prevStartRef.current.getTime() !== startDate.getTime();
-  const endChanged = prevEndRef.current.getTime() !== endDate.getTime();
-  const voidedTabChanged = prevShowVoidedTabRef.current !== showVoidedTab; // ✅ Add this
-   const voidedCategoriesTabChanged = prevShowVoidedCategoriesTabRef.current !== showVoidedCategoriesTab; // ✅ Add this
-  if (tabChanged || filterChanged || startChanged || endChanged || voidedTabChanged || voidedCategoriesTabChanged) {
-    console.log('📊 Change detected:', { 
-      tabChanged, 
-      filterChanged, 
-      startChanged, 
-      endChanged,
-      voidedTabChanged 
-    });
-    
-    if (activeTab === 'overview') {
-      loadOverviewData();
-    } else {
-      loadCategoryData();
-    }
-    
-    prevFilterRef.current = selectedFilter;
-    prevStartRef.current = startDate;
-    prevEndRef.current = endDate;
-    prevTabRef.current = activeTab;
-    prevShowVoidedTabRef.current = showVoidedTab; // ✅ Add this
-     prevShowVoidedCategoriesTabRef.current = showVoidedCategoriesTab;
-  }
-  
-}, [visible, selectedFilter, startDate, endDate, activeTab, showVoidedTab,  showVoidedCategoriesTab]); // ✅ Add showVoidedTab
+}, [visible, selectedFilter, startDate, endDate, startTime, endTime, activeTab, showVoidedTab, showVoidedCategoriesTab]);
  // Find formatDateTime function (around line 200-250)
 // Replace your formatDateTime function with this:
+// POSSalesReport.tsx
+
 const formatDateTime = (dateString: string) => {
     if (!dateString) return { date: '', time: '' };
     
-    // Database stores UTC, we need to convert to Singapore time (UTC+8)
-    const utcDate = new Date(dateString);
+    // ✅ Database is Singapore time - use directly!
+    // Remove the 'Z' from string if present and parse normally
+    const cleanDate = dateString.replace('Z', '');
+    const date = new Date(cleanDate);
     
-    // Add 8 hours for Singapore
-    const singaporeTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
+    console.log('📅 Input:', dateString);
+    console.log('📅 Cleaned:', cleanDate);
+    console.log('📅 Parsed:', date.toString());
+    console.log('📅 Hours:', date.getHours());
+    console.log('📅 Date:', date.getDate());
     
-    // Format date
-    const day = singaporeTime.getUTCDate().toString().padStart(2, '0');
-    const month = (singaporeTime.getUTCMonth() + 1).toString().padStart(2, '0');
-    const year = singaporeTime.getUTCFullYear();
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
     
-    // Format time
-    let hours = singaporeTime.getUTCHours();
-    const minutes = singaporeTime.getUTCMinutes().toString().padStart(2, '0');
+    let hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12 || 12;
     
@@ -838,12 +1023,14 @@ const formatDateTime = (dateString: string) => {
         time: `${hours}:${minutes} ${ampm}`
     };
 };
+
+
   // ✅ Helper to calculate discount percentage
   const discountPercentage = summary.totalSales > 0 
     ? ((summary.discountedSales / summary.totalSales) * 100).toFixed(1)
     : '0';
 
-  return (
+ return (
     <Modal
       visible={visible}
       animationType="slide"
@@ -854,197 +1041,252 @@ const formatDateTime = (dateString: string) => {
         <View style={[styles.container, isMobile && styles.containerMobile, { backgroundColor: theme.background }]}>
           
           {/* Header */}
-          {/* Header */}
-<View style={[styles.header, { borderBottomColor: theme.border }]}>
-  <Text style={[styles.title, { color: theme.text }]}>{t.salesReport}</Text>
-  
-  {/* ✅ ADD VOID PASSWORD BUTTON - Only for owners */}
-  {userRole === 'owner' && outletInfo?.id && (
-    <TouchableOpacity 
-      style={[styles.voidPasswordBtn, { backgroundColor: theme.primary }]}
-      onPress={() => setShowVoidPasswordSettings(true)}
-    >
-      <Ionicons name="key-outline" size={18} color="#fff" />
-      <Text style={styles.voidPasswordBtnText}>Void Password</Text>
-    </TouchableOpacity>
-    
-  )}
-    
-  <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-    <Text style={[styles.closeText, { color: theme.text }]}>✕</Text>
-  </TouchableOpacity>
-</View>
-{userRole === 'owner' && (
-    <TouchableOpacity 
-      style={[
-        styles.cashDrawerBtn, 
-        { backgroundColor: cashDrawerToggle ? theme.success : theme.surface }
-      ]}
-      onPress={() => {
-        if (cashDrawerToggle) {
-          setShowCashDrawerLogs(true);
-        }
-      }}
-    >
-      <View style={styles.cashDrawerToggleContainer}>
-        <Ionicons name="cash-outline" size={18} color={cashDrawerToggle ? '#fff' : theme.text} />
-        <Switch
-          value={cashDrawerToggle}
-          onValueChange={saveToggleState}
-          trackColor={{ false: theme.inactive, true: theme.success }}
-          thumbColor="#fff"
-          style={styles.cashDrawerSwitch}
-        />
-        <Text style={[styles.cashDrawerText, { color: cashDrawerToggle ? '#fff' : theme.text }]}>
-          Cash Drawer Logs
-        </Text>
-      </View>
-    </TouchableOpacity>
-  )}
+          <View style={[styles.header, { borderBottomColor: theme.border }]}>
+            <Text style={[styles.title, { color: theme.text }]}>{t.salesReport}</Text>
+            
+            {/* Void Password Button - Only for owners */}
+            {userRole === 'owner' && outletInfo?.id && (
+              <TouchableOpacity 
+                style={[styles.voidPasswordBtn, { backgroundColor: theme.primary }]}
+                onPress={() => setShowVoidPasswordSettings(true)}
+              >
+                <Ionicons name="key-outline" size={18} color="#fff" />
+                <Text style={styles.voidPasswordBtnText}>Void Password</Text>
+              </TouchableOpacity>
+            )}
+              
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Text style={[styles.closeText, { color: theme.text }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Cash Drawer Toggle - Only for owners */}
+          {userRole === 'owner' && (
+            <TouchableOpacity 
+              style={[
+                styles.cashDrawerBtn, 
+                { backgroundColor: cashDrawerToggle ? theme.success : theme.surface }
+              ]}
+              onPress={() => {
+                if (cashDrawerToggle) {
+                  setShowCashDrawerLogs(true);
+                }
+              }}
+            >
+              <View style={styles.cashDrawerToggleContainer}>
+                <Ionicons name="cash-outline" size={18} color={cashDrawerToggle ? '#fff' : theme.text} />
+                <Switch
+                  value={cashDrawerToggle}
+                  onValueChange={saveToggleState}
+                  trackColor={{ false: theme.inactive, true: theme.success }}
+                  thumbColor="#fff"
+                  style={styles.cashDrawerSwitch}
+                />
+                <Text style={[styles.cashDrawerText, { color: cashDrawerToggle ? '#fff' : theme.text }]}>
+                  Cash Drawer Logs
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
 
           {/* Tab Switcher */}
-{/* Tab Switcher */}
-{/* Tab Switcher */}
-<View style={[styles.tabContainer, { borderBottomColor: theme.border }]}>
-  <TouchableOpacity
-    style={[styles.tab, activeTab === 'overview' && styles.activeTab, activeTab === 'overview' && { borderBottomColor: theme.primary }]}
-    onPress={() => setActiveTab('overview')}
-  >
-    <Text style={[styles.tabText, { color: activeTab === 'overview' ? theme.primary : theme.textSecondary }]}>
-      📊 Overview
-    </Text>
-  </TouchableOpacity>
-  <TouchableOpacity
-    style={[styles.tab, activeTab === 'categories' && styles.activeTab, activeTab === 'categories' && { borderBottomColor: theme.primary }]}
-    onPress={() => setActiveTab('categories')}
-  >
-    <Text style={[styles.tabText, { color: activeTab === 'categories' ? theme.primary : theme.textSecondary }]}>
-      🏷️ Categories
-    </Text>
-  </TouchableOpacity>
-</View>
+          <View style={[styles.tabContainer, { borderBottomColor: theme.border }]}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'overview' && styles.activeTab, activeTab === 'overview' && { borderBottomColor: theme.primary }]}
+              onPress={() => setActiveTab('overview')}
+            >
+              <Text style={[styles.tabText, { color: activeTab === 'overview' ? theme.primary : theme.textSecondary }]}>
+                📊 Overview
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'categories' && styles.activeTab, activeTab === 'categories' && { borderBottomColor: theme.primary }]}
+              onPress={() => setActiveTab('categories')}
+            >
+              <Text style={[styles.tabText, { color: activeTab === 'categories' ? theme.primary : theme.textSecondary }]}>
+                🏷️ Categories
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-{/* ✅ STATUS TABS - For Overview tab */}
-{activeTab === 'overview' && (
-  <View style={[styles.statusTabContainer, { borderBottomColor: theme.border }]}>
-    <TouchableOpacity
-      style={[styles.statusTab, !showVoidedTab && styles.activeStatusTab, !showVoidedTab && { borderBottomColor: theme.success }]}
-      onPress={() => setShowVoidedTab(false)}
-    >
-      <Text style={[styles.statusTabText, { color: !showVoidedTab ? theme.success : theme.textSecondary }]}>
-        ✅ Completed ({salesHistory.length})
-      </Text>
-    </TouchableOpacity>
-    <TouchableOpacity
-      style={[styles.statusTab, showVoidedTab && styles.activeStatusTab, showVoidedTab && { borderBottomColor: theme.danger }]}
-      onPress={() => setShowVoidedTab(true)}
-    >
-      <Text style={[styles.statusTabText, { color: showVoidedTab ? theme.danger : theme.textSecondary }]}>
-        🚫 Voided ({voidedSales.length})
-      </Text>
-    </TouchableOpacity>
-  </View>
-)}
-
-{/* ✅ STATUS TABS - For Categories tab - ADD THIS */}
-{activeTab === 'categories' && (
-  <View style={[styles.statusTabContainer, { borderBottomColor: theme.border }]}>
-    <TouchableOpacity
-      style={[styles.statusTab, !showVoidedCategoriesTab && styles.activeStatusTab, !showVoidedCategoriesTab && { borderBottomColor: theme.success }]}
-      onPress={() => setShowVoidedCategoriesTab(false)}
-    >
-      <Text style={[styles.statusTabText, { color: !showVoidedCategoriesTab ? theme.success : theme.textSecondary }]}>
-        ✅ Completed ({categorySummary.totalTransactions})
-      </Text>
-    </TouchableOpacity>
-    <TouchableOpacity
-      style={[styles.statusTab, showVoidedCategoriesTab && styles.activeStatusTab, showVoidedCategoriesTab && { borderBottomColor: theme.danger }]}
-      onPress={() => setShowVoidedCategoriesTab(true)}
-    >
-      <Text style={[styles.statusTabText, { color: showVoidedCategoriesTab ? theme.danger : theme.textSecondary }]}>
-        🚫 Voided (0)
-      </Text>
-    </TouchableOpacity>
-  </View>
-)}
-
-{activeTab === 'categories' && (
-  <TouchableOpacity
-    style={[styles.printButton, { backgroundColor: theme.primary }]}
-    onPress={printReport}
-  >
-    <Ionicons name="print" size={20} color="#fff" />
-    <Text style={styles.printButtonText}>Print Report</Text>
-  </TouchableOpacity>
-)}
-{/* Filter Section */}
-<View style={styles.filterContainer}>
-  {['Today', 'Week', 'Month', 'Custom'].map(filter => (
-    <TouchableOpacity
-      key={filter}
-      style={[
-        styles.filterBtn,
-        { 
-          backgroundColor: selectedFilter === filterMap[filter] ? theme.primary : theme.surface,
-          borderColor: theme.border 
-        }
-      ]}
-      onPress={() => handleFilterChange(filter)}
-    >
-      <Text style={[
-        styles.filterBtnText,
-        { color: selectedFilter === filterMap[filter] ? '#fff' : theme.text }
-      ]}>
-        {filter}  
-      </Text>
-    </TouchableOpacity>
-  ))}
-</View>
-          {/* Custom Date Picker */}
-          {(selectedFilter === 'custom' || selectedFilter === 'Custom') && (
-            <View style={[styles.customDateContainer, { backgroundColor: theme.surface }]}>
-              <View style={styles.datePickerRow}>
-                <Text style={[styles.dateLabel, { color: theme.text }]}>{t.startDate}</Text>
-                <TouchableOpacity 
-                  style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
-                  onPress={openStartPicker}
-                >
-                  <Text style={[styles.dateButtonText, { color: theme.text }]}>
-                    {startDate.toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.datePickerRow}>
-                <Text style={[styles.dateLabel, { color: theme.text }]}>{t.endDate}</Text>
-                <TouchableOpacity 
-                  style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
-                  onPress={openEndPicker}
-                >
-                  <Text style={[styles.dateButtonText, { color: theme.text }]}>
-                    {endDate.toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.applyButton, { backgroundColor: theme.secondary }]}
-                onPress={onApplyCustomFilter}
+          {/* Status Tabs - Overview */}
+          {activeTab === 'overview' && (
+            <View style={[styles.statusTabContainer, { borderBottomColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.statusTab, !showVoidedTab && styles.activeStatusTab, !showVoidedTab && { borderBottomColor: theme.success }]}
+                onPress={() => setShowVoidedTab(false)}
               >
-                <Text style={styles.applyButtonText}>{t.applyFilter}</Text>
+                <Text style={[styles.statusTabText, { color: !showVoidedTab ? theme.success : theme.textSecondary }]}>
+                  ✅ Completed ({salesHistory.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.statusTab, showVoidedTab && styles.activeStatusTab, showVoidedTab && { borderBottomColor: theme.danger }]}
+                onPress={() => setShowVoidedTab(true)}
+              >
+                <Text style={[styles.statusTabText, { color: showVoidedTab ? theme.danger : theme.textSecondary }]}>
+                  🚫 Voided ({voidedSales.length})
+                </Text>
               </TouchableOpacity>
             </View>
           )}
 
+          {/* Status Tabs - Categories */}
+          {activeTab === 'categories' && (
+            <View style={[styles.statusTabContainer, { borderBottomColor: theme.border }]}>
+              <TouchableOpacity
+                style={[styles.statusTab, !showVoidedCategoriesTab && styles.activeStatusTab, !showVoidedCategoriesTab && { borderBottomColor: theme.success }]}
+                onPress={() => setShowVoidedCategoriesTab(false)}
+              >
+                <Text style={[styles.statusTabText, { color: !showVoidedCategoriesTab ? theme.success : theme.textSecondary }]}>
+                  ✅ Completed ({categorySummary.totalTransactions})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.statusTab, showVoidedCategoriesTab && styles.activeStatusTab, showVoidedCategoriesTab && { borderBottomColor: theme.danger }]}
+                onPress={() => setShowVoidedCategoriesTab(true)}
+              >
+                <Text style={[styles.statusTabText, { color: showVoidedCategoriesTab ? theme.danger : theme.textSecondary }]}>
+                  🚫 Voided (0)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Print Report Button */}
+          {activeTab === 'categories' && (
+            <TouchableOpacity
+              style={[styles.printButton, { backgroundColor: theme.primary }]}
+              onPress={printReport}
+            >
+              <Ionicons name="print" size={20} color="#fff" />
+              <Text style={styles.printButtonText}>Print Report</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Filter Section */}
+          <View style={styles.filterContainer}>
+            {['Today', 'Week', 'Month', 'Custom'].map(filter => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.filterBtn,
+                  { 
+                    backgroundColor: selectedFilter === filterMap[filter] ? theme.primary : theme.surface,
+                    borderColor: theme.border 
+                  }
+                ]}
+                onPress={() => handleFilterChange(filter)}
+              >
+                <Text style={[
+                  styles.filterBtnText,
+                  { color: selectedFilter === filterMap[filter] ? '#fff' : theme.text }
+                ]}>
+                  {filter}  
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* ✅ Custom Date + Time Picker - FIXED */}
+{/* Custom Date + Time Picker - FIXED with ScrollView */}
+{/* ✅ Custom Date + Time Picker - Fully Scrollable */}
+{(selectedFilter === 'custom' || selectedFilter === 'Custom') && (
+    <ScrollView 
+        style={styles.customScrollView}
+        contentContainerStyle={styles.customScrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+    >
+        <View style={[styles.customDateContainer, { backgroundColor: theme.surface }]}>
+            
+            {/* Start Date */}
+            <View style={styles.datePickerRow}>
+                <Text style={[styles.dateLabel, { color: theme.text }]}>{t.startDate}</Text>
+                <TouchableOpacity 
+                    style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
+                    onPress={openStartPicker}
+                >
+                    <Text style={[styles.dateButtonText, { color: theme.text }]}>
+                        {startDate.toLocaleDateString()}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* End Date */}
+            <View style={styles.datePickerRow}>
+                <Text style={[styles.dateLabel, { color: theme.text }]}>{t.endDate}</Text>
+                <TouchableOpacity 
+                    style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
+                    onPress={openEndPicker}
+                >
+                    <Text style={[styles.dateButtonText, { color: theme.text }]}>
+                        {endDate.toLocaleDateString()}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* TIME SELECTORS */}
+            <View style={styles.timeContainer}>
+                {/* Start Time */}
+                <View style={styles.timeRow}>
+                    <Text style={[styles.timeLabel, { color: theme.text }]}>
+                        ⏰ Start Time
+                    </Text>
+                    <TouchableOpacity 
+                        style={[styles.timeButton, { 
+                            backgroundColor: theme.surface, 
+                            borderColor: theme.border 
+                        }]}
+                        onPress={() => openTimePicker('start')}
+                    >
+                        <Text style={[styles.timeButtonText, { color: theme.text }]}>
+                            {formatTime(startTime)}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* End Time */}
+                <View style={styles.timeRow}>
+                    <Text style={[styles.timeLabel, { color: theme.text }]}>
+                        ⏰ End Time
+                    </Text>
+                    <TouchableOpacity 
+                        style={[styles.timeButton, { 
+                            backgroundColor: theme.surface, 
+                            borderColor: theme.border 
+                        }]}
+                        onPress={() => openTimePicker('end')}
+                    >
+                        <Text style={[styles.timeButtonText, { color: theme.text }]}>
+                            {formatTime(endTime)}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {/* Apply Button */}
+            <TouchableOpacity 
+                style={[styles.applyButton, { backgroundColor: theme.secondary }]}
+                onPress={handleApplyCustomFilter}
+            >
+                <Text style={styles.applyButtonText}>{t.applyFilter}</Text>
+            </TouchableOpacity>
+        </View>
+    </ScrollView>
+)}
+          {/* ✅ SINGLE DateTimePicker - Handles BOTH Date and Time */}
           {showPicker && (
             <DateTimePicker
               value={tempDate}
-              mode="date"
-              display="default"
+              mode={pickerType === 'startTime' || pickerType === 'endTime' ? 'time' : 'date'}
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={onDateChange}
+              is24Hour={true}
             />
           )}
 
+          {/* ScrollView Content */}
           <ScrollView 
             style={styles.contentScrollView}
             contentContainerStyle={styles.contentContainer}
@@ -1144,8 +1386,8 @@ const formatDateTime = (dateString: string) => {
                         📄 {sale.invoiceNumber || 'No Invoice'}
                     </Text>
           <Text style={[styles.saleDate, { color: theme.textSecondary }]}>
-            {new Date(sale.date).toLocaleDateString()}
-          </Text>
+    {formatDateTime(sale.date).date}  
+</Text>
         <Text style={[styles.saleTime, { color: theme.textSecondary }]}>
   {formatDateTime(sale.date).time}  
 </Text>
@@ -1887,6 +2129,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
+   customDateScrollView: {
+        maxHeight: 380,  // Adjust as needed
+        marginHorizontal: 12,
+    },
+    customDateScrollContent: {
+        paddingBottom: 10,
+    },
   dateLabel: {
     fontSize: 15,
     fontWeight: '600',
@@ -2517,7 +2766,15 @@ const styles = StyleSheet.create({
   marginBottom: 12,
   paddingHorizontal: 8,
   fontStyle: 'italic',
-},transactionInvoice: {
+},
+ customScrollView: {
+        maxHeight: 290,  // Increase if needed
+        marginHorizontal: 12,
+    },
+    customScrollContent: {
+        paddingBottom: 10,
+        flexGrow: 1,
+    },transactionInvoice: {
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 2,
@@ -2575,6 +2832,34 @@ voidBadgeText: {
   fontSize: 11,
   fontWeight: '700',
 },
+  timeContainer: {
+    marginVertical: 12,
+    paddingHorizontal: 4,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  timeLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  timeButton: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1.5,
+    alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  timeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 voidReasonText: {
   fontSize: 11,
   marginBottom: 8,
