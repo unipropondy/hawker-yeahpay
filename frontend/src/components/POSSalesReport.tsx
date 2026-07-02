@@ -313,10 +313,13 @@ const loadOverviewData = useCallback(async () => {
         const filterValue = selectedFilter?.toLowerCase() || 'today';
         const statusParam = showVoidedTab ? 'voided' : 'completed';
         
-         const params = new URLSearchParams();
+        const params = new URLSearchParams();
         params.append('filter', filterValue);
         params.append('status', statusParam);
         params.append('outletId', outletInfo?.id?.toString() || '');
+        
+        // ✅✅✅ CRITICAL: Add showAll=true for Sales Report ✅✅✅
+        params.append('showAll', 'true');
         
         if (filterValue === 'custom') {
             const start = startDate.toISOString().split('T')[0];
@@ -324,7 +327,6 @@ const loadOverviewData = useCallback(async () => {
             params.append('startDate', start);
             params.append('endDate', end);
             
-            // ✅ Use saved time for custom filter
             const currentStartTime = startTime || savedStartTime || '00:00';
             const currentEndTime = endTime || savedEndTime || '23:59';
             
@@ -335,7 +337,7 @@ const loadOverviewData = useCallback(async () => {
         const summaryUrl = `/sales/summary?${params.toString()}`;
         const salesUrl = `/sales?${params.toString()}`;
         
-        console.log(`📊 Loading with time: ${startTime} → ${endTime}`);
+        console.log(`📊 Loading sales report with showAll=true`);
         
         const [summaryRes, salesRes] = await Promise.all([
             API.get(summaryUrl),
@@ -363,7 +365,8 @@ const loadOverviewData = useCallback(async () => {
                 voidReason: sale.voidReason,
                 voidedAt: sale.voidedAt,
                 voidedBy: sale.voidedBy,
-                discount: sale.discount || null
+                discount: sale.discount || null,
+                dayEndId: sale.dayEndId || sale.DayEndId || null
             }));
             
             if (showVoidedTab) {
@@ -379,7 +382,7 @@ const loadOverviewData = useCallback(async () => {
         loadingRef.current = false;
         if (isMounted.current) setLoading(false);
     }
-}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedTab]);
+}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedTab, outletInfo]);
 const loadCategoryData = useCallback(async () => {
     if (loadingRef.current) return;
     
@@ -395,33 +398,36 @@ const loadCategoryData = useCallback(async () => {
         const filterValue = selectedFilter?.toLowerCase() || 'today';
         const statusParam = showVoidedCategoriesTab ? 'voided' : 'completed';
         
-  const categoryParams = new URLSearchParams();
+        const categoryParams = new URLSearchParams();
         categoryParams.append('filter', filterValue);
         categoryParams.append('status', statusParam);
         categoryParams.append('outletId', outletInfo?.id?.toString() || '');
+        
+        // ✅✅✅ CRITICAL: Add showAll=true for Categories Report ✅✅✅
+        categoryParams.append('showAll', 'true');
         
         const paymentParams = new URLSearchParams();
         paymentParams.append('filter', filterValue);
         paymentParams.append('status', statusParam);
         paymentParams.append('outletId', outletInfo?.id?.toString() || '');
+        paymentParams.append('showAll', 'true');
         
-if (filterValue === 'custom') {
-        const start = startDate.toISOString().split('T')[0];
-        const end = endDate.toISOString().split('T')[0];
+        if (filterValue === 'custom') {
+            const start = startDate.toISOString().split('T')[0];
+            const end = endDate.toISOString().split('T')[0];
+            
+            categoryParams.append('startDate', start);
+            categoryParams.append('endDate', end);
+            categoryParams.append('startTime', startTime || '00:00');
+            categoryParams.append('endTime', endTime || '23:59');
+            
+            paymentParams.append('startDate', start);
+            paymentParams.append('endDate', end);
+            paymentParams.append('startTime', startTime || '00:00');
+            paymentParams.append('endTime', endTime || '23:59');
+        }
         
-        categoryParams.append('startDate', start);
-        categoryParams.append('endDate', end);
-        // ✅ ADD TIME
-        categoryParams.append('startTime', startTime || '00:00');
-        categoryParams.append('endTime', endTime || '23:59');
-        
-        paymentParams.append('startDate', start);
-        paymentParams.append('endDate', end);
-        // ✅ ADD TIME
-        paymentParams.append('startTime', startTime || '00:00');
-        paymentParams.append('endTime', endTime || '23:59');
-    }
-        console.log(`📊 Loading categories with time: ${startTime} → ${endTime}`);
+        console.log(`📊 Loading categories with showAll=true`);
         
         const [categoryResponse, paymentResponse] = await Promise.all([
             API.get(`/sales/by-category?${categoryParams.toString()}`),
@@ -450,7 +456,7 @@ if (filterValue === 'custom') {
         loadingRef.current = false;
         if (isMounted.current) setLoading(false);
     }
-}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedCategoriesTab]);
+}, [selectedFilter, startDate, endDate, startTime, endTime, savedStartTime, savedEndTime, showVoidedCategoriesTab, outletInfo]);
   
 const loadCategoryItems = useCallback(async (category: string) => {
     if (loadingRef.current) return;
@@ -1003,11 +1009,7 @@ const formatDateTime = (dateString: string) => {
     const cleanDate = dateString.replace('Z', '');
     const date = new Date(cleanDate);
     
-    console.log('📅 Input:', dateString);
-    console.log('📅 Cleaned:', cleanDate);
-    console.log('📅 Parsed:', date.toString());
-    console.log('📅 Hours:', date.getHours());
-    console.log('📅 Date:', date.getDate());
+   
     
     const day = date.getDate().toString().padStart(2, '0');
     const month = (date.getMonth() + 1).toString().padStart(2, '0');

@@ -27,8 +27,8 @@ const ownerRoutes = require('./routes/ownerRoutes');
 const cashDrawerRoutes = require('./routes/cashDrawerRoutes');
 const outletRoutes = require('./routes/outletRoutes');
 const yeahpayRoutes = require('./routes/yeahpayRoutes');
-
-
+const dayEndRoutes = require('./routes/dayEndRoutes');
+const emailRoutes = require('./routes/emailRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const uploadDir = path.join(__dirname, 'uploads');
@@ -226,6 +226,8 @@ app.use('/api/cash-drawer', cashDrawerRoutes);
 app.use('/api', authenticateToken, updateSessionActivity);
 app.use('/api/outlet', authenticateToken, outletRoutes);
 app.use('/api/yeahpay', authenticateToken, yeahpayRoutes);
+app.use('/api/dayend', authenticateToken, dayEndRoutes);
+app.use('/api/email', authenticateToken, emailRoutes);
 // Add near the top after middleware
 app.get('/health', (req, res) => {
     res.json({ 

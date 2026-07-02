@@ -356,7 +356,8 @@ const voidSale = async (req, res) => {
 
 const getSales = async (req, res) => {
     try {
-        const { filter, startDate, endDate, status, startTime, endTime } = req.query;
+        // ✅ ADD showAll to destructuring
+        const { filter, startDate, endDate, status, startTime, endTime, showAll } = req.query;
         const outletId = req.outletId;
         
         if (!outletId) {
@@ -370,13 +371,23 @@ const getSales = async (req, res) => {
                    CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson,
                    CashPaid, ChangeAmount, InvoiceNumber,
                    DiscountType, DiscountValue, DiscountAmount,
-                   Status, VoidedBy, VoidedAt, VoidReason
+                   Status, VoidedBy, VoidedAt, VoidReason,
+                   DayEndId
             FROM Sales WITH (NOLOCK) 
             WHERE OutletId = @outletId
         `;
         
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
+        
+        // ✅ DayEndId filter based on showAll
+        if (showAll === 'true') {
+            console.log('📊 Sales Report: Showing ALL sales');
+            // No DayEndId filter - shows all sales
+        } else {
+            console.log('📊 Day End: Showing ONLY pending sales');
+            query += " AND (DayEndId IS NULL OR DayEndId = 0)";
+        }
         
         // ✅ Use UTC time from database
         const timeResult = await pool.request()
@@ -388,7 +399,6 @@ const getSales = async (req, res) => {
         console.log('📅 Today UTC:', todayUTC);
         
         if (filter === 'today') {
-            // ✅ UTC today
             query += " AND CAST(SaleDate AS DATE) = @todayDate";
             request.input('todayDate', sql.Date, todayUTC);
             
@@ -409,7 +419,6 @@ const getSales = async (req, res) => {
             request.input('monthStart', sql.DateTime, monthStart);
             
         } else if (filter === 'custom' && startDate && endDate) {
-            // ✅ Use UTC directly!
             const start = new Date(`${startDate}T${startTime || '00:00'}:00.000Z`);
             const end = new Date(`${endDate}T${endTime || '23:59'}:59.999Z`);
             
@@ -429,9 +438,9 @@ const getSales = async (req, res) => {
         
         query += " ORDER BY SaleDate DESC";
         
+        console.log("📊 Executing sales query with showAll:", showAll);
         const result = await request.query(query);
         
-        // ✅ Database is UTC - use directly!
         const formattedSales = result.recordset.map(sale => {
             let items = [];
             try {
@@ -449,7 +458,8 @@ const getSales = async (req, res) => {
                 items: items,
                 cashPaid: sale.CashPaid,
                 change: sale.ChangeAmount,
-                status: sale.Status || 'COMPLETED'
+                status: sale.Status || 'COMPLETED',
+                dayEndId: sale.DayEndId
             };
         });
         
@@ -468,7 +478,8 @@ const getSales = async (req, res) => {
 
 const getSalesSummary = async (req, res) => {
     try {
-        const { filter, startDate, endDate, status, startTime, endTime } = req.query;
+        // ✅ ADD showAll to destructuring
+        const { filter, startDate, endDate, status, startTime, endTime, showAll } = req.query;
         const outletId = req.outletId;
         
         if (!outletId) {
@@ -497,6 +508,16 @@ const getSalesSummary = async (req, res) => {
         
         const hasStatusColumn = checkStatusColumn.recordset.length > 0;
         
+        // ✅ Check if DayEndId column exists
+        const checkDayEndColumn = await pool.request().query(`
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'Sales' 
+            AND COLUMN_NAME = 'DayEndId'
+        `);
+        
+        const hasDayEndColumn = checkDayEndColumn.recordset.length > 0;
+        
         // ✅ Build query
         let query = `
             WITH SalesWithDetails AS (
@@ -519,12 +540,27 @@ const getSalesSummary = async (req, res) => {
                     Status`;
         }
         
+        if (hasDayEndColumn) {
+            query += `,
+                    DayEndId`;
+        }
+        
         query += `
                 FROM Sales WITH (NOLOCK)
                 WHERE OutletId = @outletId`;
         
         const request = pool.request();
         request.input('outletId', sql.Int, outletId);
+
+        // ✅✅✅ DayEndId filter based on showAll ✅✅✅
+        if (showAll !== 'true') {
+            console.log('📊 Summary: Showing ONLY pending sales (DayEndId IS NULL)');
+            if (hasDayEndColumn) {
+                query += " AND (DayEndId IS NULL OR DayEndId = 0)";
+            }
+        } else {
+            console.log('📊 Summary: Showing ALL sales');
+        }
 
         // ✅ Get UTC time from database
         const timeResult = await pool.request()
@@ -598,7 +634,7 @@ const getSalesSummary = async (req, res) => {
         
         query += ` FROM SalesWithDetails GROUP BY PaymentMethod`;
         
-        console.log("📊 Executing summary query:", query);
+        console.log("📊 Executing summary query with showAll:", showAll);
         const result = await request.query(query);
         
         // Calculate totals

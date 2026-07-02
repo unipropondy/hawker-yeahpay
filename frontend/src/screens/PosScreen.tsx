@@ -18,7 +18,7 @@ import Printer from 'react-native-printer';
 import { useDataLoader } from '../hooks/useDataLoader';
 import API, { uploadAPI } from '../api';
 import { useLicenseCheck } from '../hooks/useLicenseCheck';
-
+import DayEndModal from '../components/DayEndModal';
 // At the top with other imports
 import DiscountInput from '../components/DiscountInput';
  // ✅ Correct path
@@ -108,6 +108,7 @@ const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percen
 const [discountValue, setDiscountValue] = useState(0);
 const [discountedTotal, setDiscountedTotal] = useState<number | undefined>(undefined);
   const [showHomeMenu, setShowHomeMenu] = useState<boolean>(false);
+  const [showDayEndModal, setShowDayEndModal] = useState(false);
   const [priceModal, setPriceModal] = useState({
   visible: false,
   item: null as any,
@@ -374,6 +375,12 @@ const [showPicker, setShowPicker] = useState<boolean>(false);
 const [pickerType, setPickerType] = useState<'start' | 'end'>('start');
 const [tempDate, setTempDate] = useState<Date>(new Date());
 const tempDateRef = useRef<Date>(new Date());
+const [dayEndStatus, setDayEndStatus] = useState({
+    isDayEnded: false,
+    pendingSales: 0,
+    currentDayStart: null as string | null,
+    lastDayEnd: null as any
+});
 const [showUPIPayment, setShowUPIPayment] = useState(false);
 const [upiId, setUpiId] = useState('');
 const [showOutletDropdown, setShowOutletDropdown] = useState(false);
@@ -914,9 +921,54 @@ useEffect(() => {
 }, [menuItems]);
   // ============ API FUNCTIONS ============
   // Add ALL these functions HERE ⬇️
-
+// Update the useEffect where loadData is called
+useEffect(() => {
+    const loadInitialData = async () => {
+        if (outletInfo?.id) {
+            console.log('📦 Loading initial data for outlet:', outletInfo.id);
+            await loadDataWithDayEnd();
+        }
+    };
+    
+    loadInitialData();
+}, [outletInfo?.id]);
   // Load dish groups from database
 // In PosScreen.tsx, find where categories are set from dishGroups
+const checkDayEndStatus = async () => {
+    try {
+        console.log('📅 Checking day end status...');
+        const response = await API.get('/dayend/status');
+        
+        if (response.data.success) {
+            setDayEndStatus({
+                isDayEnded: response.data.isDayEnded || false,
+                pendingSales: response.data.pendingSales || 0,
+                currentDayStart: response.data.currentDayStart || null,
+                lastDayEnd: response.data.lastDayEnd || null
+            });
+            
+            console.log('✅ Day end status loaded:', {
+                isDayEnded: response.data.isDayEnded,
+                pendingSales: response.data.pendingSales
+            });
+        }
+    } catch (error) {
+        console.log('❌ Error checking day end status:', error);
+    }
+};
+const loadDataWithDayEnd = async () => {
+    try {
+        // Load all data
+        await loadData();
+        
+        // Check day end status
+        await checkDayEndStatus();
+        
+        console.log('✅ Data and day end status loaded');
+    } catch (error) {
+        console.log('❌ Error loading data:', error);
+    }
+};
 
 // When loading dish groups
 // Add this at the top of your component with other useRef
@@ -3362,8 +3414,11 @@ const testSunmiConnection = async () => {
 );
 
  const renderMainMenu = () => (
-  <View style={[styles.menuContent, { backgroundColor: currentTheme.background }]}>
-  
+  <ScrollView 
+    style={{ flex: 1 }}
+    contentContainerStyle={[styles.menuContent, { backgroundColor: currentTheme.background }]}
+    showsVerticalScrollIndicator={true}
+  >
     <TouchableOpacity 
       style={[styles.backToMainBtn, { backgroundColor: currentTheme.primary }]}
       onPress={() => {
@@ -3397,6 +3452,26 @@ const testSunmiConnection = async () => {
     >
       <Text style={styles.menuItemBtnText}>{t.salesReport}</Text>
     </TouchableOpacity>
+    
+    {/* Day End Button */}
+    <TouchableOpacity 
+    style={[styles.menuItemBtn, styles.dayEndBtn, { 
+        backgroundColor: '#FF4444',
+        borderColor: currentTheme.border,
+        marginTop: 10
+    }]}
+    onPress={() => {
+        setMenuVisible(false);
+        setShowDayEndModal(true);
+    }}
+>
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Ionicons name="calendar-outline" size={20} color="#fff" />
+        <Text style={[styles.menuItemBtnText, { color: '#fff', marginLeft: 8 }]}>
+            Day End
+        </Text>
+    </View>
+</TouchableOpacity>
 
     <TouchableOpacity 
       style={[styles.menuItemBtn, { 
@@ -3435,11 +3510,10 @@ const testSunmiConnection = async () => {
           {t.paymentModes}
         </Text>
       </View>
-      
     </TouchableOpacity>
 
-    {/* BOTTOM COMPANY INFO - ALL TEXT IN <Text> */}
-    <View style={[styles.bottomInfo, { borderTopColor: currentTheme.border }]}>
+    {/* BOTTOM COMPANY INFO */}
+    <View style={[styles.bottomInfo, { borderTopColor: currentTheme.border, marginTop: 10 }]}>
       
       {/* Shop Name */}
       <View style={styles.bottomRow}>
@@ -3504,7 +3578,10 @@ const testSunmiConnection = async () => {
         Copyright © 2026 - 2027 UNIPRO SOFTWARES SG PTE LTD. All rights Reserved.
       </Text>
     </View>
-  </View>
+    
+    {/* Bottom padding for scroll */}
+    <View style={{ height: 20 }} />
+  </ScrollView>
 );
 
 // In PosScreen.tsx - Replace your renderPaymentModal with this
@@ -4083,9 +4160,11 @@ const renderCashModal = () => (
   onRequestClose={() => setMenuVisible(false)}
 >
   <View style={styles.modalOverlay}>
-    {/* ✅ REMOVE ScrollView - use View directly */}
     <View 
-      style={[styles.sideMenu, isMobile && styles.sideMenuMobile, { backgroundColor: currentTheme.background, flex: 1 }]}
+      style={[styles.sideMenu, isMobile && styles.sideMenuMobile, { 
+        backgroundColor: currentTheme.background, 
+        flex: 1 
+      }]}
     >
       <View style={[styles.sideMenuHeader, { backgroundColor: currentTheme.primary }]}>
         <Text style={styles.sideMenuTitle}>{t.posMenu}</Text>
@@ -4109,8 +4188,14 @@ const renderCashModal = () => (
         </TouchableOpacity>
       )}
       
-      {/* ✅ No ScrollView wrapper - components handle their own scrolling */}
-      {renderMenuContent()}
+      {/* ✅ ADD SCROLLVIEW HERE */}
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={true}
+      >
+        {renderMenuContent()}
+      </ScrollView>
       
     </View>
   </View>
@@ -4242,6 +4327,27 @@ const renderCashModal = () => (
   qrCodeUrl={payNowQrUrl}
    formatPrice={formatPrice} 
 />
+
+<DayEndModal
+    visible={showDayEndModal}
+    onClose={() => setShowDayEndModal(false)}
+    outletId={outletInfo?.id || 0}
+    theme={currentTheme}
+    t={t}
+    formatPrice={formatPrice}
+    onDayEndComplete={async () => {
+        console.log('🔄 Day end complete - refreshing...');
+        
+        // ✅ Refresh day end status only
+        await checkDayEndStatus();
+        
+        // ✅ Sales report will still show all sales (no change)
+        // ✅ Day end modal will show reset state
+        
+        console.log('✅ Day end refresh complete');
+    }}
+/>
+
 {/* Loading Screen Modal */}
 <Modal
   visible={showLoadingScreen}
@@ -4278,6 +4384,7 @@ const renderCashModal = () => (
         handleLogout={handleLogout}
         user={user}
       />
+      
       <CashDrawerLogs
   visible={showDrawerLogs}
   onClose={() => setShowDrawerLogs(false)}
@@ -6190,6 +6297,10 @@ filterScrollView: {
 filterScrollContent: {
   paddingHorizontal: 10,
   gap: 8,
+},
+dayEndBtn: {
+    backgroundColor: '#FF4444',
+    borderWidth: 0,
 },
 customDateScrollView: {
   flexGrow: 0,
