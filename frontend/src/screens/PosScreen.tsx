@@ -3458,34 +3458,34 @@ const testSunmiConnection = async () => {
     </TouchableOpacity>
 
     <TouchableOpacity 
-      style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: 'white',borderColor: currentTheme.border, }]}
+      style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: currentTheme.card,borderColor: currentTheme.border, }]}
       onPress={() => {
         setMenuVisible(false);
         setShowSalesReport(true);
       }}
     >
-      <Text style={styles.menuItemBtnText}>{t.salesReport}</Text>
+      <Text style={[styles.menuItemBtnText, { color: currentTheme.text }]}>{t.salesReport}</Text>
     </TouchableOpacity>
     
     {/* Day End Button */}
     <TouchableOpacity 
-     style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: 'white',borderColor: currentTheme.border, }]}
+     style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: currentTheme.card,borderColor: currentTheme.border, }]}
     onPress={() => {
         setMenuVisible(false);
         setShowDayEndModal(true);
     }}
 >
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="calendar-outline" size={20} color="#0e0101" />
-        <Text style={[styles.menuItemBtnText, { color: '#020000', marginLeft: 8 }]}>
-            Day End
+        <Ionicons name="calendar-outline" size={20} color={currentTheme.text} />
+        <Text style={[styles.menuItemBtnText, { color: currentTheme.text, marginLeft: 8 }]}>
+            {t.dayEnd}
         </Text>
     </View>
 </TouchableOpacity>
 
     <TouchableOpacity 
       style={[styles.menuItemBtn, { 
-        backgroundColor: 'white',
+        backgroundColor: currentTheme.card,
         borderColor: currentTheme.border,
         marginTop: 10
       }]}
@@ -3495,8 +3495,8 @@ const testSunmiConnection = async () => {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="business-outline" size={20} color="#050505" />
-        <Text style={[styles.menuItemBtnText, { color: '#070707', marginLeft: 8 }]}>
+        <Ionicons name="business-outline" size={20} color={currentTheme.text} />
+        <Text style={[styles.menuItemBtnText, { color: currentTheme.text, marginLeft: 8 }]}>
           {t.companySettings}
         </Text>
       </View>
@@ -3505,7 +3505,7 @@ const testSunmiConnection = async () => {
     {/* Payment Settings Button */}
     <TouchableOpacity 
       style={[styles.menuItemBtn, { 
-        backgroundColor: 'white',
+        backgroundColor: currentTheme.card,
         borderColor: currentTheme.border,
         marginTop: 10
       }]}
@@ -3515,8 +3515,8 @@ const testSunmiConnection = async () => {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="settings-outline" size={20} color="#0a0a0a" />
-        <Text style={[styles.menuItemBtnText, { color: '#020202', marginLeft: 8 }]}>
+        <Ionicons name="settings-outline" size={20} color={currentTheme.text} />
+        <Text style={[styles.menuItemBtnText, { color: currentTheme.text, marginLeft: 8 }]}>
           {t.paymentModes}
         </Text>
       </View>

@@ -1273,7 +1273,7 @@ const sendEmailReport = async (item: any, email: string) => {
                         {processing ? (
                             <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                            <Text style={styles.endButtonText}>✅ End Day</Text>
+                            <Text style={styles.endButtonText}>{t.endDay}</Text>
                         )}
                     </TouchableOpacity>
                 </View>
@@ -1294,7 +1294,7 @@ const sendEmailReport = async (item: any, email: string) => {
                 <StatusBar barStyle={theme === 'night' ? 'light-content' : 'dark-content'} />
                 
                 <View style={[styles.fullScreenHeader, { backgroundColor: theme.primary }]}>
-                    <Text style={styles.fullScreenTitle}>Day End</Text>
+                    <Text style={styles.fullScreenTitle}>{t.dayEnd}</Text>
                     <TouchableOpacity onPress={onClose} style={styles.fullScreenClose}>
                         <Ionicons name="close" size={28} color="#fff" />
                     </TouchableOpacity>
