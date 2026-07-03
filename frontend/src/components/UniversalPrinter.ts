@@ -261,7 +261,7 @@ static async smartPrint(
       // Sunmi direct print - NO PREVIEW
       const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
       if (printed) {
-        Alert.alert('✅ Success', 'Receipt printed!');
+        
         return true;
       }
     }

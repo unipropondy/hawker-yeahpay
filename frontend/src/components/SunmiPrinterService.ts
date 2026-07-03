@@ -1,4 +1,4 @@
-// components/SunmiPrinterService.ts - PERFECT DESIGN MATCHING YOUR PREVIEW ✅
+// components/SunmiPrinterService.ts - With Date Format + QTY Alignment Fix ✅
 
 import { 
   initPrinter, 
@@ -49,12 +49,11 @@ class SunmiPrinterService {
     });
   }
   
-  // Print logos (thermal printers can't do side-by-side, so print one after another)
+  // Print logos
   private static async printLogos(companySettings: any): Promise<void> {
     const hasCompanyLogo = companySettings.showCompanyLogo && companySettings.companyLogo;
     const hasHalalLogo = companySettings.showHalalLogo && companySettings.halalLogo;
     
-    // Print company logo
     if (hasCompanyLogo) {
       try {
         let logoUrl = companySettings.companyLogo;
@@ -70,7 +69,6 @@ class SunmiPrinterService {
       }
     }
     
-    // Print halal logo
     if (hasHalalLogo) {
       try {
         let halalUrl = companySettings.halalLogo;
@@ -88,7 +86,7 @@ class SunmiPrinterService {
   }
   
   // Center text (full width 32 chars)
-  private static async center(text: string): Promise<void> {
+private static async center(text: string): Promise<void> {
     const maxWidth = 32;
     let displayText = text;
     if (displayText.length > maxWidth) {
@@ -99,7 +97,7 @@ class SunmiPrinterService {
     await printText(centeredText);
   }
   
-  // Left aligned
+   // Left aligned
   private static async left(text: string): Promise<void> {
     await printText(text);
   }
@@ -123,27 +121,28 @@ class SunmiPrinterService {
   }
   
   // Four columns for items (ITEM, QTY, PRICE, TOTAL)
-  private static async itemRow(name: string, qty: string, price: string, total: string): Promise<void> {
-    const nameWidth = 14;
-    const qtyWidth = 4;
-    const priceWidth = 6;
-    const totalWidth = 8;
+ private static async itemRow(name: string, qty: string, price: string, total: string): Promise<void> {
+    const nameWidth = 12;
+    const qtyWidth = 3;      // ✅ 5 chars for QTY (including space)
+    const priceWidth = 6;     // ✅ 6 chars for PRICE
+    const totalWidth = 8;     // ✅ 8 chars for TOTAL
     
     let line = name.substring(0, nameWidth).padEnd(nameWidth, ' ');
     line += qty.substring(0, qtyWidth).padStart(qtyWidth, ' ');
+    line += ' '; 
     line += price.substring(0, priceWidth).padStart(priceWidth, ' ');
     line += total.substring(0, totalWidth).padStart(totalWidth, ' ');
     await printText(line);
-  }
+}
   
   // Item header
-  private static async itemHeader(): Promise<void> {
-    let line = 'ITEM'.padEnd(14, ' ');
-    line += 'QTY'.padStart(4, ' ');
+ private static async itemHeader(): Promise<void> {
+    let line = 'ITEM'.padEnd(12, ' ');
+    line += 'QTY'.padStart(3, ' ');   // ✅ 5 chars
     line += 'PRICE'.padStart(6, ' ');
     line += 'TOTAL'.padStart(8, ' ');
     await printText(line);
-  }
+}
   // Add this method to SunmiPrinterService class
 // Add this method to SunmiPrinterService class
 static async printRawText(text: string): Promise<boolean> {
@@ -172,6 +171,7 @@ static async cutPaper(): Promise<boolean> {
         return false;
     }
 }
+  // ✅✅✅ FIXED: printReceipt with Date Format + QTY Alignment ✅✅✅
   static async printReceipt(saleData: any, companySettings: any): Promise<boolean> {
     try {
       await this.init();
@@ -182,14 +182,11 @@ static async cutPaper(): Promise<boolean> {
       await this.doubleDivider('=');
       await lineWrap(1);
       
-      // Print logos
       await this.printLogos(companySettings);
       
-      // Company Name - Large and Bold
       await this.center(companySettings.name || 'YOUR STORE');
       await lineWrap(1);
       
-      // Address
       if (companySettings.address) {
         const addressLines = companySettings.address.split('\n');
         for (const line of addressLines) {
@@ -199,17 +196,14 @@ static async cutPaper(): Promise<boolean> {
         }
       }
       
-      // Phone
       if (companySettings.phone) {
         await this.center(`📞 ${companySettings.phone}`);
       }
       
-      // Email
       if (companySettings.email) {
         await this.center(`📧 ${companySettings.email}`);
       }
       
-      // GST Number
       if (companySettings.gstNo) {
         await this.center(`GST: ${companySettings.gstNo}`);
       }
@@ -218,26 +212,33 @@ static async cutPaper(): Promise<boolean> {
       await lineWrap(1);
       
       // ============ BILL DETAILS ============
+      // ✅✅✅ FIXED: Date Format - DD/MM/YYYY ✅✅✅
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+      
       await this.left(`INVOICE NO: ${saleData.invoiceNumber || saleData.id}`);
-      await this.left(`DATE: ${new Date().toLocaleString()}`);
+      await this.left(`DATE: ${dateStr}`);  // ✅ DD/MM/YYYY
       await this.left(`CASHIER: ${saleData.cashier || companySettings.cashierName || 'Staff'}`);
       await this.divider('-');
       
       // ============ ITEMS SECTION ============
-      await this.itemHeader();
+      await this.itemHeader();  // ✅ FIXED HEADER
       await this.divider('-');
       
-      // Items loop
       for (const item of saleData.items || []) {
         const itemName = (item.name || '').substring(0, 12);
         const qty = (item.quantity || 1).toString();
         const price = `${symbol}${item.price.toFixed(2)}`;
         const total = `${symbol}${(item.price * item.quantity).toFixed(2)}`;
         
-        await this.itemRow(itemName, qty, price, total);
+        await this.itemRow(itemName, qty, price, total);  // ✅ FIXED ALIGNMENT
         
-        // Show unit price if quantity > 1
-        if (item.quantity > 1) {
+        if (item.quantity > 10) {
           await this.left(`    @ ${symbol}${item.price.toFixed(2)} ea`);
         }
       }

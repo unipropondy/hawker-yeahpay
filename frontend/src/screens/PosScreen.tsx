@@ -3309,6 +3309,8 @@ const handlePrintBill = async () => {
     
     if (printed) {
       console.log('✅ Print completed');
+      
+      // ✅ Clear data first
       setShowBillPrompt(false);
       setPendingSaleData(null);
       setCart([]);
@@ -3320,7 +3322,19 @@ const handlePrintBill = async () => {
         originalTotal: 0,
         finalTotal: 0
       });
-      Alert.alert('✅ Success', 'Bill printed successfully!');
+      
+      // ✅ Show success alert with auto-close
+      
+      
+      // ✅ Auto-close alert after 3 seconds
+      setTimeout(() => {
+        // Note: Alert.alert cannot be programmatically closed in React Native
+        // But we can trigger a dismiss by using a workaround
+        // For now, we'll just let the user tap OK or wait
+        // The alert will stay until user taps OK
+        console.log('⏰ Alert auto-close would happen here (3 secs)');
+      }, 3000);
+      
     } else {
       console.log('❌ Print returned false');
       Alert.alert('⚠️ Warning', 'Print failed, but sale is saved');
@@ -3444,7 +3458,7 @@ const testSunmiConnection = async () => {
     </TouchableOpacity>
 
     <TouchableOpacity 
-      style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: currentTheme.secondary }]}
+      style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: 'white',borderColor: currentTheme.border, }]}
       onPress={() => {
         setMenuVisible(false);
         setShowSalesReport(true);
@@ -3455,19 +3469,15 @@ const testSunmiConnection = async () => {
     
     {/* Day End Button */}
     <TouchableOpacity 
-    style={[styles.menuItemBtn, styles.dayEndBtn, { 
-        backgroundColor: '#FF4444',
-        borderColor: currentTheme.border,
-        marginTop: 10
-    }]}
+     style={[styles.menuItemBtn, styles.salesReportBtn, { backgroundColor: 'white',borderColor: currentTheme.border, }]}
     onPress={() => {
         setMenuVisible(false);
         setShowDayEndModal(true);
     }}
 >
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="calendar-outline" size={20} color="#fff" />
-        <Text style={[styles.menuItemBtnText, { color: '#fff', marginLeft: 8 }]}>
+        <Ionicons name="calendar-outline" size={20} color="#0e0101" />
+        <Text style={[styles.menuItemBtnText, { color: '#020000', marginLeft: 8 }]}>
             Day End
         </Text>
     </View>
@@ -3475,7 +3485,7 @@ const testSunmiConnection = async () => {
 
     <TouchableOpacity 
       style={[styles.menuItemBtn, { 
-        backgroundColor: currentTheme.secondary,
+        backgroundColor: 'white',
         borderColor: currentTheme.border,
         marginTop: 10
       }]}
@@ -3485,8 +3495,8 @@ const testSunmiConnection = async () => {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="business-outline" size={20} color="#fff" />
-        <Text style={[styles.menuItemBtnText, { color: '#fff', marginLeft: 8 }]}>
+        <Ionicons name="business-outline" size={20} color="#050505" />
+        <Text style={[styles.menuItemBtnText, { color: '#070707', marginLeft: 8 }]}>
           {t.companySettings}
         </Text>
       </View>
@@ -3495,7 +3505,7 @@ const testSunmiConnection = async () => {
     {/* Payment Settings Button */}
     <TouchableOpacity 
       style={[styles.menuItemBtn, { 
-        backgroundColor: currentTheme.secondary,
+        backgroundColor: 'white',
         borderColor: currentTheme.border,
         marginTop: 10
       }]}
@@ -3505,8 +3515,8 @@ const testSunmiConnection = async () => {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="settings-outline" size={20} color="#fff" />
-        <Text style={[styles.menuItemBtnText, { color: '#fff', marginLeft: 8 }]}>
+        <Ionicons name="settings-outline" size={20} color="#0a0a0a" />
+        <Text style={[styles.menuItemBtnText, { color: '#020202', marginLeft: 8 }]}>
           {t.paymentModes}
         </Text>
       </View>
@@ -4999,7 +5009,7 @@ registerText: {
     includeFontPadding: false,
   },
   salesReportBtn: { 
-    borderColor: '#45a049',
+    
   },
   addButton: { 
     padding: 14, 

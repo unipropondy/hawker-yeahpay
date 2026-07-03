@@ -237,7 +237,8 @@ const performDayEnd = async (req, res) => {
                     categories: categoriesArray,  // ✅ Return categories
                     salesCount: sales.length,
                     startDate: sales[0].SaleDate,
-                    endDate: sales[sales.length - 1].SaleDate
+                    endDate: sales[sales.length - 1].SaleDate,
+                    closingDate: sales[sales.length - 1].SaleDate
                 }
             });
             

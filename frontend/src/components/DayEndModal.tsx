@@ -57,14 +57,30 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
     const [emailAddress, setEmailAddress] = useState('');
     const [emailLoading, setEmailLoading] = useState(false);
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<any>(null);
-
+const [savedEmail, setSavedEmail] = useState('');
     useEffect(() => {
         if (visible) {
             console.log('📅 DayEndModal opened');
             loadDayEndData();
+            loadSavedEmail();
         }
     }, [visible]);
-
+// ✅ Load saved email from AsyncStorage
+const loadSavedEmail = async () => {
+    try {
+        const email = await AsyncStorage.getItem('lastEmailAddress');
+        console.log('📧 Loading saved email from storage:', email);
+        if (email) {
+            setSavedEmail(email);
+            setEmailAddress(email);  // ✅ Auto-fill the input
+            console.log('✅ Email auto-filled:', email);
+        } else {
+            console.log('⚠️ No saved email found');
+        }
+    } catch (error) {
+        console.log('❌ Error loading saved email:', error);
+    }
+};
     const formatUTCTime = (dateString: string) => {
         if (!dateString) return { date: '', time: '' };
         const date = new Date(dateString);
@@ -302,62 +318,105 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
         return leftText + rightText;
     };
 
-    const buildDayEndReportText = (data: any, outletName: string) => {
-        const symbol = '$';
-        const line = '='.repeat(32);
-        const dash = '-'.repeat(32);
-        
-        let text = '\n\n';
-        text += line + '\n';
-        text += centerText('DAY END REPORT', 32) + '\n';
-        text += line + '\n';
-        
-        text += `Outlet: ${outletName}\n`;
-        text += `Date: ${new Date().toLocaleString()}\n`;
-        text += dash + '\n\n';
-        
-        text += centerText('SUMMARY', 32) + '\n';
+  const buildDayEndReportText = (data: any, outletName: string) => {
+    const symbol = '$';
+    const line = '='.repeat(32);
+    const dash = '-'.repeat(32);
+    
+    // ✅ ORIGINAL Day End Date - USE data.closingDate
+    const originalDate = data.closingDate ? new Date(data.closingDate) : new Date();
+    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
+    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
+    const origYear = originalDate.getUTCFullYear();
+    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
+    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
+    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    
+    // ✅ CURRENT Date (Generated on)
+    const now = new Date();
+    const nowDay = String(now.getDate()).padStart(2, '0');
+    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const nowYear = now.getFullYear();
+    const nowHours = String(now.getHours()).padStart(2, '0');
+    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+    
+    console.log('📅 buildDayEndReportText - Original:', origDateStr);
+    console.log('📅 buildDayEndReportText - Generated:', nowDateStr);
+    
+    let text = '\n\n';
+    text += line + '\n';
+    text += centerText('DAY END REPORT', 32) + '\n';
+    text += line + '\n';
+    
+    text += `Outlet: ${outletName}\n`;
+    text += `Date: ${origDateStr}\n`;  // ✅ Original Day End
+    text += dash + '\n\n';
+    
+    text += centerText('SUMMARY', 32) + '\n';
+    text += dash + '\n';
+    text += twoColumns('Total Sales:', `${symbol}${(data.totalSales || 0).toFixed(2)}`, 32) + '\n';
+    text += twoColumns('Total Discount:', `-${symbol}${(data.totalDiscount || 0).toFixed(2)}`, 32) + '\n';
+    text += twoColumns('Net Sales:', `${symbol}${(data.netSales || 0).toFixed(2)}`, 32) + '\n';
+    text += twoColumns('Total Items:', `${data.totalItems || 0}`, 32) + '\n';
+    text += twoColumns('Transactions:', `${data.salesCount || 0}`, 32) + '\n';
+    text += dash + '\n\n';
+    
+    text += centerText('PAYMENT BREAKDOWN', 32) + '\n';
+    text += dash + '\n';
+    if (data.paymentBreakdown) {
+        Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
+            text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+        });
+    }
+    text += dash + '\n\n';
+    
+    if (data.categories && data.categories.length > 0) {
+        text += centerText('CATEGORY BREAKDOWN', 32) + '\n';
         text += dash + '\n';
-        text += twoColumns('Total Sales:', `${symbol}${data.totalSales.toFixed(2)}`, 32) + '\n';
-        text += twoColumns('Total Discount:', `-${symbol}${data.totalDiscount.toFixed(2)}`, 32) + '\n';
-        text += twoColumns('Net Sales:', `${symbol}${data.netSales.toFixed(2)}`, 32) + '\n';
-        text += twoColumns('Total Items:', `${data.totalItems}`, 32) + '\n';
-        text += twoColumns('Transactions:', `${data.salesCount}`, 32) + '\n';
-        text += dash + '\n\n';
-        
-        text += centerText('PAYMENT BREAKDOWN', 32) + '\n';
-        text += dash + '\n';
-        if (data.paymentBreakdown) {
-            Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
-                text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
-            });
-        }
-        text += dash + '\n\n';
-        
-        if (data.categories && data.categories.length > 0) {
-            text += centerText('CATEGORY BREAKDOWN', 32) + '\n';
-            text += dash + '\n';
-            data.categories.forEach((cat: any) => {
-                text += `${cat.name}: ${symbol}${cat.totalRevenue.toFixed(2)} (${cat.totalQuantity} items)\n`;
+        data.categories.forEach((cat: any) => {
+            text += `${cat.name}: ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)\n`;
+            if (cat.items && cat.items.length > 0) {
                 cat.items.forEach((item: any) => {
-                    text += `  ${item.name} x${item.quantity} = ${symbol}${item.revenue.toFixed(2)}\n`;
+                    text += `  ${item.name || 'Unknown'} x${item.quantity || 0} = ${symbol}${(item.revenue || 0).toFixed(2)}\n`;
                 });
-                text += '\n';
-            });
-            text += dash + '\n\n';
-        }
-        
-        text += centerText('END OF REPORT', 32) + '\n';
-        text += line + '\n';
-        text += centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
-        text += centerText(new Date().toLocaleString(), 32) + '\n';
-        text += '\n\n\n';
-        
-        return text;
-    };
-
+            }
+            text += '\n';
+        });
+        text += dash + '\n\n';
+    }
+    
+    text += centerText('END OF REPORT', 32) + '\n';
+    text += line + '\n';
+    text += centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+    text += centerText(`Generated: ${nowDateStr}`, 32) + '\n';  // ✅ Current Time
+    text += '\n\n\n';
+    
+    return text;
+};
 const generateDayEndHTML = (data: any, outletName: string) => {
     const symbol = '$';
+    
+    // ✅ ORIGINAL Day End Date - USE UTC (store panni irukkara time)
+    const originalDate = data.closingDate ? new Date(data.closingDate) : new Date();
+    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
+    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
+    const origYear = originalDate.getUTCFullYear();
+    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
+    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
+    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    
+    // ✅ CURRENT Date - USE LOCAL TIME (for "Generated on")
+    const now = new Date();
+    const nowDay = String(now.getDate()).padStart(2, '0');
+    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const nowYear = now.getFullYear();
+    const nowHours = String(now.getHours()).padStart(2, '0');
+    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+    
+    console.log('📅 Original (UTC):', origDateStr);
+    console.log('📅 Current (Local):', nowDateStr);
     
     return `
 <!DOCTYPE html>
@@ -380,14 +439,13 @@ const generateDayEndHTML = (data: any, outletName: string) => {
         .category-name { font-weight: bold; font-size: 14px; }
         .item-name { padding-left: 30px; }
         .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; color: #666; }
-        .highlight { background-color: #e8f5e9; }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="title">📊 DAY END REPORT</div>
         <div class="subtitle">${outletName || 'Outlet'}</div>
-        <div class="subtitle">${new Date().toLocaleString()}</div>
+        <div class="subtitle">${origDateStr}</div>  <!-- ✅ Original Day End Time -->
     </div>
     
     <div class="section">
@@ -438,121 +496,181 @@ const generateDayEndHTML = (data: any, outletName: string) => {
     <div class="footer">
         <p><strong>SMARTHAWKER BY UNIPROSG</strong></p>
         <p>© ${new Date().getFullYear()} UNIPRO SOFTWARES SG PTE LTD</p>
-        <p>Generated on: ${new Date().toLocaleString()}</p>
+        <p>Generated on: ${nowDateStr}</p>  <!-- ✅ Current Local Time -->
     </div>
 </body>
 </html>
     `;
 };
-
-    const printDayEndReport = async (dayEndData: any) => {
-        try {
-            console.log('🖨️ Printing Day End Report...');
+const printDayEndReport = async (dayEndData: any) => {
+    try {
+        console.log('🖨️ Printing Day End Report...');
+        console.log('📅 dayEndData received:', JSON.stringify(dayEndData, null, 2));
+        
+        const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
+        
+        // ✅ Build report data with ALL fields
+        const reportData = {
+            totalSales: dayEndData.totalSales || 0,
+            totalDiscount: dayEndData.totalDiscount || 0,
+            totalItems: dayEndData.totalItems || 0,
+            netSales: dayEndData.netSales || 0,
+            salesCount: dayEndData.salesCount || 0,
+            paymentBreakdown: dayEndData.paymentBreakdown || {},
+            categories: dayEndData.categories || [],
+            closingDate: dayEndData.closingDate || dayEndData.endDate || new Date()
+        };
+        
+        console.log('📅 Report closingDate:', reportData.closingDate);
+        
+        const reportText = buildDayEndReportText(reportData, outletName);
+        
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+            await SunmiPrinterService.printRawText(reportText);
+            await SunmiPrinterService.cutPaper();
+            console.log('✅ Day End Report printed on Sunmi');
+            // ✅ Toast instead of Alert
             
-            const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
-            const reportText = buildDayEndReportText(dayEndData, outletName);
-            
-            const sunmiReady = await SunmiPrinterService.init();
-            if (sunmiReady) {
-                await SunmiPrinterService.printRawText(reportText);
-                await SunmiPrinterService.cutPaper();
-                console.log('✅ Day End Report printed on Sunmi');
-                Alert.alert('🖨️ Success', 'Day End Report printed successfully!');
-                return;
-            }
-            
-            console.log('⚠️ Sunmi not available, saving as PDF');
-            const html = generateDayEndHTML(dayEndData, outletName);
-            const { uri } = await Print.printToFileAsync({ html });
-            await Sharing.shareAsync(uri);
-            Alert.alert('📄 PDF Saved', 'Day End Report saved as PDF');
-            
-        } catch (error) {
-            console.log('❌ Print error:', error);
-            Alert.alert('⚠️ Warning', 'Day End completed but print failed');
+            return;
         }
-    };
-
+        
+        console.log('⚠️ Sunmi not available, saving as PDF');
+        const html = generateDayEndHTML(reportData, outletName);
+        const { uri } = await Print.printToFileAsync({ html });
+        await Sharing.shareAsync(uri);
+        
+        
+    } catch (error) {
+        console.log('❌ Print error:', error);
+       
+    }
+};
     // ==================== REPRINT FUNCTION ====================
 
     const reprintDayEndReport = async (item: any) => {
-        try {
-            console.log('🖨️ Reprinting Day End Report...');
-            
-            const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
-            
-            const reportText = buildDayEndReportText({
-                totalSales: item.totalSales,
-                totalDiscount: item.totalDiscount,
-                totalItems: item.totalItems,
-                netSales: item.netSales,
-                paymentBreakdown: item.paymentBreakdown,
-                categories: item.categories || []
-            }, outletName);
-            
-            const reprintText = '='.repeat(32) + '\n' +
-                               centerText('REPRINT', 32) + '\n' +
-                               '='.repeat(32) + '\n\n' +
-                               reportText;
-            
-            const sunmiReady = await SunmiPrinterService.init();
-            if (sunmiReady) {
-                await SunmiPrinterService.printRawText(reprintText);
-                await SunmiPrinterService.cutPaper();
-                console.log('✅ Day End Report reprinted on Sunmi');
-                Alert.alert('🖨️ Success', 'Report reprinted successfully!');
-                return;
-            }
-            
-            console.log('⚠️ Sunmi not available, saving as PDF');
-            const html = generateDayEndHTML({
-                totalSales: item.totalSales,
-                totalDiscount: item.totalDiscount,
-                totalItems: item.totalItems,
-                netSales: item.netSales,
-                paymentBreakdown: item.paymentBreakdown,
-                categories: item.categories || []
-            }, outletName);
-            const { uri } = await Print.printToFileAsync({ html });
-            await Sharing.shareAsync(uri);
-            Alert.alert('📄 PDF Saved', 'Report saved as PDF');
-            
-        } catch (error) {
-            console.log('❌ Reprint error:', error);
-            Alert.alert('Error', 'Failed to reprint');
+    try {
+        console.log('🖨️ Reprinting Day End Report...');
+        
+        const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
+        
+        // ✅ Pass ALL data including salesCount and closingDate
+        const reportData = {
+            totalSales: item.totalSales || 0,
+            totalDiscount: item.totalDiscount || 0,
+            totalItems: item.totalItems || 0,
+            netSales: item.netSales || 0,
+            salesCount: item.salesCount || 0,  // ✅ FIX: Transactions
+            paymentBreakdown: item.paymentBreakdown || {},
+            categories: item.categories || [],
+            closingDate: item.closingDate  // ✅ FIX: Original day end date
+        };
+        
+        const reportText = buildDayEndReportText(reportData, outletName);
+        
+        const reprintText = '='.repeat(32) + '\n' +
+                           centerText('REPRINT', 32) + '\n' +
+                           '='.repeat(32) + '\n\n' +
+                           reportText;
+        
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+            await SunmiPrinterService.printRawText(reprintText);
+            await SunmiPrinterService.cutPaper();
+            console.log('✅ Day End Report reprinted on Sunmi');
+            Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+            return;
         }
-    };
+        
+        console.log('⚠️ Sunmi not available, saving as PDF');
+        const html = generateDayEndHTML(reportData, outletName);
+        const { uri } = await Print.printToFileAsync({ html });
+        await Sharing.shareAsync(uri);
+        Alert.alert('📄 PDF Saved', 'Report saved as PDF');
+        
+    } catch (error) {
+        console.log('❌ Reprint error:', error);
+        Alert.alert('Error', 'Failed to reprint');
+    }
+};
 
     // ==================== EMAIL FUNCTIONS ====================
 
-    const generateCSVData = (item: any) => {
-    let csv = 'Day End Report\n\n';
-    csv += 'Summary\n';
-    csv += `Total Sales,${item.totalSales || 0}\n`;
-    csv += `Total Discount,${item.totalDiscount || 0}\n`;
-    csv += `Net Sales,${item.netSales || 0}\n`;
-    csv += `Total Items,${item.totalItems || 0}\n`;
-    csv += `Transactions,${item.salesCount || 0}\n\n`;
+  const generateCSVData = (item: any, outletName?: string) => {
+    // ✅ ORIGINAL Day End Date (UTC)
+    const originalDate = item.closingDate ? new Date(item.closingDate) : new Date();
+    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
+    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
+    const origYear = originalDate.getUTCFullYear();
+    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
+    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
+    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
     
-    csv += 'Payment Breakdown\n';
-    if (item.paymentBreakdown) {
+    // ✅ CURRENT Date (Generated on)
+    const now = new Date();
+    const nowDay = String(now.getDate()).padStart(2, '0');
+    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const nowYear = now.getFullYear();
+    const nowHours = String(now.getHours()).padStart(2, '0');
+    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+    
+    // ✅ Use passed outletName or fallback
+    const name = outletName || item.outletName || 'Outlet';
+    const symbol = '$';
+    
+    let csv = '';
+    
+    // ============ HEADER ============
+    csv += 'DAY END REPORT\n';
+    csv += `Outlet,${name}\n`;  // ✅ Now shows "GOA"
+    csv += `Date,${origDateStr}\n`;
+    csv += '\n';
+    
+    // ============ SUMMARY ============
+    csv += 'SUMMARY\n';
+    csv += `Total Sales,${symbol}${(item.totalSales || 0).toFixed(2)}\n`;
+    csv += `Total Discount,-${symbol}${(item.totalDiscount || 0).toFixed(2)}\n`;
+    csv += `Net Sales,${symbol}${(item.netSales || 0).toFixed(2)}\n`;
+    csv += `Total Items,${item.totalItems || 0}\n`;
+    csv += `Transactions,${item.salesCount || 0}\n`;
+    csv += '\n';
+    
+    // ============ PAYMENT BREAKDOWN ============
+    csv += 'PAYMENT BREAKDOWN\n';
+    if (item.paymentBreakdown && Object.keys(item.paymentBreakdown).length > 0) {
         Object.entries(item.paymentBreakdown).forEach(([method, amount]) => {
-            csv += `${method},${amount}\n`;
+            csv += `${method},${symbol}${(amount as number).toFixed(2)}\n`;
         });
+    } else {
+        csv += 'No payment data,$0.00\n';
     }
     csv += '\n';
     
-    csv += 'Category Breakdown\n';
+    // ============ CATEGORY BREAKDOWN ============
+    csv += 'CATEGORY BREAKDOWN\n';
     if (item.categories && item.categories.length > 0) {
         item.categories.forEach((cat: any) => {
-            csv += `${cat.name || 'Uncategorized'},${cat.totalRevenue || 0},${cat.totalQuantity || 0} items\n`;
+            // Category header
+            csv += `${cat.name || 'Uncategorized'},${symbol}${(cat.totalRevenue || 0).toFixed(2)},${cat.totalQuantity || 0} items\n`;
+            
+            // Category items
             if (cat.items && cat.items.length > 0) {
                 cat.items.forEach((item: any) => {
-                    csv += `  ${item.name || 'Unknown'},${item.quantity || 0},${item.revenue || 0}\n`;
+                    csv += `  ${item.name || 'Unknown Item'},x${item.quantity || 0},${symbol}${(item.revenue || 0).toFixed(2)}\n`;
                 });
+            } else {
+                csv += `  No items in this category\n`;
             }
         });
+    } else {
+        csv += 'No category data\n';
     }
+    csv += '\n';
+    
+    // ============ FOOTER ============
+    csv += `SMARTHAWKER BY UNIPROSG\n`;
+    csv += `Generated on,${nowDateStr}\n`;
     
     return csv;
 };
@@ -561,12 +679,14 @@ const generateDayEndHTML = (data: any, outletName: string) => {
 const sendEmailReport = async (item: any, email: string) => {
     try {
         setEmailLoading(true);
-        
+          await AsyncStorage.setItem('lastEmailAddress', email);
+        setSavedEmail(email);
+        console.log('💾 Email saved to storage:', email);
         const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
         const dateStr = new Date(item.closingDate).toLocaleDateString();
         const cashierName = item.closedBy || 'Admin';
         
-        // ✅ Ensure salesCount exists
+       
         const reportData = {
             totalSales: item.totalSales || 0,
             totalDiscount: item.totalDiscount || 0,
@@ -574,20 +694,21 @@ const sendEmailReport = async (item: any, email: string) => {
             netSales: item.netSales || 0,
             salesCount: item.salesCount || 0,
             paymentBreakdown: item.paymentBreakdown || {},
-            categories: item.categories || []
+            categories: item.categories || [],
+            closingDate: item.closingDate,
+            outletName: outletName
         };
         
         // ✅ Generate PDF
         const html = generateDayEndHTML(reportData, outletName);
         const pdfUri = await Print.printToFileAsync({ html });
         
-        // ✅ Read PDF as base64 - FIXED
+        // ✅ Read PDF as base64
         const response = await fetch(pdfUri.uri);
         const blob = await response.blob();
         const pdfBase64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onload = () => {
-                // ✅ Cast to string and extract base64
                 const result = reader.result as string;
                 const base64 = result.split(',')[1];
                 resolve(base64);
@@ -596,7 +717,7 @@ const sendEmailReport = async (item: any, email: string) => {
         });
         
         // ✅ Generate CSV
-        const csvData = generateCSVData(reportData);
+        const csvData = generateCSVData(reportData, outletName);
         
         // ✅ Send via Backend API
         const apiResponse = await API.post('/email/send-settlement-email', {
@@ -626,109 +747,115 @@ const sendEmailReport = async (item: any, email: string) => {
     // ==================== RENDER EMAIL MODAL ====================
 
     const renderEmailModal = () => {
-        return (
-            <Modal
-                visible={showEmailModal}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => {
-                    setShowEmailModal(false);
-                    setEmailAddress('');
-                    setSelectedHistoryItem(null);
-                }}
-            >
-                <View style={styles.emailModalOverlay}>
-                    <View style={[styles.emailModalContent, { backgroundColor: theme.card }]}>
-                        
-                        <View style={styles.emailModalHeader}>
-                            <Ionicons name="mail-outline" size={28} color={theme.primary} />
-                            <Text style={[styles.emailModalTitle, { color: theme.text }]}>
-                                Send Report via Email
-                            </Text>
-                        </View>
-                        
-                        <View style={[styles.emailModalInfo, { backgroundColor: theme.surface }]}>
-                            <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
-                                📁 {selectedHistoryItem?.totalSales || 0} sales
-                            </Text>
-                            <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
-                                📅 {selectedHistoryItem?.closingDate ? new Date(selectedHistoryItem.closingDate).toLocaleDateString() : ''}
-                            </Text>
-                        </View>
-                        
-                        <Text style={[styles.emailModalLabel, { color: theme.textSecondary }]}>
-                            Recipient Email Address *
+    return (
+        <Modal
+            visible={showEmailModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => {
+                setShowEmailModal(false);
+                // ✅ Don't clear emailAddress - keep it for next time
+                setSelectedHistoryItem(null);
+            }}
+        >
+            <View style={styles.emailModalOverlay}>
+                <View style={[styles.emailModalContent, { backgroundColor: theme.card }]}>
+                    
+                    <View style={styles.emailModalHeader}>
+                        <Ionicons name="mail-outline" size={28} color={theme.primary} />
+                        <Text style={[styles.emailModalTitle, { color: theme.text }]}>
+                            Send Report via Email
                         </Text>
-                        <TextInput
-                            style={[styles.emailModalInput, { 
-                                backgroundColor: theme.surface,
-                                color: theme.text,
-                                borderColor: theme.border
-                            }]}
-                            placeholder="Enter email address"
-                            placeholderTextColor={theme.textSecondary}
-                            value={emailAddress}
-                            onChangeText={setEmailAddress}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                        />
-                        
-                        <Text style={[styles.emailModalHint, { color: theme.textSecondary }]}>
-                            📎 PDF and Excel files will be attached
+                    </View>
+                    
+                    <View style={[styles.emailModalInfo, { backgroundColor: theme.surface }]}>
+                        <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
+                            📁 {selectedHistoryItem?.totalSales || 0} sales
                         </Text>
+                        <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
+                            📅 {selectedHistoryItem?.closingDate ? new Date(selectedHistoryItem.closingDate).toLocaleDateString() : ''}
+                        </Text>
+                    </View>
+                    
+                    <Text style={[styles.emailModalLabel, { color: theme.textSecondary }]}>
+                        Recipient Email Address *
+                    </Text>
+                    <TextInput
+                        style={[styles.emailModalInput, { 
+                            backgroundColor: theme.surface,
+                            color: theme.text,
+                            borderColor: theme.border
+                        }]}
+                        placeholder="Enter email address"
+                        placeholderTextColor={theme.textSecondary}
+                        value={emailAddress}  // ✅ Auto-filled from savedEmail
+                        onChangeText={setEmailAddress}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                    />
+                    
+                    {/* ✅ Show saved email hint */}
+                    {savedEmail && emailAddress === savedEmail && (
+                        <Text style={[styles.emailModalHint, { color: theme.primary }]}>
+                            📌 Using previously used email: {savedEmail}
+                        </Text>
+                    )}
+                    
+                    <Text style={[styles.emailModalHint, { color: theme.textSecondary }]}>
+                        📎 PDF and Excel files will be attached
+                    </Text>
+                    
+                    <View style={styles.emailModalButtons}>
+                        <TouchableOpacity
+                            style={[styles.emailModalBtn, styles.emailModalCancel, { borderColor: theme.border }]}
+                            onPress={() => {
+                                setShowEmailModal(false);
+                                // ✅ Don't clear email
+                                setSelectedHistoryItem(null);
+                            }}
+                            disabled={emailLoading}
+                        >
+                            <Text style={[styles.emailModalBtnText, { color: theme.text }]}>Cancel</Text>
+                        </TouchableOpacity>
                         
-                        <View style={styles.emailModalButtons}>
-                            <TouchableOpacity
-                                style={[styles.emailModalBtn, styles.emailModalCancel, { borderColor: theme.border }]}
-                                onPress={() => {
-                                    setShowEmailModal(false);
-                                    setEmailAddress('');
-                                    setSelectedHistoryItem(null);
-                                }}
-                                disabled={emailLoading}
-                            >
-                                <Text style={[styles.emailModalBtnText, { color: theme.text }]}>Cancel</Text>
-                            </TouchableOpacity>
-                            
-                            <TouchableOpacity
-                                style={[
-                                    styles.emailModalBtn, 
-                                    styles.emailModalSend, 
-                                    { 
-                                        backgroundColor: theme.primary,
-                                        opacity: (!emailAddress.trim() || !emailAddress.includes('@')) ? 0.5 : 1
-                                    }
-                                ]}
-                                onPress={() => {
-                                    if (!emailAddress.trim()) {
-                                        Alert.alert('Error', 'Please enter email address');
-                                        return;
-                                    }
-                                    if (!emailAddress.includes('@')) {
-                                        Alert.alert('Error', 'Please enter a valid email address');
-                                        return;
-                                    }
-                                    sendEmailReport(selectedHistoryItem, emailAddress);
-                                }}
-                                disabled={emailLoading || !emailAddress.trim() || !emailAddress.includes('@')}
-                            >
-                                {emailLoading ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <>
-                                        <Ionicons name="send-outline" size={18} color="#fff" />
-                                        <Text style={styles.emailModalSendText}>Send</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity
+                            style={[
+                                styles.emailModalBtn, 
+                                styles.emailModalSend, 
+                                { 
+                                    backgroundColor: theme.primary,
+                                    opacity: (!emailAddress.trim() || !emailAddress.includes('@')) ? 0.5 : 1
+                                }
+                            ]}
+                            onPress={() => {
+                                if (!emailAddress.trim()) {
+                                    Alert.alert('Error', 'Please enter email address');
+                                    return;
+                                }
+                                if (!emailAddress.includes('@')) {
+                                    Alert.alert('Error', 'Please enter a valid email address');
+                                    return;
+                                }
+                                sendEmailReport(selectedHistoryItem, emailAddress);
+                            }}
+                            disabled={emailLoading || !emailAddress.trim() || !emailAddress.includes('@')}
+                        >
+                            {emailLoading ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <>
+                                    <Ionicons name="send-outline" size={18} color="#fff" />
+                                    <Text style={styles.emailModalSendText}>Send</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
                     </View>
                 </View>
-            </Modal>
-        );
-    };
-
+            </View>
+        </Modal>
+    );
+};
     // ==================== PERFORM DAY END ====================
 
     const performDayEnd = async () => {
@@ -858,7 +985,7 @@ const sendEmailReport = async (item: any, email: string) => {
                             </View>
 
                             <Text style={[styles.historyClosedBy, { color: theme.textSecondary }]}>
-                                Closed at: {createdAt.date} {createdAt.time}
+                                Closed at: {createdAt.date} 
                             </Text>
 
                             {selectedHistory?.id === item.id && (

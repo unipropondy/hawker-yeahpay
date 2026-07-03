@@ -156,7 +156,20 @@ const prevEndTimeRef = useRef(endTime);
       }
     };
   }, []);
-  
+  const [toastVisible, setToastVisible] = useState(false);
+const [toastMessage, setToastMessage] = useState('');
+const [toastTitle, setToastTitle] = useState('');
+const [toastColor, setToastColor] = useState('#4CAF50');
+const showToast = (title: string, message: string) => {
+    setToastTitle(title);
+    setToastMessage(message);
+    setToastVisible(true);
+    
+    // ✅ Auto-close after 3 seconds
+    setTimeout(() => {
+        setToastVisible(false);
+    }, 3000);
+};
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-GB', {
       day: '2-digit',
@@ -759,8 +772,8 @@ const handleFilterChange = (filter: string) => {
                         }
                     }
                 );
-                if (printed) {
-                    Alert.alert('✅ Success', 'Category report printed on thermal printer');
+               if (printed) {
+           
                 } else {
                     // Fallback to PDF
                     await UniversalPrinter.printCategoryReport(
@@ -786,7 +799,7 @@ const handleFilterChange = (filter: string) => {
                             }
                         }
                     );
-                    Alert.alert('✅ Success', 'Category report saved as PDF');
+                    
                 }
             } else {
                 let paymentBreakdown = categorySummary.paymentBreakdown;
@@ -819,7 +832,7 @@ const handleFilterChange = (filter: string) => {
                     }
                 );
                 if (printed) {
-                    Alert.alert('✅ Success', 'Category report printed on thermal printer');
+                    
                 } else {
                     await UniversalPrinter.printCategoryReport(
                         categories,
@@ -844,7 +857,7 @@ const handleFilterChange = (filter: string) => {
                             }
                         }
                     );
-                    Alert.alert('✅ Success', 'Category report saved as PDF');
+                    
                 }
             }
         } else {
@@ -869,11 +882,11 @@ const handleFilterChange = (filter: string) => {
             // ✅ Try thermal print first
             const printed = await UniversalPrinter.printSalesReportThermal(reportData, userId, t);
             if (printed) {
-                Alert.alert('✅ Success', 'Sales report printed on thermal printer');
+                
             } else {
                 // Fallback to PDF
                 await UniversalPrinter.printSalesReport(reportData, userId, t);
-                Alert.alert('✅ Success', 'Sales report saved as PDF');
+                
             }
         }
     } catch (error) {
@@ -2003,6 +2016,14 @@ const formatDateTime = (dateString: string) => {
           </View>
         </>
       )}
+      {toastVisible && (
+                    <View style={styles.toastOverlay}>
+                        <View style={[styles.toastContainer, { backgroundColor: toastColor || '#4CAF50' }]}>
+                            <Text style={styles.toastTitle}>{toastTitle}</Text>
+                            <Text style={styles.toastMessage}>{toastMessage}</Text>
+                        </View>
+                    </View>
+                )}
     </View>
   </View>
 </Modal>
@@ -2078,6 +2099,40 @@ const styles = StyleSheet.create({
   closeText: {
     fontSize: 20,
   },
+   toastOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        pointerEvents: 'none',
+        zIndex: 9999,
+    },
+    toastContainer: {
+        paddingHorizontal: 24,
+        paddingVertical: 16,
+        borderRadius: 12,
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        minWidth: 250,
+        alignItems: 'center',
+    },
+    toastTitle: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    toastMessage: {
+        color: '#fff',
+        fontSize: 14,
+        textAlign: 'center',
+    },
   tabContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
