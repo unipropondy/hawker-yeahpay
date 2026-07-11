@@ -3,7 +3,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';  // ✅ Add Alert yjn
-
+export const API_BASE_URL = 'https://hawker-yeahpay-production.up.railway.app';
+export const IMAGE_BASE_URL = API_BASE_URL;
 // We'll use this to navigate
 let navigateToLogin = null;
 let lastLoggedUrl = '';
@@ -46,7 +47,7 @@ const API = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'Connection': 'keep-alive'  // Add keep-alive
+    
   }
 });
 
@@ -263,6 +264,16 @@ uploadAPI.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+export const getFullImageUrl = (imageUri) => {
+  if (!imageUri) return null;
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+    return imageUri;
+  }
+  if (imageUri.startsWith('/')) {
+    return `${IMAGE_BASE_URL}${imageUri}`;
+  }
+  return `${IMAGE_BASE_URL}/${imageUri}`;
+};
 
 // Update response interceptor
 uploadAPI.interceptors.response.use(

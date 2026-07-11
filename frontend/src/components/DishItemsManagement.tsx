@@ -23,7 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadAPI } from '../api';
 import { useCurrency } from '../context/CurrencyContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { getFullImageUrl } from '../api';
 interface MenuItem {
   id: number;
   name: string;
@@ -705,7 +705,7 @@ useEffect(() => {
             >
               <View style={styles.dishImageContainer}>
                 {item.imageUri ? (
-                  <Image source={{ uri: item.imageUri }} style={styles.dishThumbnail} />
+                  <Image source={{ uri: getFullImageUrl(item.imageUri) }} style={styles.dishThumbnail} />
                 ) : (
                   <View style={[styles.dishThumbnailPlaceholder, { backgroundColor: currentTheme.surface }]}>
                     <Text style={styles.dishThumbnailText}>🍽️</Text>
@@ -866,7 +866,7 @@ useEffect(() => {
             <View style={styles.imageUploadContainer}>
               {newDish.imageUri ? (
                 <View style={styles.imagePreviewContainer}>
-                  <Image source={{ uri: newDish.imageUri }} style={styles.imagePreview} />
+                 <Image source={{ uri: getFullImageUrl(newDish.imageUri) }} style={styles.imagePreview} />
                   <TouchableOpacity
                     style={styles.removeImageButton}
                     onPress={() => setNewDish({ ...newDish, imageUri: null })}

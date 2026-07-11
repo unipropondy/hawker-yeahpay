@@ -11,7 +11,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import API from '../api';
-import SunmiPrinterService from './SunmiPrinterService';
+
 
 interface DayEndModalProps {
     visible: boolean;

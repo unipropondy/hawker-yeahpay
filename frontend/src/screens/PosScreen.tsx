@@ -16,9 +16,10 @@ import { Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Printer from 'react-native-printer';
 import { useDataLoader } from '../hooks/useDataLoader';
-import API, { uploadAPI } from '../api';
+import API, { uploadAPI, getFullImageUrl } from '../api';
 import { useLicenseCheck } from '../hooks/useLicenseCheck';
 import DayEndModal from '../components/DayEndModal';
+
 // At the top with other imports
 import DiscountInput from '../components/DiscountInput';
  // ✅ Correct path
@@ -1116,9 +1117,7 @@ const loadDishItems = async (force = false) => {
         categoryId: item.CategoryId?.toString(),
         categoryName: item.DisplayCategory || item.OriginalCategory || 'Unknown',
         category: item.DisplayCategory || item.OriginalCategory || 'Unknown',
-        imageUri: item.imageUri || item.ImageUrl 
-          ? `${baseURL}${item.imageUri || item.ImageUrl}`
-          : null,
+        imageUri: getFullImageUrl(item.imageUri || item.ImageUrl),
         originalName: item.OriginalName || item.originalName || item.name,
         originalCategory: item.OriginalCategory || item.originalCategory,
         displayCategory: item.DisplayCategory || item.displayCategory,
@@ -3150,7 +3149,7 @@ const handleOpenPriceItem = (item: any) => {
               <View style={styles.itemInfoContainer}>
                 {priceModal.item.imageUri && (
                   <Image 
-                    source={{ uri: priceModal.item.imageUri }} 
+                    source={{ uri: getFullImageUrl(priceModal.item.imageUri) }}
                     style={styles.modalItemImage} 
                   />
                 )}
@@ -4433,7 +4432,7 @@ const renderCashModal = () => (
         <View style={styles.itemInfoContainer}>
           {priceModal.item.imageUri && (
             <Image 
-              source={{ uri: priceModal.item.imageUri }} 
+              source={{ uri: getFullImageUrl(priceModal.item.imageUri) }}
               style={styles.modalItemImage} 
             />
           )}

@@ -65,7 +65,7 @@ const performDayEnd = async (req, res) => {
         
         console.log(`📅 Performing Day End for outlet ${outletId}`);
         
-        const pool = getPool();
+        const pool = await getPool();
         
         // ✅ Get ALL pending sales
         const salesResult = await pool.request()
@@ -96,7 +96,7 @@ const performDayEnd = async (req, res) => {
             });
         }
         
-        // ✅ Calculate totals AND categories
+        // ✅ Calculate totals
         let totalSales = 0;
         let totalDiscount = 0;
         let totalItems = 0;
@@ -111,17 +111,27 @@ const performDayEnd = async (req, res) => {
             paymentBreakdown[method] = (paymentBreakdown[method] || 0) + parseFloat(sale.Total) || 0;
             
             try {
-                const items = JSON.parse(sale.ItemsJson || '[]');
-                items.forEach(item => {
+                let itemsArray = [];
+                const parsed = JSON.parse(sale.ItemsJson || '{}');
+                
+                if (parsed.items && Array.isArray(parsed.items)) {
+                    itemsArray = parsed.items;
+                } else if (Array.isArray(parsed)) {
+                    itemsArray = parsed;
+                }
+                
+                itemsArray.forEach(item => {
+                    const quantity = item.quantity || 1;
+                    totalItems += quantity;
+                });
+                
+                itemsArray.forEach(item => {
                     const category = item.displayCategory || item.category || 'Uncategorized';
                     const itemName = item.name || 'Unknown';
                     const quantity = item.quantity || 1;
                     const price = item.price || 0;
                     const revenue = price * quantity;
                     
-                    totalItems += quantity;
-                    
-                    // ✅ Category breakdown
                     if (!categoryMap[category]) {
                         categoryMap[category] = {
                             totalRevenue: 0,
@@ -142,6 +152,7 @@ const performDayEnd = async (req, res) => {
                     categoryMap[category].totalRevenue += revenue;
                     categoryMap[category].totalQuantity += quantity;
                 });
+                
             } catch (e) {
                 console.log('Error parsing items for sale:', sale.Id);
             }
@@ -149,7 +160,6 @@ const performDayEnd = async (req, res) => {
         
         const netSales = totalSales - totalDiscount;
         
-        // ✅ Convert categories to array format
         const categoriesArray = Object.keys(categoryMap).map(catName => ({
             name: catName,
             totalRevenue: categoryMap[catName].totalRevenue,
@@ -158,37 +168,38 @@ const performDayEnd = async (req, res) => {
                 name: itemName,
                 quantity: categoryMap[catName].items[itemName].quantity,
                 revenue: categoryMap[catName].items[itemName].revenue
-            })).sort((a, b) => b.revenue - a.revenue)
+            }))
         })).sort((a, b) => b.totalRevenue - a.totalRevenue);
         
-        // ✅ Start transaction
-        const transaction = pool.transaction();
+        // ✅✅✅ GET SINGAPORE TIME ✅✅✅
+const transaction = pool.transaction();
         await transaction.begin();
         
         try {
-            // 1️⃣ Create Day End Log with Categories
+            // 1️⃣ Create Day End Log - Use GETDATE() for ClosingDate and CreatedAt
             const dayEndResult = await transaction.request()
                 .input('outletId', sql.Int, outletId)
                 .input('closedBy', sql.Int, userId)
-                .input('openingDate', sql.DateTime, sales[0].SaleDate)
-                .input('closingDate', sql.DateTime, sales[sales.length - 1].SaleDate)
+                .input('openingDate', sql.DateTime, sales[0]?.SaleDate || new Date())
                 .input('totalSales', sql.Decimal(10,2), totalSales)
                 .input('totalDiscount', sql.Decimal(10,2), totalDiscount)
                 .input('totalItems', sql.Int, totalItems)
                 .input('netSales', sql.Decimal(10,2), netSales)
                 .input('paymentBreakdown', sql.NVarChar, JSON.stringify(paymentBreakdown))
-                .input('categories', sql.NVarChar, JSON.stringify(categoriesArray))  // ✅ ADD CATEGORIES
+                .input('categories', sql.NVarChar, JSON.stringify(categoriesArray))
                 .query(`
                     INSERT INTO DayEndLogs (
                         OutletId, ClosedBy, OpeningDate, ClosingDate,
                         TotalSales, TotalDiscount, TotalItems, NetSales, 
-                        PaymentBreakdown, Categories
+                        PaymentBreakdown, Categories, CreatedAt
                     )
                     OUTPUT INSERTED.Id
                     VALUES (
-                        @outletId, @closedBy, @openingDate, @closingDate,
+                        @outletId, @closedBy, @openingDate, 
+                        GETDATE(),  -- ✅ ClosingDate = Current Server Time
                         @totalSales, @totalDiscount, @totalItems, @netSales,
-                        @paymentBreakdown, @categories
+                        @paymentBreakdown, @categories, 
+                        GETDATE()   -- ✅ CreatedAt = Current Server Time
                     )
                 `);
             
@@ -206,23 +217,21 @@ const performDayEnd = async (req, res) => {
                       AND (Status IS NULL OR Status = 'COMPLETED')
                 `);
             
-            // 3️⃣ Update Outlet - Mark day ended
+            // 3️⃣ Update Outlet
             await transaction.request()
                 .input('outletId', sql.Int, outletId)
                 .input('dayEndId', sql.Int, dayEndId)
-                .input('currentTime', sql.DateTime, new Date())
                 .query(`
                     UPDATE Outlets 
                     SET LastDayEndId = @dayEndId,
                         IsDayEnded = 1,
-                        CurrentDayStart = @currentTime
+                        CurrentDayStart = GETDATE()  -- ✅ Current Server Time
                     WHERE Id = @outletId
                 `);
             
             await transaction.commit();
             
             console.log(`✅ Day End completed for outlet ${outletId}`);
-            console.log(`📊 ${sales.length} sales settled, Total: ${totalSales}, Categories: ${categoriesArray.length}`);
             
             res.json({
                 success: true,
@@ -234,11 +243,11 @@ const performDayEnd = async (req, res) => {
                     totalItems,
                     netSales,
                     paymentBreakdown,
-                    categories: categoriesArray,  // ✅ Return categories
+                    categories: categoriesArray,
                     salesCount: sales.length,
-                    startDate: sales[0].SaleDate,
-                    endDate: sales[sales.length - 1].SaleDate,
-                    closingDate: sales[sales.length - 1].SaleDate
+                    startDate: sales[0]?.SaleDate,
+                    endDate: new Date(),  // Current time
+                    closingDate: new Date()  // Current time
                 }
             });
             
@@ -253,6 +262,7 @@ const performDayEnd = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
 
 // ============================================
 // START NEW DAY

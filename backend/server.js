@@ -89,9 +89,13 @@ const upload = multer({
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization',
+        'X-Outlet-Id',    // ✅ ADD THIS
+        'x-outlet-id'     // ✅ ADD THIS (lowercase)
+    ]
 }));
-
 app.use(express.json());
 // ============================================
 // COMPLETE METRICS ENDPOINT

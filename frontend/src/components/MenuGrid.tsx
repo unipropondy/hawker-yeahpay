@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { MenuItem } from '../types';
 import { Ionicons } from '@expo/vector-icons';
-
+import { getFullImageUrl } from '../api';
 interface PlaceholderItem {
   id: string;
   isPlaceholder: boolean;
@@ -65,7 +65,9 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
 }) => {
   
   const itemsPerPage = 8;
-  
+   const getImageUrl = (imageUri) => {
+    return getFullImageUrl(imageUri);
+  };
   const [refreshKey, setRefreshKey] = useState(0);
   const [appState, setAppState] = useState(AppState.currentState);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
@@ -192,15 +194,16 @@ useEffect(() => {
 }, [showPriceModal]);
   // Queue images
   useEffect(() => {
-    displayItems.forEach(item => {
-      if (item.imageUri && 
-          !loadedImages.has(item.imageUri) && 
-          !failedImages.current.has(item.imageUri)) {
-        loadingQueue.current.push(item.imageUri);
-      }
-    });
-    processImageQueue();
-  }, [displayItems, refreshKey]);
+  displayItems.forEach(item => {
+    const fullUrl = getImageUrl(item.imageUri);
+    if (fullUrl && 
+        !loadedImages.has(fullUrl) && 
+        !failedImages.current.has(fullUrl)) {
+      loadingQueue.current.push(fullUrl);
+    }
+  });
+  processImageQueue();
+}, [displayItems, refreshKey]);
 useEffect(() => {
   if (showPriceModal) {
     console.log('✅ Modal is OPEN - forcing stay open');
@@ -300,7 +303,7 @@ onPress={() => {
                 <View style={[styles.menuItemImageContainer, { backgroundColor: theme.surface }]}>
                   {item.imageUri && loadedImages.has(item.imageUri) ? (
                     <Image 
-                      source={{ uri: item.imageUri }}
+                      source={{ uri: getImageUrl(item.imageUri) }}
                       style={styles.menuItemImage}
                       onLoad={() => console.log(`✅ Loaded: ${item.name}`)}
                       onError={(e) => {
@@ -459,7 +462,7 @@ onPress={() => {
               <View style={styles.itemInfoContainer}>
                 {selectedItem.imageUri && (
                   <Image 
-                    source={{ uri: selectedItem.imageUri }} 
+                    source={{ uri: getImageUrl(selectedItem.imageUri) }}
                     style={styles.modalItemImage} 
                   />
                 )}
