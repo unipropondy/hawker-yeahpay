@@ -45,7 +45,8 @@
     "react-native-web": "^0.21.0",
     "react-native-worklets": "^0.5.1",
     "start": "^5.1.0",
-    "sunmi-printer-expo": "^1.0.0"
+    "sunmi-printer-expo": "^1.0.0",
+    "react-native-thermal-printer": "^2.3.6"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",

@@ -12,6 +12,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import API from '../api';
 import SunmiPrinterService from './SunmiPrinterService';
+import BillPDFGenerator from './BillPDFGenerator';
 
 interface DayEndModalProps {
     visible: boolean;
@@ -525,25 +526,50 @@ const printDayEndReport = async (dayEndData: any) => {
         
         const reportText = buildDayEndReportText(reportData, outletName);
         
+        // 1. Try Network Printer first if enabled
+        try {
+            const company = await BillPDFGenerator.loadSettings(outletId);
+            if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+                console.log('📡 Route DayEnd report to Network Printer IP:', company.networkPrinterIP);
+                const ThermalPrinter = require('react-native-thermal-printer');
+                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                
+                const { NativeModules } = require('react-native');
+                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+                if (!ThermalPrinterModule || !hasNativeModule) {
+                    throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                }
+                await ThermalPrinterModule.printTcp({
+                    ip: company.networkPrinterIP,
+                    port: 9100,
+                    payload: reportText,
+                    autoCut: true,
+                    openCashDrawer: false,
+                });
+                console.log('✅ Day End Report printed on Network Printer');
+                return;
+            }
+        } catch (netErr) {
+            console.log('⚠️ Network Printer printing failed:', netErr);
+        }
+
+        // 2. Try Sunmi printer if network is disabled or failed
         const sunmiReady = await SunmiPrinterService.init();
         if (sunmiReady) {
             await SunmiPrinterService.printRawText(reportText);
             await SunmiPrinterService.cutPaper();
             console.log('✅ Day End Report printed on Sunmi');
-            // ✅ Toast instead of Alert
-            
             return;
         }
         
-        console.log('⚠️ Sunmi not available, saving as PDF');
+        console.log('⚠️ No physical printer available, saving as PDF');
         const html = generateDayEndHTML(reportData, outletName);
         const { uri } = await Print.printToFileAsync({ html });
         await Sharing.shareAsync(uri);
         
-        
     } catch (error) {
         console.log('❌ Print error:', error);
-       
     }
 };
     // ==================== REPRINT FUNCTION ====================
@@ -573,6 +599,36 @@ const printDayEndReport = async (dayEndData: any) => {
                            '='.repeat(32) + '\n\n' +
                            reportText;
         
+        // 1. Try Network Printer first if enabled
+        try {
+            const company = await BillPDFGenerator.loadSettings(outletId);
+            if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+                console.log('📡 Route DayEnd reprint to Network Printer IP:', company.networkPrinterIP);
+                const ThermalPrinter = require('react-native-thermal-printer');
+                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                
+                const { NativeModules } = require('react-native');
+                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+                if (!ThermalPrinterModule || !hasNativeModule) {
+                    throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                }
+                await ThermalPrinterModule.printTcp({
+                    ip: company.networkPrinterIP,
+                    port: 9100,
+                    payload: reprintText,
+                    autoCut: true,
+                    openCashDrawer: false,
+                });
+                console.log('✅ Day End Report reprinted on Network Printer');
+                Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+                return;
+            }
+        } catch (netErr) {
+            console.log('⚠️ Network Printer reprinting failed:', netErr);
+        }
+
+        // 2. Try Sunmi printer if network is disabled or failed
         const sunmiReady = await SunmiPrinterService.init();
         if (sunmiReady) {
             await SunmiPrinterService.printRawText(reprintText);
@@ -582,7 +638,7 @@ const printDayEndReport = async (dayEndData: any) => {
             return;
         }
         
-        console.log('⚠️ Sunmi not available, saving as PDF');
+        console.log('⚠️ No physical printer available, saving as PDF');
         const html = generateDayEndHTML(reportData, outletName);
         const { uri } = await Print.printToFileAsync({ html });
         await Sharing.shareAsync(uri);

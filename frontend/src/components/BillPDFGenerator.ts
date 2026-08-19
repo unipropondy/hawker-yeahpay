@@ -16,10 +16,12 @@ interface CompanySettings {
   cashierName: string;
   currency: string;
   currencySymbol: string;
-   companyLogo?: string;        // ✅ ADD THIS
+  companyLogo?: string;        // ✅ ADD THIS
   halalLogo?: string;          // ✅ ADD THIS
   showCompanyLogo?: boolean;   // ✅ ADD THIS
-  showHalalLogo?: boolean; 
+  showHalalLogo?: boolean;
+  networkPrinterIP?: string;
+  networkPrinterEnabled?: boolean;
 }
 
 // ✅ DISCOUNT INFO INTERFACE
@@ -91,6 +93,8 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
                 halalLogo: settings.HalalLogoUrl || '',
                 showCompanyLogo: showCompanyLogo,
                 showHalalLogo: showHalalLogo,
+                networkPrinterIP: settings.NetworkPrinterIP || '',
+                networkPrinterEnabled: settings.NetworkPrinterEnabled === true || settings.NetworkPrinterEnabled === 1,
             };
         }
         return this.getDefaultSettings();
@@ -111,6 +115,8 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
       cashierName: '',
       currency: 'SGD',
       currencySymbol: '$',
+      networkPrinterIP: '',
+      networkPrinterEnabled: false,
     };
   }
   
@@ -142,7 +148,9 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
             CompanyLogoUrl: settings.companyLogo || '',
             HalalLogoUrl: settings.halalLogo || '',
             ShowCompanyLogo: settings.showCompanyLogo ? 1 : 0,  // ✅ Simplified
-            ShowHalalLogo: settings.showHalalLogo ? 1 : 0      // ✅ Simplified
+            ShowHalalLogo: settings.showHalalLogo ? 1 : 0,      // ✅ Simplified
+            NetworkPrinterIP: settings.networkPrinterIP || '',
+            NetworkPrinterEnabled: settings.networkPrinterEnabled ? 1 : 0
         };
         
         // ✅ Add timestamp to prevent caching

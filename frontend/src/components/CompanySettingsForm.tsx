@@ -39,6 +39,8 @@ interface CompanySettings {
   halalLogo?: string;
   showCompanyLogo?: boolean;
   showHalalLogo?: boolean;
+  networkPrinterIP?: string;
+  networkPrinterEnabled?: boolean;
 }
 
 interface Props {
@@ -78,6 +80,8 @@ const CompanySettingsForm: React.FC<Props> = ({
     halalLogo: '',
     showCompanyLogo: true,
     showHalalLogo: true,
+    networkPrinterIP: '',
+    networkPrinterEnabled: false,
   });
   
   const [enableGST, setEnableGST] = useState(true);
@@ -133,6 +137,8 @@ const CompanySettingsForm: React.FC<Props> = ({
                 halalLogo: savedSettings.halalLogo || '',
                 showCompanyLogo: savedSettings.showCompanyLogo,
                 showHalalLogo: savedSettings.showHalalLogo,
+                networkPrinterIP: savedSettings.networkPrinterIP || '',
+                networkPrinterEnabled: savedSettings.networkPrinterEnabled === true || savedSettings.networkPrinterEnabled === 1,
             });
             
             setEnableGST(savedSettings.gstPercentage > 0);
@@ -247,7 +253,9 @@ const CompanySettingsForm: React.FC<Props> = ({
         showCompanyLogo: settings.showCompanyLogo,
         showHalalLogo: settings.showHalalLogo,
         companyLogo: settings.companyLogo,
-        halalLogo: settings.halalLogo
+        halalLogo: settings.halalLogo,
+        networkPrinterIP: settings.networkPrinterIP || '',
+        networkPrinterEnabled: settings.networkPrinterEnabled || false
     };
 
     // ✅ ADD DEBUG LOG with GST
@@ -289,7 +297,9 @@ const CompanySettingsForm: React.FC<Props> = ({
                 showCompanyLogo: freshSettings.showCompanyLogo,
                 showHalalLogo: freshSettings.showHalalLogo,
                 companyLogo: freshSettings.companyLogo,
-                halalLogo: freshSettings.halalLogo
+                halalLogo: freshSettings.halalLogo,
+                networkPrinterIP: freshSettings.networkPrinterIP || '',
+                networkPrinterEnabled: freshSettings.networkPrinterEnabled === true || freshSettings.networkPrinterEnabled === 1,
             });
             
             // ✅ STEP 5: Update enableGST based on fresh value
@@ -652,6 +662,38 @@ const CompanySettingsForm: React.FC<Props> = ({
 />
               </>
             )}
+
+            {/* Network Printer Configuration */}
+            <View style={[styles.switchRow, { marginTop: 15 }]}>
+              <Text style={[styles.switchLabel, { color: theme.text }]}>Enable Network Printer (Wi-Fi/LAN)</Text>
+              <Switch
+                value={settings.networkPrinterEnabled}
+                onValueChange={(val) => setSettings({ ...settings, networkPrinterEnabled: val })}
+                trackColor={{ false: theme.inactive, true: theme.primary }}
+                thumbColor="#fff"
+                disabled={saving}
+              />
+            </View>
+
+            {settings.networkPrinterEnabled && (
+              <>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Network Printer IP Address</Text>
+                <TextInput
+                  style={[styles.input, { 
+                    backgroundColor: theme.surface,
+                    color: theme.text,
+                    borderColor: theme.border
+                  }]}
+                  value={settings.networkPrinterIP}
+                  onChangeText={(text) => setSettings({...settings, networkPrinterIP: text})}
+                  placeholder="e.g. 192.168.1.100"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="numeric"
+                  editable={!saving}
+                />
+              </>
+            )}
+
 
             {/* Phone */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>Phone Number</Text>

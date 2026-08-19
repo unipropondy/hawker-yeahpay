@@ -254,19 +254,26 @@ static async smartPrint(
   isReprint: boolean = false
 ): Promise<boolean> {
   try {
-    // ✅ Auto-detect printer type
-    const printerType = await PrinterDetector.detectPrinter();
+    const company = await BillPDFGenerator.loadSettings(outletId);
     
-    if (printerType === 'sunmi') {
-      // Sunmi direct print - NO PREVIEW
-      const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+    // ✅ 1. If network printer toggle is ON, print directly to network printer
+    if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+      const printed = await this.printNetwork(saleData, outletId, discountInfo);
       if (printed) {
-        
         return true;
       }
     }
     
-    // ✅ Fallback to PDF
+    // ✅ 2. If network printer is OFF or fails, try Sunmi direct print
+    const printerType = await PrinterDetector.detectPrinter();
+    if (printerType === 'sunmi') {
+      const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+      if (printed) {
+        return true;
+      }
+    }
+    
+    // ✅ 3. Fallback to PDF
     return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
     
   } catch (error) { 
@@ -384,13 +391,52 @@ private static async printLaser(saleData: any, userId?: string | number, printer
   }
 
   // ==================== NETWORK PRINTING ====================
-  private static async printNetwork(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
+  private static async printNetwork(
+    saleData: any, 
+    userId?: string | number, 
+    discountInfo?: DiscountInfo
+  ): Promise<boolean> {
+    let company: any = null;
     try {
-      const NetPrinter = require('react-native-thermal-printer');
-      const company = await BillPDFGenerator.loadSettings(userId);
-      await NetPrinter.printIP(printer?.address || '', { text: this.formatThermalTextWithDiscount(saleData, company, discountInfo) });
+      company = await BillPDFGenerator.loadSettings(userId);
+      if (!company || !company.networkPrinterEnabled || !company.networkPrinterIP) {
+        console.log('📡 Network printer not configured or disabled');
+        return false;
+      }
+
+      console.log('📡 Route print to Network Printer IP:', company.networkPrinterIP);
+      const ThermalPrinter = require('react-native-thermal-printer');
+      const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+      
+      const { NativeModules } = require('react-native');
+      const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+      if (!ThermalPrinterModule || !hasNativeModule) {
+        throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+      }
+
+      // Format receipt text
+      const receiptText = this.formatThermalTextWithDiscount(saleData, company, discountInfo);
+
+      // Support react-native-thermal-printer TCP API
+      await ThermalPrinterModule.printTcp({
+        ip: company.networkPrinterIP,
+        port: 9100,
+        payload: receiptText,
+        autoCut: true,
+        openCashDrawer: false,
+      });
+
+      console.log('✅ Network Print successful');
       return true;
-    } catch (error) { return false; }
+    } catch (error: any) { 
+      console.log('❌ Network Print error:', error);
+      Alert.alert(
+        'Network Printer Error', 
+        'Could not print to network printer at ' + (company?.networkPrinterIP || 'unknown IP') + '. Please check connection and settings.'
+      );
+      return false; 
+    }
   }
 
   // ==================== USB PRINTING ====================

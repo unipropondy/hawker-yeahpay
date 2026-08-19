@@ -1,15 +1,55 @@
-// components/SunmiPrinterService.ts - With Date Format + QTY Alignment Fix ✅
-
-import { 
-  initPrinter, 
-  printText, 
-  printTextWithSize,
-  printImageBase64,
-  printQRCode,
-  lineWrap, 
-  cutPaper
-} from 'sunmi-printer-expo';
 import { Platform } from 'react-native';
+
+// Helper to safely load and call sunmi-printer-expo functions
+let sunmiPrinterModule: any = null;
+const getSunmiPrinterModule = () => {
+  if (Platform.OS !== 'android') return null;
+  if (!sunmiPrinterModule) {
+    try {
+      sunmiPrinterModule = require('sunmi-printer-expo');
+    } catch (error) {
+      console.log('sunmi-printer-expo native module is not available (running in Expo Go)');
+    }
+  }
+  return sunmiPrinterModule;
+};
+
+const initPrinter = async () => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.initPrinter) return await mod.initPrinter();
+  throw new Error('Sunmi printer module not loaded');
+};
+
+const printText = async (text: string) => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.printText) return await mod.printText(text);
+};
+
+const printTextWithSize = async (text: string, size: number) => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.printTextWithSize) return await mod.printTextWithSize(text, size);
+};
+
+const printImageBase64 = async (base64: string) => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.printImageBase64) return await mod.printImageBase64(base64);
+};
+
+const printQRCode = async (data: string, size: number, errorCorrection: number) => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.printQRCode) return await mod.printQRCode(data, size, errorCorrection);
+};
+
+const lineWrap = async (lines: number) => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.lineWrap) return await mod.lineWrap(lines);
+};
+
+const cutPaper = async () => {
+  const mod = getSunmiPrinterModule();
+  if (mod && mod.cutPaper) return await mod.cutPaper();
+};
+
 
 class SunmiPrinterService {
   

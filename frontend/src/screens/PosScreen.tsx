@@ -1503,8 +1503,8 @@ const addToCart = (item: any, customPrice?: number): void => {
     let finalPrice = fullItem.price;
     
     if (isOpenPriceItem) {
-        // Validate custom price for open price items
-        if (!customPrice || customPrice <= 0) {
+        // Validate custom price for open price items (allow 0, but block negative numbers)
+        if (customPrice === undefined || customPrice === null || isNaN(customPrice) || customPrice < 0) {
             Alert.alert(
                 'Invalid Price',
                 'Please enter a valid amount'
@@ -1886,9 +1886,9 @@ const handleCheckout = (): void => {
       return;
     }
     
-    // Validate cart items
+    // Validate cart items (allow 0 price, but check for undefined/null or negative)
     const invalidItems = cart.filter(item => 
-      !item.id || !item.name || !item.price || item.price <= 0
+      !item.id || !item.name || item.price === undefined || item.price === null || isNaN(item.price) || item.price < 0
     );
     
     if (invalidItems.length > 0) {
@@ -3236,7 +3236,7 @@ const handlePriceSubmit = () => {
   if (!priceModal.item) return;
   
   const price = parseFloat(priceModal.price);
-  if (isNaN(price) || price <= 0) {
+  if (isNaN(price) || price < 0) {
     Alert.alert('Error', 'Please enter valid price');
     return;
   }
@@ -3836,10 +3836,10 @@ const renderCashModal = () => (
                 styles.cashModalBtn, 
                 styles.cashModalConfirm,
                 { backgroundColor: currentTheme.success, flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
-                (!cashAmount || parseFloat(cashAmount) < parseFloat(total)) && { backgroundColor: currentTheme.inactive, opacity: 0.5 }
+                (parseFloat(total) > 0 && (!cashAmount || parseFloat(cashAmount) < parseFloat(total))) && { backgroundColor: currentTheme.inactive, opacity: 0.5 }
               ]}
               onPress={handleCashPayment}
-              disabled={!cashAmount || parseFloat(cashAmount) < parseFloat(total)}
+              disabled={parseFloat(total) > 0 && (!cashAmount || parseFloat(cashAmount) < parseFloat(total))}
             >
               <Text style={[styles.cashModalConfirmText, { color: '#fff', fontSize: 16, fontWeight: '700' }]}>Confirm Payment</Text>
             </TouchableOpacity>
@@ -3911,11 +3911,7 @@ const renderCashModal = () => (
                 <Text style={styles.dropdownIcon}>🌐</Text>
                 <Text style={[styles.dropdownText, { color: currentTheme.text }]}>{t.selectLanguage}</Text>
               </TouchableOpacity>
-              
               <View style={[styles.dropdownDivider, { backgroundColor: currentTheme.border }]} />
-                 
-    
-    <View style={[styles.dropdownDivider, { backgroundColor: currentTheme.border }]} />
 
               <TouchableOpacity 
                 style={styles.dropdownItem}
@@ -4197,14 +4193,10 @@ const renderCashModal = () => (
         </TouchableOpacity>
       )}
       
-      {/* ✅ ADD SCROLLVIEW HERE */}
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        showsVerticalScrollIndicator={true}
-      >
+      {/* ✅ Render menu content directly (each sub-menu has its own ScrollView/FlatList container to avoid nesting issues) */}
+      <View style={{ flex: 1 }}>
         {renderMenuContent()}
-      </ScrollView>
+      </View>
       
     </View>
   </View>

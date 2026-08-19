@@ -1,6 +1,5 @@
 // components/PrinterDetector.ts
 import { NativeModules, Platform } from 'react-native';
-import { initPrinter } from 'sunmi-printer-expo';
 
 export class PrinterDetector {
   
@@ -28,9 +27,11 @@ export class PrinterDetector {
   
   static async checkSunmiPrinter(): Promise<boolean> {
     try {
+      const { initPrinter } = require('sunmi-printer-expo');
       await initPrinter();
       return true;
     } catch (error) {
+      console.log('Sunmi printer check failed:', error);
       return false;
     }
   }

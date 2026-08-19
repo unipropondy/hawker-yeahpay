@@ -1,8 +1,34 @@
-// backend/routes/companySettingsRoutes.js
 const express = require('express');
 const router = express.Router();
 const { getPool, sql } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
+
+// ✅ DB SCHEMA VALIDATION: Auto-add network printer columns if missing
+const ensurePrinterColumnsExist = async () => {
+    try {
+        const pool = getPool();
+        if (!pool) {
+            // Retry in 3 seconds if pool not initialized yet
+            setTimeout(ensurePrinterColumnsExist, 3000);
+            return;
+        }
+        await pool.request().query(`
+            IF NOT EXISTS (
+                SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = 'CompanySettings' AND COLUMN_NAME = 'NetworkPrinterIP'
+            )
+            BEGIN
+                ALTER TABLE CompanySettings ADD NetworkPrinterIP NVARCHAR(255) NULL;
+                ALTER TABLE CompanySettings ADD NetworkPrinterEnabled BIT NULL DEFAULT 0;
+            END
+        `);
+        console.log('✅ Verified NetworkPrinter columns in database table CompanySettings');
+    } catch (err) {
+        console.log('⚠️ Network printer columns validation skipped/failed:', err.message);
+    }
+};
+// Check/Alter table 3 seconds after routes load
+setTimeout(ensurePrinterColumnsExist, 3000);
 
 // ============================================
 // MIDDLEWARE - Get effective OUTLET ID
@@ -116,7 +142,9 @@ router.get('/:targetId', async (req, res) => {
                     c.CompanyLogoUrl,
                     c.HalalLogoUrl,
                     ISNULL(c.ShowCompanyLogo, 0) as ShowCompanyLogo,
-                    ISNULL(c.ShowHalalLogo, 0) as ShowHalalLogo
+                    ISNULL(c.ShowHalalLogo, 0) as ShowHalalLogo,
+                    c.NetworkPrinterIP,
+                    ISNULL(c.NetworkPrinterEnabled, 0) as NetworkPrinterEnabled
                 FROM Outlets o
                 LEFT JOIN CompanySettings c ON o.Id = c.OutletId
                 WHERE o.Id = @outletId
@@ -152,7 +180,9 @@ router.get('/:targetId', async (req, res) => {
             CompanyLogoUrl: row.CompanyLogoUrl || '',
             HalalLogoUrl: row.HalalLogoUrl || '',
             ShowCompanyLogo: showCompanyLogo,
-            ShowHalalLogo: showHalalLogo
+            ShowHalalLogo: showHalalLogo,
+            NetworkPrinterIP: row.NetworkPrinterIP || '',
+            NetworkPrinterEnabled: row.NetworkPrinterEnabled === true || row.NetworkPrinterEnabled === 1 || row.NetworkPrinterEnabled === '1'
         };
         
         res.json({
@@ -196,11 +226,14 @@ router.post('/:targetId', async (req, res) => {
             CompanyLogoUrl,
             HalalLogoUrl,
             ShowCompanyLogo,
-            ShowHalalLogo
+            ShowHalalLogo,
+            NetworkPrinterIP,
+            NetworkPrinterEnabled
         } = req.body;
         
         let companyLogoValue = ShowCompanyLogo ? 1 : 0;
         let halalLogoValue = ShowHalalLogo ? 1 : 0;
+        let networkPrinterEnabledValue = NetworkPrinterEnabled ? 1 : 0;
         
         console.log('📥 SAVING TO DATABASE for outlet:', outletId);
         console.log('📥 Logo values:', { companyLogoValue, halalLogoValue });
@@ -228,15 +261,19 @@ router.post('/:targetId', async (req, res) => {
             .input('halalLogoUrl', sql.NVarChar, HalalLogoUrl || null)
             .input('showCompanyLogo', sql.Bit, companyLogoValue)
             .input('showHalalLogo', sql.Bit, halalLogoValue)
+            .input('networkPrinterIP', sql.NVarChar, NetworkPrinterIP || null)
+            .input('networkPrinterEnabled', sql.Bit, networkPrinterEnabledValue)
             .query(`
                 INSERT INTO CompanySettings (
                     OutletId, CompanyName, Address, GSTNo, GSTPercentage, 
                     Phone, Email, CashierName, Currency, CurrencySymbol,
-                    CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo
+                    CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo,
+                    NetworkPrinterIP, NetworkPrinterEnabled
                 ) VALUES (
                     @outletId, @companyName, @address, @gstNo, @gstPercentage,
                     @phone, @email, @cashierName, @currency, @currencySymbol,
-                    @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo
+                    @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo,
+                    @networkPrinterIP, @networkPrinterEnabled
                 )
             `);
         
