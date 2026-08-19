@@ -327,44 +327,236 @@ private static async printThermalReceipt(
   }
 }
 
-  private static formatThermalTextWithDiscount(saleData: any, company: any, discountInfo?: DiscountInfo): string {
+  private static formatThermalText58mm(saleData: any, company: any, discountInfo?: DiscountInfo): string {
     const symbol = company.currencySymbol || '$';
-    const gstInfo = saleData.gstInfo || { rate: 9, baseAmount: 0, gstAmount: 0, totalAmount: 0, regNo: 'N/A' };
-    const hasDiscount = discountInfo?.applied && discountInfo.amount > 0;
-    const originalTotal = hasDiscount ? saleData.total + discountInfo.amount : saleData.total;
-    const centerText = (text: string, width: number = 32) => { if (!text) return ' '.repeat(width); const padding = Math.max(0, width - text.length); return ' '.repeat(Math.floor(padding/2)) + text + ' '.repeat(padding - Math.floor(padding/2)); };
+    const centerText = (text: string, width: number = 32) => {
+      if (!text) return ' '.repeat(width);
+      const padding = Math.max(0, width - text.length);
+      return ' '.repeat(Math.floor(padding / 2)) + text + ' '.repeat(padding - Math.floor(padding / 2));
+    };
+
+    let p = '\n' + '='.repeat(32) + '\n';
+    p += centerText(company.name || 'STORE') + '\n';
     
-    let text = '\n' + '='.repeat(32) + '\n';
-    text += centerText(company.name || 'STORE NAME') + '\n';
-    text += '='.repeat(32) + '\n';
-    text += `Bill No: ${saleData.billNumber || saleData.id || Date.now()}\n`;
-    text += `Date: ${new Date().toLocaleString()}\n`;
-    text += `GST Reg: ${gstInfo.regNo}\n`;
-    text += '-'.repeat(32) + '\n';
-    
-    saleData.items?.forEach((item: any) => {
-      const name = (item.name || 'Item').substring(0, 15).padEnd(15);
-      const qty = (item.quantity || 1).toString().padStart(3);
-      text += `${name} ${qty}  ${symbol}${(item.price * item.quantity).toFixed(2)}\n`;
-      if (item.quantity > 1) text += `  @ ${symbol}${(item.price || 0).toFixed(2)} each\n`;
-    });
-    
-    text += '-'.repeat(32) + '\n';
-    if (hasDiscount) {
-      text += `ORIGINAL:     ${symbol}${originalTotal.toFixed(2)}\n`;
-      text += `DISCOUNT (${discountInfo?.type === 'percentage' ? `${discountInfo?.value}%` : 'FIXED'}): -${symbol}${discountInfo?.amount.toFixed(2)}\n`;
-      text += '-'.repeat(32) + '\n';
+    if (company.address) {
+      const addressLines = company.address.split('\n');
+      for (const line of addressLines) {
+        if (line.trim()) p += centerText(line.trim()) + '\n';
+      }
     }
-    text += `Subtotal:      ${symbol}${gstInfo.baseAmount.toFixed(2)}\n`;
-    text += `GST (${gstInfo.rate}%):    ${symbol}${gstInfo.gstAmount.toFixed(2)}\n`;
-    text += '='.repeat(32) + '\n';
-    text += `TOTAL:        ${symbol}${gstInfo.totalAmount.toFixed(2)}\n`;
-    text += '='.repeat(32) + '\n';
-    if (hasDiscount) text += `* ${discountInfo?.value}% discount applied\n`;
-    text += `* Prices include ${gstInfo.rate}% GST\n`;
-    text += `GST Reg: ${gstInfo.regNo}\n\n`;
-    text += 'THANK YOU!\nVisit Again\n\n\n';
-    return text;
+    if (company.phone) p += centerText(`📞 ${company.phone}`) + '\n';
+    if (company.email) p += centerText(`📧 ${company.email}`) + '\n';
+    if (company.gstNo) p += centerText(`GST: ${company.gstNo}`) + '\n';
+    p += '='.repeat(32) + '\n';
+
+    // Bill details
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+
+    p += `INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
+    p += `DATE: ${dateStr}\n`;
+    p += `CASHIER: ${saleData.cashier || company.cashierName || 'Staff'}\n`;
+    p += '-'.repeat(32) + '\n';
+
+    // Item Header (ITEM 12 chars, QTY 3 chars, PRICE 6 chars, TOTAL 8 chars) + spaces = 32 chars
+    p += 'ITEM'.padEnd(12, ' ') + 'QTY'.padStart(3, ' ') + ' ' + 'PRICE'.padStart(6, ' ') + 'TOTAL'.padStart(8, ' ') + '\n';
+    p += '-'.repeat(32) + '\n';
+
+    const items = saleData.items || [];
+    for (const item of items) {
+      const name = (item.name || '').substring(0, 12).padEnd(12, ' ');
+      const qty = (item.quantity || 1).toString().padStart(3, ' ');
+      const price = `${symbol}${item.price.toFixed(2)}`.padStart(6, ' ');
+      const total = `${symbol}${(item.price * item.quantity).toFixed(2)}`.padStart(8, ' ');
+      p += `${name}${qty} ${price}${total}\n`;
+      if (item.quantity > 10) {
+        p += `    @ ${symbol}${item.price.toFixed(2)} ea\n`;
+      }
+    }
+    p += '-'.repeat(32) + '\n';
+
+    // Subtotal & Totals
+    let subtotal = saleData.total;
+    const twoCols = (left: string, right: string) => {
+      const pad = 32 - left.length - right.length;
+      return left + ' '.repeat(Math.max(0, pad)) + right + '\n';
+    };
+
+    let discountAmount = 0;
+    let discountType = 'percentage';
+    let discountValue = 0;
+
+    if (discountInfo?.applied && discountInfo.amount > 0) {
+      discountAmount = discountInfo.amount;
+      discountType = discountInfo.type;
+      discountValue = discountInfo.value;
+    } else if (saleData.discountAmount && saleData.discountAmount > 0) {
+      discountAmount = saleData.discountAmount;
+      discountType = saleData.discountType;
+      discountValue = saleData.discountValue;
+    }
+
+    if (discountAmount > 0) {
+      const originalTotal = subtotal + discountAmount;
+      p += twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`);
+      p += twoCols('Discount:', `-${symbol}${discountAmount.toFixed(2)}`);
+      if (discountType === 'percentage') {
+        p += `    (${discountValue}% off)\n`;
+      }
+      p += '-'.repeat(32) + '\n';
+    } else {
+      p += twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`);
+      p += '-'.repeat(32) + '\n';
+    }
+
+    if (company.gstPercentage > 0) {
+      const gstAmount = subtotal * (company.gstPercentage / (100 + company.gstPercentage));
+      const beforeGst = subtotal - gstAmount;
+      p += twoCols('Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`);
+      p += twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`);
+      p += '-'.repeat(32) + '\n';
+    }
+
+    p += twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`);
+    p += '='.repeat(32) + '\n';
+
+    p += twoCols('PAYMENT:', saleData.paymentMethod || 'Cash');
+    if (saleData.cashPaid && saleData.cashPaid > 0) {
+      p += twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`);
+      if (saleData.change && saleData.change > 0) {
+        p += twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`);
+      }
+    }
+
+    p += '\n';
+    p += centerText('THANK YOU! COME AGAIN!') + '\n';
+    p += centerText('SMARTHAWKER BY UNIPROSG') + '\n';
+    if (company.gstPercentage > 0) {
+      p += centerText(`* Prices include ${company.gstPercentage}% GST`) + '\n';
+    }
+    p += '\n\n\n';
+    return p;
+  }
+
+  private static formatThermalText80mm(saleData: any, company: any, discountInfo?: DiscountInfo): string {
+    const symbol = company.currencySymbol || '$';
+    const centerText = (text: string, width: number = 48) => {
+      if (!text) return ' '.repeat(width);
+      const padding = Math.max(0, width - text.length);
+      return ' '.repeat(Math.floor(padding / 2)) + text + ' '.repeat(padding - Math.floor(padding / 2));
+    };
+
+    let p = '\n' + '='.repeat(48) + '\n';
+    p += centerText(company.name || 'STORE', 48) + '\n';
+    
+    if (company.address) {
+      const addressLines = company.address.split('\n');
+      for (const line of addressLines) {
+        if (line.trim()) p += centerText(line.trim(), 48) + '\n';
+      }
+    }
+    if (company.phone) p += centerText(`📞 ${company.phone}`, 48) + '\n';
+    if (company.email) p += centerText(`📧 ${company.email}`, 48) + '\n';
+    if (company.gstNo) p += centerText(`GST: ${company.gstNo}`, 48) + '\n';
+    p += '='.repeat(48) + '\n';
+
+    // Bill details
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+
+    p += `INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
+    p += `DATE: ${dateStr}\n`;
+    p += `CASHIER: ${saleData.cashier || company.cashierName || 'Staff'}\n`;
+    p += '-'.repeat(48) + '\n';
+
+    // Item Header (ITEM 24 chars, QTY 4 chars, PRICE 9 chars, TOTAL 11 chars) = 48 chars
+    p += 'ITEM'.padEnd(24, ' ') + 'QTY'.padStart(4, ' ') + 'PRICE'.padStart(9, ' ') + 'TOTAL'.padStart(11, ' ') + '\n';
+    p += '-'.repeat(48) + '\n';
+
+    const items = saleData.items || [];
+    for (const item of items) {
+      const name = (item.name || '').substring(0, 24).padEnd(24, ' ');
+      const qty = (item.quantity || 1).toString().padStart(4, ' ');
+      const price = `${symbol}${item.price.toFixed(2)}`.padStart(9, ' ');
+      const total = `${symbol}${(item.price * item.quantity).toFixed(2)}`.padStart(11, ' ');
+      p += `${name}${qty}${price}${total}\n`;
+      if (item.quantity > 10) {
+        p += `    @ ${symbol}${item.price.toFixed(2)} ea\n`;
+      }
+    }
+    p += '-'.repeat(48) + '\n';
+
+    // Subtotal & Totals
+    let subtotal = saleData.total;
+    const twoCols = (left: string, right: string) => {
+      const pad = 48 - left.length - right.length;
+      return left + ' '.repeat(Math.max(0, pad)) + right + '\n';
+    };
+
+    let discountAmount = 0;
+    let discountType = 'percentage';
+    let discountValue = 0;
+
+    if (discountInfo?.applied && discountInfo.amount > 0) {
+      discountAmount = discountInfo.amount;
+      discountType = discountInfo.type;
+      discountValue = discountInfo.value;
+    } else if (saleData.discountAmount && saleData.discountAmount > 0) {
+      discountAmount = saleData.discountAmount;
+      discountType = saleData.discountType;
+      discountValue = saleData.discountValue;
+    }
+
+    if (discountAmount > 0) {
+      const originalTotal = subtotal + discountAmount;
+      p += twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`);
+      p += twoCols('Discount:', `-${symbol}${discountAmount.toFixed(2)}`);
+      if (discountType === 'percentage') {
+        p += `    (${discountValue}% off)\n`;
+      }
+      p += '-'.repeat(48) + '\n';
+    } else {
+      p += twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`);
+      p += '-'.repeat(48) + '\n';
+    }
+
+    if (company.gstPercentage > 0) {
+      const gstAmount = subtotal * (company.gstPercentage / (100 + company.gstPercentage));
+      const beforeGst = subtotal - gstAmount;
+      p += twoCols('Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`);
+      p += twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`);
+      p += '-'.repeat(48) + '\n';
+    }
+
+    p += twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`);
+    p += '='.repeat(48) + '\n';
+
+    p += twoCols('PAYMENT:', saleData.paymentMethod || 'Cash');
+    if (saleData.cashPaid && saleData.cashPaid > 0) {
+      p += twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`);
+      if (saleData.change && saleData.change > 0) {
+        p += twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`);
+      }
+    }
+
+    p += '\n';
+    p += centerText('THANK YOU! COME AGAIN!', 48) + '\n';
+    p += centerText('SMARTHAWKER BY UNIPROSG', 48) + '\n';
+    if (company.gstPercentage > 0) {
+      p += centerText(`* Prices include ${company.gstPercentage}% GST`, 48) + '\n';
+    }
+    p += '\n\n\n';
+    return p;
   }
 
   // ==================== LASER PRINTING ====================
@@ -385,7 +577,7 @@ private static async printLaser(saleData: any, userId?: string | number, printer
       const BluetoothPrinter = require('react-native-bluetooth-printer');
       if (printer?.address) await BluetoothPrinter.connect(printer.address);
       const company = await BillPDFGenerator.loadSettings(userId);
-      await BluetoothPrinter.print(this.formatThermalTextWithDiscount(saleData, company, discountInfo));
+      await BluetoothPrinter.print(this.formatThermalText58mm(saleData, company, discountInfo));
       return true;
     } catch (error) { return false; }
   }
@@ -416,7 +608,7 @@ private static async printLaser(saleData: any, userId?: string | number, printer
       }
 
       // Format receipt text
-      const receiptText = this.formatThermalTextWithDiscount(saleData, company, discountInfo);
+      const receiptText = this.formatThermalText80mm(saleData, company, discountInfo);
 
       // Support react-native-thermal-printer TCP API
       await ThermalPrinterModule.printTcp({
@@ -445,7 +637,7 @@ private static async printLaser(saleData: any, userId?: string | number, printer
       const UsbPrinter = require('react-native-usb-printer');
       if (printer?.address) await UsbPrinter.connect(printer.address);
       const company = await BillPDFGenerator.loadSettings(userId);
-      await UsbPrinter.print(this.formatThermalTextWithDiscount(saleData, company, discountInfo));
+      await UsbPrinter.print(this.formatThermalText58mm(saleData, company, discountInfo));
       return true;
     } catch (error) { return false; }
   }

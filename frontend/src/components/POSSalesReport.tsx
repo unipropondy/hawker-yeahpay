@@ -270,7 +270,7 @@ const handleReprintVoidedSale = async (sale: any) => {
         // ✅ Print using UniversalPrinter (pass isReprint flag)
         const printed = await UniversalPrinter.smartPrint(
             reprintData,
-            outletId,
+            outletInfo?.id || userId,
             t,
             discountInfo,
             undefined,  // preferredType

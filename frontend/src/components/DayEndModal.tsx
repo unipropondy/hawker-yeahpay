@@ -395,6 +395,80 @@ const loadSavedEmail = async () => {
     
     return text;
 };
+
+const buildDayEndReportText80mm = (data: any, outletName: string) => {
+    const symbol = '$';
+    const line = '='.repeat(48);
+    const dash = '-'.repeat(48);
+    
+    // ✅ ORIGINAL Day End Date - USE data.closingDate
+    const originalDate = data.closingDate ? new Date(data.closingDate) : new Date();
+    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
+    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
+    const origYear = originalDate.getUTCFullYear();
+    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
+    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
+    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    
+    // ✅ CURRENT Date (Generated on)
+    const now = new Date();
+    const nowDay = String(now.getDate()).padStart(2, '0');
+    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const nowYear = now.getFullYear();
+    const nowHours = String(now.getHours()).padStart(2, '0');
+    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+    
+    let text = '\n\n';
+    text += line + '\n';
+    text += centerText('DAY END REPORT', 48) + '\n';
+    text += line + '\n';
+    
+    text += `Outlet: ${outletName}\n`;
+    text += `Date: ${origDateStr}\n`;  // ✅ Original Day End
+    text += dash + '\n\n';
+    
+    text += centerText('SUMMARY', 48) + '\n';
+    text += dash + '\n';
+    text += twoColumns('Total Sales:', `${symbol}${(data.totalSales || 0).toFixed(2)}`, 48) + '\n';
+    text += twoColumns('Total Discount:', `-${symbol}${(data.totalDiscount || 0).toFixed(2)}`, 48) + '\n';
+    text += twoColumns('Net Sales:', `${symbol}${(data.netSales || 0).toFixed(2)}`, 48) + '\n';
+    text += twoColumns('Total Items:', `${data.totalItems || 0}`, 48) + '\n';
+    text += twoColumns('Transactions:', `${data.salesCount || 0}`, 48) + '\n';
+    text += dash + '\n\n';
+    
+    text += centerText('PAYMENT BREAKDOWN', 48) + '\n';
+    text += dash + '\n';
+    if (data.paymentBreakdown) {
+        Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
+            text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 48) + '\n';
+        });
+    }
+    text += dash + '\n\n';
+    
+    if (data.categories && data.categories.length > 0) {
+        text += centerText('CATEGORY BREAKDOWN', 48) + '\n';
+        text += dash + '\n';
+        data.categories.forEach((cat: any) => {
+            text += `${cat.name}: ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)\n`;
+            if (cat.items && cat.items.length > 0) {
+                cat.items.forEach((item: any) => {
+                    text += `  ${item.name || 'Unknown'} x${item.quantity || 0} = ${symbol}${(item.revenue || 0).toFixed(2)}\n`;
+                });
+            }
+            text += '\n';
+        });
+        text += dash + '\n\n';
+    }
+    
+    text += centerText('END OF REPORT', 48) + '\n';
+    text += line + '\n';
+    text += centerText('SMARTHAWKER BY UNIPROSG', 48) + '\n';
+    text += centerText(`Generated: ${nowDateStr}`, 48) + '\n';  // ✅ Current Time
+    text += '\n\n\n';
+    
+    return text;
+};
 const generateDayEndHTML = (data: any, outletName: string) => {
     const symbol = '$';
     
@@ -540,10 +614,11 @@ const printDayEndReport = async (dayEndData: any) => {
                 if (!ThermalPrinterModule || !hasNativeModule) {
                     throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
                 }
+                const reportText80mm = buildDayEndReportText80mm(reportData, outletName);
                 await ThermalPrinterModule.printTcp({
                     ip: company.networkPrinterIP,
                     port: 9100,
-                    payload: reportText,
+                    payload: reportText80mm,
                     autoCut: true,
                     openCashDrawer: false,
                 });
@@ -613,10 +688,14 @@ const printDayEndReport = async (dayEndData: any) => {
                 if (!ThermalPrinterModule || !hasNativeModule) {
                     throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
                 }
+                const reprintText80mm = '='.repeat(48) + '\n' +
+                                   centerText('REPRINT', 48) + '\n' +
+                                   '='.repeat(48) + '\n\n' +
+                                   buildDayEndReportText80mm(reportData, outletName);
                 await ThermalPrinterModule.printTcp({
                     ip: company.networkPrinterIP,
                     port: 9100,
-                    payload: reprintText,
+                    payload: reprintText80mm,
                     autoCut: true,
                     openCashDrawer: false,
                 });
