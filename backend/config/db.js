@@ -28,6 +28,7 @@ let pool = null;
 let connecting = false;
 let connectionPromise = null;
 let monitoringInterval = null; 
+let reconnectTimer = null;
 // Store config in a variable that monitoring can access
 const poolConfig = config.pool;
 
@@ -37,6 +38,35 @@ let poolMetrics = {
   idleConnections: 0,
   connectionWaitTime: 0,
   lastChecked: null
+};
+
+const startReconnectionLoop = () => {
+    if (reconnectTimer) return; // Already running
+    
+    console.log('🔄 Database reconnection loop started. Will retry every 10 seconds...');
+    reconnectTimer = setInterval(async () => {
+        if (pool) {
+            console.log('✅ Database is connected, stopping reconnection loop.');
+            clearInterval(reconnectTimer);
+            reconnectTimer = null;
+            return;
+        }
+        
+        if (connecting) {
+            console.log('⏳ Reconnection already in progress, skipping this tick...');
+            return;
+        }
+        
+        try {
+            console.log('🔄 Attempting database reconnect...');
+            await connectDB();
+            console.log('✅ Reconnection successful, stopping loop.');
+            clearInterval(reconnectTimer);
+            reconnectTimer = null;
+        } catch (err) {
+            console.error('❌ Reconnection attempt failed:', err.message);
+        }
+    }, 10000);
 };
 
 const connectDB = async () => {
@@ -76,10 +106,15 @@ const connectDB = async () => {
         
         startPoolMonitoring();
         
+        // Stop reconnection loop on success
+        if (reconnectTimer) {
+            clearInterval(reconnectTimer);
+            reconnectTimer = null;
+        }
+        
         // ✅ Better error handling with auto-reconnect
         pool.on('error', async (err) => {
             console.error('❌ Pool error:', err.message);
-            console.log('🔄 Auto-reconnecting in 5 seconds...');
             resetPool();
             
             // Clear monitoring interval
@@ -88,23 +123,8 @@ const connectDB = async () => {
                 monitoringInterval = null;
             }
             
-            // Auto-reconnect after delay
-            setTimeout(async () => {
-                try {
-                    await connectDB();
-                    console.log('✅ Auto-reconnect successful');
-                } catch (reconnectErr) {
-                    console.error('❌ Auto-reconnect failed:', reconnectErr.message);
-                    // Retry again after 30 seconds
-                    setTimeout(async () => {
-                        try {
-                            await connectDB();
-                        } catch (finalErr) {
-                            console.error('❌ Final reconnect failed. Manual restart needed.');
-                        }
-                    }, 30000);
-                }
-            }, 5000);
+            // Start the reconnection loop
+            startReconnectionLoop();
         });
         
         return pool;
@@ -114,16 +134,8 @@ const connectDB = async () => {
         console.error('📝 Details:', err);
         resetPool();
         
-        // ✅ Schedule retry after 10 seconds
-        console.log('🔄 Will retry connection in 10 seconds...');
-        setTimeout(async () => {
-            try {
-                await connectDB();
-                console.log('✅ Retry connection successful');
-            } catch (retryErr) {
-                console.error('❌ Retry failed:', retryErr.message);
-            }
-        }, 10000);
+        // Start the reconnection loop
+        startReconnectionLoop();
         
         throw err;
     } finally {

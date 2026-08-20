@@ -492,15 +492,22 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: err.message });
 });
 
-// ✅ Start server - connectDB() called ONLY ONCE
-connectDB().then(() => {
-    startLicenseUpdater(); 
-    startSessionCleanup(); 
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`✅ Server running on port ${PORT}`);
-        console.log(`📍 Local: http://localhost:${PORT}`);
-        console.log(`📍 Network: http://192.168.0.243:${PORT}`);
+// ✅ Start server - boot Express immediately and connect DB in background
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`📍 Local: http://localhost:${PORT}`);
+    
+    // Connect to Database in the background
+    connectDB().then(() => {
+        console.log('✅ Initial database connection established');
+        startLicenseUpdater(); 
+        startSessionCleanup(); 
+    }).catch(err => {
+        console.error('❌ Initial database connection failed. Reconnection loop will retry in the background.');
+        startLicenseUpdater(); 
+        startSessionCleanup(); 
     });
-}).catch(err => {
-    console.error('❌ Failed to start server:', err);
 });
+
+
+
