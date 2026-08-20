@@ -82,65 +82,60 @@ const loadSavedEmail = async () => {
         console.log('❌ Error loading saved email:', error);
     }
 };
-    const parseRawDateTime = (dateString: string | Date) => {
-        if (!dateString) return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', monthName: 'Jan' };
+    const parseRawDateTime = (dateInput: any) => {
+        if (!dateInput) return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', monthName: 'Jan' };
         
-        if (dateString instanceof Date) {
-            const day = String(dateString.getDate()).padStart(2, '0');
-            const month = String(dateString.getMonth() + 1).padStart(2, '0');
-            const year = dateString.getFullYear();
-            const hours = String(dateString.getHours()).padStart(2, '0');
-            const minutes = String(dateString.getMinutes()).padStart(2, '0');
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            return {
-                day,
-                month,
-                year,
-                hours,
-                minutes,
-                dateStr: `${day}/${month}/${year} ${hours}:${minutes}`,
-                monthName: monthNames[dateString.getMonth()]
+        try {
+            let date: Date;
+            if (dateInput instanceof Date) {
+                date = dateInput;
+            } else {
+                let str = String(dateInput).trim();
+                // If it doesn't have a timezone offset (ends with Z, or contains +xx:xx or -xx:xx)
+                if (!str.endsWith('Z') && !str.match(/[+-]\d{2}:?\d{2}$/)) {
+                    if (str.includes(' ')) {
+                        str = str.replace(' ', 'T');
+                    }
+                    str = str + '+08:00';
+                }
+                date = new Date(str);
+            }
+            
+            // Format to Singapore timezone
+            const options: Intl.DateTimeFormatOptions = {
+                timeZone: 'Asia/Singapore',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
             };
-        }
-        
-        const str = String(dateString);
-        const match = str.match(/^(\d{4})[./-](\d{2})[./-](\d{2})[T ](\d{2}):(\d{2})/);
-        if (match) {
-            const year = match[1];
-            const month = match[2];
-            const day = match[3];
-            const hours = match[4];
-            const minutes = match[5];
+            const formatter = new Intl.DateTimeFormat('en-SG', options);
+            const parts = formatter.formatToParts(date);
+            const day = parts.find(p => p.type === 'day')?.value || '00';
+            const month = parts.find(p => p.type === 'month')?.value || '00';
+            const yearStr = parts.find(p => p.type === 'year')?.value || '0000';
+            const hour = parts.find(p => p.type === 'hour')?.value || '00';
+            const minute = parts.find(p => p.type === 'minute')?.value || '00';
+            
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const mIdx = parseInt(month, 10) - 1;
             const monthName = monthNames[mIdx] || 'Jan';
+            
             return {
                 day,
                 month,
-                year,
-                hours,
-                minutes,
-                dateStr: `${day}/${month}/${year} ${hours}:${minutes}`,
+                year: parseInt(yearStr, 10),
+                hours: hour,
+                minutes: minute,
+                dateStr: `${day}/${month}/${yearStr} ${hour}:${minute}`,
                 monthName
             };
+        } catch (e) {
+            console.log('Error parsing date to SG time in DayEndModal:', e);
+            return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', monthName: 'Jan' };
         }
-        
-        const date = new Date(dateString);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return {
-            day,
-            month,
-            year,
-            hours,
-            minutes,
-            dateStr: `${day}/${month}/${year} ${hours}:${minutes}`,
-            monthName: monthNames[date.getMonth()]
-        };
     };
 
     const formatUTCTime = (dateString: string) => {

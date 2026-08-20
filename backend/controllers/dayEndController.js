@@ -246,8 +246,8 @@ const transaction = pool.transaction();
                     categories: categoriesArray,
                     salesCount: sales.length,
                     startDate: sales[0]?.SaleDate,
-                    endDate: new Date(),  // Current time
-                    closingDate: new Date()  // Current time
+                    endDate: moment().tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss'),
+                    closingDate: moment().tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss')
                 }
             });
             
@@ -331,17 +331,17 @@ const getDayEndHistory = async (req, res) => {
             success: true,
             history: result.recordset.map(row => ({
                 id: row.DayEndId,
-                openingDate: row.OpeningDate,
-                closingDate: row.ClosingDate,
+                openingDate: row.OpeningDate ? moment(row.OpeningDate).tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss') : null,
+                closingDate: row.ClosingDate ? moment(row.ClosingDate).tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss') : null,
                 totalSales: row.TotalSales,
                 totalDiscount: row.TotalDiscount,
                 totalItems: row.TotalItems,
                 netSales: row.NetSales,
-                salesCount: row.SalesCount || 0,  // ✅ ADD THIS
+                salesCount: row.SalesCount || 0,
                 paymentBreakdown: JSON.parse(row.PaymentBreakdown || '{}'),
                 categories: JSON.parse(row.Categories || '[]'),
                 closedBy: row.ClosedByName,
-                createdAt: row.CreatedAt
+                createdAt: row.CreatedAt ? moment(row.CreatedAt).tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss') : null
             }))
         });
         

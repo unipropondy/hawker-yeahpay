@@ -675,45 +675,47 @@ static async printSalesReportThermal(reportData: any, userId?: string | number, 
     try {
         const company = await BillPDFGenerator.loadSettings(userId);
         const symbol = company.currencySymbol || '$';
+        const width = (company.networkPrinterEnabled && company.networkPrinterIP) ? 48 : 32;
         
         let text = '\n';
-        text += '='.repeat(32) + '\n';
-        text += this.centerText(company.name || 'SALES REPORT', 32) + '\n';
-        text += '='.repeat(32) + '\n';
+        text += '='.repeat(width) + '\n';
+        text += this.centerText(company.name || 'SALES REPORT', width) + '\n';
+        text += '='.repeat(width) + '\n';
         text += `Period: ${reportData.period || 'Today'}\n`;
-        text += `Date: ${new Date().toLocaleString()}\n`;
-        text += '-'.repeat(32) + '\n\n';
+        const dateStr = this.getSingaporeDateTime(new Date());
+        text += `Date: ${dateStr}\n`;
+        text += '-'.repeat(width) + '\n\n';
         
         // ========== SUMMARY ==========
-        text += this.centerText('SUMMARY', 32) + '\n';
-        text += '-'.repeat(32) + '\n';
-        text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, 32) + '\n';
-        text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, 32) + '\n';
-        text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
+        text += this.centerText('SUMMARY', width) + '\n';
+        text += '-'.repeat(width) + '\n';
+        text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, width) + '\n';
+        text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, width) + '\n';
+        text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, width) + '\n';
         
         // ✅ DISCOUNT SECTION
         if (reportData.summary?.totalDiscount > 0) {
-            text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+            text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, width) + '\n';
             const discountPercent = reportData.summary?.totalSales > 0 
                 ? ((reportData.summary.discountedSales / reportData.summary.totalSales) * 100).toFixed(1)
                 : '0';
-            text += this.twoColumns('Discounted Sales:', `${reportData.summary?.discountedSales || 0} / ${reportData.summary?.totalSales || 0} (${discountPercent}%)`, 32) + '\n';
+            text += this.twoColumns('Discounted Sales:', `${reportData.summary?.discountedSales || 0} / ${reportData.summary?.totalSales || 0} (${discountPercent}%)`, width) + '\n';
         }
         
         // ✅ VALUE CARD SECTION
         if (reportData.summary?.totalValueCardAmount > 0) {
-            text += '\n' + '-'.repeat(32) + '\n';
-            text += this.centerText('💎 VALUE CARD USAGE', 32) + '\n';
-            text += '-'.repeat(32) + '\n';
-            text += this.twoColumns('Total Value Card:', `${symbol}${(reportData.summary?.totalValueCardAmount || 0).toFixed(2)}`, 32) + '\n';
-            text += this.twoColumns('Card Transactions:', `${reportData.summary?.valueCardTransactions || 0}`, 32) + '\n';
+            text += '\n' + '-'.repeat(width) + '\n';
+            text += this.centerText('💎 VALUE CARD USAGE', width) + '\n';
+            text += '-'.repeat(width) + '\n';
+            text += this.twoColumns('Total Value Card:', `${symbol}${(reportData.summary?.totalValueCardAmount || 0).toFixed(2)}`, width) + '\n';
+            text += this.twoColumns('Card Transactions:', `${reportData.summary?.valueCardTransactions || 0}`, width) + '\n';
         }
         
-        text += '\n' + '-'.repeat(32) + '\n';
+        text += '\n' + '-'.repeat(width) + '\n';
         
         // ========== PAYMENT BREAKDOWN ==========
-        text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
-        text += '-'.repeat(32) + '\n';
+        text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
+        text += '-'.repeat(width) + '\n';
         
         if (reportData.paymentBreakdown) {
             const sortedMethods = Object.entries(reportData.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
@@ -731,14 +733,14 @@ static async printSalesReportThermal(reportData: any, userId?: string | number, 
                 else methodIcon = '💵';
                 
                 const methodName = `${methodIcon} ${method}`;
-                text += this.twoColumns(methodName, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+                text += this.twoColumns(methodName, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
             }
         }
         
-        text += '\n' + '='.repeat(32) + '\n';
-        text += this.centerText('END OF REPORT', 32) + '\n';
-        text += '='.repeat(32) + '\n\n';
-        text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+        text += '\n' + '='.repeat(width) + '\n';
+        text += this.centerText('END OF REPORT', width) + '\n';
+        text += '='.repeat(width) + '\n\n';
+        text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
         text += '\n\n';
         
 
@@ -796,39 +798,41 @@ static async printCategoryReportThermal(
         const company = await BillPDFGenerator.loadSettings(userId);
         const symbol = company.currencySymbol || '$';
         const summary = options?.summary || {};
+        const width = (company.networkPrinterEnabled && company.networkPrinterIP) ? 48 : 32;
         
         let text = '\n';
-        text += '='.repeat(32) + '\n';
-        text += this.centerText(company.name || 'CATEGORY REPORT', 32) + '\n';
-        text += '='.repeat(32) + '\n';
+        text += '='.repeat(width) + '\n';
+        text += this.centerText(company.name || 'CATEGORY REPORT', width) + '\n';
+        text += '='.repeat(width) + '\n';
         text += `Filter: ${options?.filter || 'Today'}\n`;
-        text += `Date: ${new Date().toLocaleString()}\n`;
-        text += '-'.repeat(32) + '\n\n';
+        const dateStr = this.getSingaporeDateTime(new Date());
+        text += `Date: ${dateStr}\n`;
+        text += '-'.repeat(width) + '\n\n';
         
         if (selectedCategory) {
             // Single category view
-            text += this.centerText(`📦 ${selectedCategory}`, 32) + '\n';
-            text += '-'.repeat(32) + '\n';
-            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
-            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
-            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
+            text += this.centerText(`📦 ${selectedCategory}`, width) + '\n';
+            text += '-'.repeat(width) + '\n';
+            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, width) + '\n';
+            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, width) + '\n';
+            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, width) + '\n';
             
             // ✅ Discount in category
             if (summary.totalDiscount > 0) {
-                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, 32) + '\n';
-                text += this.twoColumns('Discounted Trans:', `${summary.discountedTransactions || 0} / ${summary.totalSales || 0}`, 32) + '\n';
+                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, width) + '\n';
+                text += this.twoColumns('Discounted Trans:', `${summary.discountedTransactions || 0} / ${summary.totalSales || 0}`, width) + '\n';
             }
             
             // ✅ Value Card in category
             if (summary.totalValueCardAmount > 0) {
-                text += this.twoColumns('Value Card Used:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, 32) + '\n';
+                text += this.twoColumns('Value Card Used:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, width) + '\n';
             }
             
             // Payment breakdown for this category
             if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
-                text += '\n' + '-'.repeat(32) + '\n';
-                text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
-                text += '-'.repeat(32) + '\n';
+                text += '\n' + '-'.repeat(width) + '\n';
+                text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
+                text += '-'.repeat(width) + '\n';
                 
                 const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
                 for (const [method, amount] of sortedMethods) {
@@ -841,15 +845,15 @@ static async printCategoryReportThermal(
                     else if (methodLower.includes('value')) methodIcon = '💎';
                     else methodIcon = '💵';
                     
-                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
                 }
             }
             
             // Items list
             if (categoryItems && categoryItems.length > 0) {
-                text += '\n' + '-'.repeat(32) + '\n';
-                text += this.centerText('TOP ITEMS', 32) + '\n';
-                text += '-'.repeat(32) + '\n';
+                text += '\n' + '-'.repeat(width) + '\n';
+                text += this.centerText('TOP ITEMS', width) + '\n';
+                text += '-'.repeat(width) + '\n';
                 
                 const topItems = [...categoryItems].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
                 for (const item of topItems) {
@@ -862,29 +866,29 @@ static async printCategoryReportThermal(
             }
         } else {
             // All categories view
-            text += this.centerText('CATEGORIES SUMMARY', 32) + '\n';
-            text += '-'.repeat(32) + '\n';
-            text += this.twoColumns('Categories:', `${categories.length}`, 32) + '\n';
-            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, 32) + '\n';
-            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, 32) + '\n';
-            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, 32) + '\n';
+            text += this.centerText('CATEGORIES SUMMARY', width) + '\n';
+            text += '-'.repeat(width) + '\n';
+            text += this.twoColumns('Categories:', `${categories.length}`, width) + '\n';
+            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, width) + '\n';
+            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, width) + '\n';
+            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, width) + '\n';
             
             // ✅ Discount summary
             if (summary.totalDiscount > 0) {
-                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, 32) + '\n';
+                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, width) + '\n';
             }
             
             // ✅ Value Card summary
             if (summary.totalValueCardAmount > 0) {
-                text += this.twoColumns('Value Card Total:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, 32) + '\n';
-                text += this.twoColumns('Value Card Trans:', `${summary.valueCardTransactionCount || 0}`, 32) + '\n';
+                text += this.twoColumns('Value Card Total:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, width) + '\n';
+                text += this.twoColumns('Value Card Trans:', `${summary.valueCardTransactionCount || 0}`, width) + '\n';
             }
             
             // Payment breakdown
             if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
-                text += '\n' + '-'.repeat(32) + '\n';
-                text += this.centerText('PAYMENT BREAKDOWN', 32) + '\n';
-                text += '-'.repeat(32) + '\n';
+                text += '\n' + '-'.repeat(width) + '\n';
+                text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
+                text += '-'.repeat(width) + '\n';
                 
                 const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
                 for (const [method, amount] of sortedMethods) {
@@ -897,14 +901,14 @@ static async printCategoryReportThermal(
                     else if (methodLower.includes('value')) methodIcon = '💎';
                     else methodIcon = '💵';
                     
-                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
                 }
             }
             
             // Category breakdown
-            text += '\n' + '-'.repeat(32) + '\n';
-            text += this.centerText('CATEGORY BREAKDOWN', 32) + '\n';
-            text += '-'.repeat(32) + '\n';
+            text += '\n' + '-'.repeat(width) + '\n';
+            text += this.centerText('CATEGORY BREAKDOWN', width) + '\n';
+            text += '-'.repeat(width) + '\n';
             
             for (const cat of categories) {
                 text += `\n${cat.name}\n`;
@@ -919,10 +923,10 @@ static async printCategoryReportThermal(
             }
         }
         
-        text += '\n' + '='.repeat(32) + '\n';
-        text += this.centerText('END OF REPORT', 32) + '\n';
-        text += '='.repeat(32) + '\n\n';
-        text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+        text += '\n' + '='.repeat(width) + '\n';
+        text += this.centerText('END OF REPORT', width) + '\n';
+        text += '='.repeat(width) + '\n\n';
+        text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
         
         // ✅ Try network printer ONLY if enabled
         if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
@@ -1010,8 +1014,23 @@ static async printCategoryReportThermal(
       };
     }
     
-    if (dateString instanceof Date) {
-      const formatted = this.getSingaporeDateTime(dateString);
+    try {
+      let date: Date;
+      if (dateString instanceof Date) {
+        date = dateString;
+      } else {
+        let str = String(dateString).trim();
+        // If it doesn't have a timezone offset (ends with Z, or contains +xx:xx or -xx:xx)
+        if (!str.endsWith('Z') && !str.match(/[+-]\d{2}:?\d{2}$/)) {
+          if (str.includes(' ')) {
+            str = str.replace(' ', 'T');
+          }
+          str = str + '+08:00';
+        }
+        date = new Date(str);
+      }
+      
+      const formatted = this.getSingaporeDateTime(date);
       const [datePart, timePart] = formatted.split(' ');
       const [day, month, year] = datePart.split('/');
       const [hours, minutes] = timePart.split(':');
@@ -1023,39 +1042,10 @@ static async printCategoryReportThermal(
         minutes,
         dateStr: formatted
       };
+    } catch (e) {
+      console.log('Error parsing date to SG time in UniversalPrinter:', e);
+      return { day: '00', month: '00', year: 0, hours: '00', minutes: '00', dateStr: '00/00/0000 00:00' };
     }
-    
-    const str = String(dateString);
-    const match = str.match(/^(\d{4})[./-](\d{2})[./-](\d{2})[T ](\d{2}):(\d{2})/);
-    if (match) {
-      const year = parseInt(match[1], 10);
-      const month = match[2];
-      const day = match[3];
-      const hours = match[4];
-      const minutes = match[5];
-      return {
-        day,
-        month,
-        year,
-        hours,
-        minutes,
-        dateStr: `${day}/${month}/${year} ${hours}:${minutes}`
-      };
-    }
-    
-    const date = new Date(dateString);
-    const formatted = this.getSingaporeDateTime(date);
-    const [datePart, timePart] = formatted.split(' ');
-    const [day, month, year] = datePart.split('/');
-    const [hours, minutes] = timePart.split(':');
-    return {
-      day,
-      month,
-      year: parseInt(year, 10),
-      hours,
-      minutes,
-      dateStr: formatted
-    };
   }
 
   private static centerText(text: string, width: number): string {
