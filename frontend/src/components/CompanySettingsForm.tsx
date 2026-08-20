@@ -138,7 +138,7 @@ const CompanySettingsForm: React.FC<Props> = ({
                 showCompanyLogo: savedSettings.showCompanyLogo,
                 showHalalLogo: savedSettings.showHalalLogo,
                 networkPrinterIP: savedSettings.networkPrinterIP || '',
-                networkPrinterEnabled: savedSettings.networkPrinterEnabled === true || savedSettings.networkPrinterEnabled === 1,
+                networkPrinterEnabled: savedSettings.networkPrinterEnabled === true,
             });
             
             setEnableGST(savedSettings.gstPercentage > 0);
@@ -299,7 +299,7 @@ const CompanySettingsForm: React.FC<Props> = ({
                 companyLogo: freshSettings.companyLogo,
                 halalLogo: freshSettings.halalLogo,
                 networkPrinterIP: freshSettings.networkPrinterIP || '',
-                networkPrinterEnabled: freshSettings.networkPrinterEnabled === true || freshSettings.networkPrinterEnabled === 1,
+                networkPrinterEnabled: freshSettings.networkPrinterEnabled === true,
             });
             
             // ✅ STEP 5: Update enableGST based on fresh value

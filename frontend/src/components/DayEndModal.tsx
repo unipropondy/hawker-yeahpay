@@ -82,19 +82,72 @@ const loadSavedEmail = async () => {
         console.log('❌ Error loading saved email:', error);
     }
 };
-    const formatUTCTime = (dateString: string) => {
-        if (!dateString) return { date: '', time: '' };
+    const parseRawDateTime = (dateString: string | Date) => {
+        if (!dateString) return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', monthName: 'Jan' };
+        
+        if (dateString instanceof Date) {
+            const day = String(dateString.getDate()).padStart(2, '0');
+            const month = String(dateString.getMonth() + 1).padStart(2, '0');
+            const year = dateString.getFullYear();
+            const hours = String(dateString.getHours()).padStart(2, '0');
+            const minutes = String(dateString.getMinutes()).padStart(2, '0');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return {
+                day,
+                month,
+                year,
+                hours,
+                minutes,
+                dateStr: `${day}/${month}/${year} ${hours}:${minutes}`,
+                monthName: monthNames[dateString.getMonth()]
+            };
+        }
+        
+        const str = String(dateString);
+        const match = str.match(/^(\d{4})[./-](\d{2})[./-](\d{2})[T ](\d{2}):(\d{2})/);
+        if (match) {
+            const year = match[1];
+            const month = match[2];
+            const day = match[3];
+            const hours = match[4];
+            const minutes = match[5];
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const mIdx = parseInt(month, 10) - 1;
+            const monthName = monthNames[mIdx] || 'Jan';
+            return {
+                day,
+                month,
+                year,
+                hours,
+                minutes,
+                dateStr: `${day}/${month}/${year} ${hours}:${minutes}`,
+                monthName
+            };
+        }
+        
         const date = new Date(dateString);
-        const day = String(date.getUTCDate()).padStart(2, '0');
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const month = monthNames[date.getUTCMonth()];
-        const year = date.getUTCFullYear();
-        const hours = String(date.getUTCHours()).padStart(2, '0');
-        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return {
-            date: `${day} ${month} ${year}`,
-            time: `${hours}:${minutes}`
+            day,
+            month,
+            year,
+            hours,
+            minutes,
+            dateStr: `${day}/${month}/${year} ${hours}:${minutes}`,
+            monthName: monthNames[date.getMonth()]
+        };
+    };
+
+    const formatUTCTime = (dateString: string) => {
+        const parsed = parseRawDateTime(dateString);
+        return {
+            date: `${parsed.day} ${parsed.monthName} ${parsed.year}`,
+            time: `${parsed.hours}:${parsed.minutes}`
         };
     };
 
@@ -325,13 +378,8 @@ const loadSavedEmail = async () => {
     const dash = '-'.repeat(32);
     
     // ✅ ORIGINAL Day End Date - USE data.closingDate
-    const originalDate = data.closingDate ? new Date(data.closingDate) : new Date();
-    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
-    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
-    const origYear = originalDate.getUTCFullYear();
-    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
-    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
-    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    const parsedOriginal = parseRawDateTime(data.closingDate);
+    const origDateStr = parsedOriginal.dateStr;
     
     // ✅ CURRENT Date (Generated on)
     const now = new Date();
@@ -402,13 +450,8 @@ const buildDayEndReportText80mm = (data: any, outletName: string) => {
     const dash = '-'.repeat(48);
     
     // ✅ ORIGINAL Day End Date - USE data.closingDate
-    const originalDate = data.closingDate ? new Date(data.closingDate) : new Date();
-    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
-    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
-    const origYear = originalDate.getUTCFullYear();
-    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
-    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
-    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    const parsedOriginal = parseRawDateTime(data.closingDate);
+    const origDateStr = parsedOriginal.dateStr;
     
     // ✅ CURRENT Date (Generated on)
     const now = new Date();
@@ -472,14 +515,9 @@ const buildDayEndReportText80mm = (data: any, outletName: string) => {
 const generateDayEndHTML = (data: any, outletName: string) => {
     const symbol = '$';
     
-    // ✅ ORIGINAL Day End Date - USE UTC (store panni irukkara time)
-    const originalDate = data.closingDate ? new Date(data.closingDate) : new Date();
-    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
-    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
-    const origYear = originalDate.getUTCFullYear();
-    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
-    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
-    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    // ✅ ORIGINAL Day End Date - USE LOCAL TIME
+    const parsedOriginal = parseRawDateTime(data.closingDate);
+    const origDateStr = parsedOriginal.dateStr;
     
     // ✅ CURRENT Date - USE LOCAL TIME (for "Generated on")
     const now = new Date();
@@ -605,31 +643,41 @@ const printDayEndReport = async (dayEndData: any) => {
             const company = await BillPDFGenerator.loadSettings(outletId);
             if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
                 console.log('📡 Route DayEnd report to Network Printer IP:', company.networkPrinterIP);
-                const ThermalPrinter = require('react-native-thermal-printer');
-                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-                
-                const { NativeModules } = require('react-native');
-                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+                try {
+                    const ThermalPrinter = require('react-native-thermal-printer');
+                    const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                    const { NativeModules } = require('react-native');
+                    const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
 
-                if (!ThermalPrinterModule || !hasNativeModule) {
-                    throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                    if (!ThermalPrinterModule || !hasNativeModule) {
+                        throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                    }
+                    const reportText80mm = buildDayEndReportText80mm(reportData, outletName);
+                    await ThermalPrinterModule.printTcp({
+                        ip: company.networkPrinterIP,
+                        port: 9100,
+                        payload: reportText80mm,
+                        autoCut: true,
+                        openCashDrawer: false,
+                    });
+                    console.log('✅ Day End Report printed on Network Printer');
+                    return;
+                } catch (netErr) {
+                    console.log('⚠️ Network Printer printing failed:', netErr);
                 }
-                const reportText80mm = buildDayEndReportText80mm(reportData, outletName);
-                await ThermalPrinterModule.printTcp({
-                    ip: company.networkPrinterIP,
-                    port: 9100,
-                    payload: reportText80mm,
-                    autoCut: true,
-                    openCashDrawer: false,
-                });
-                console.log('✅ Day End Report printed on Network Printer');
+                
+                // Fallback to PDF directly if network printer fails
+                console.log('⚠️ Network printer failed, saving as PDF');
+                const html = generateDayEndHTML(reportData, outletName);
+                const { uri } = await Print.printToFileAsync({ html });
+                await Sharing.shareAsync(uri);
                 return;
             }
-        } catch (netErr) {
-            console.log('⚠️ Network Printer printing failed:', netErr);
+        } catch (loadErr) {
+            console.log('⚠️ Error loading settings for network printer check:', loadErr);
         }
 
-        // 2. Try Sunmi printer if network is disabled or failed
+        // 2. Try Sunmi printer if network is disabled
         const sunmiReady = await SunmiPrinterService.init();
         if (sunmiReady) {
             await SunmiPrinterService.printRawText(reportText);
@@ -679,35 +727,47 @@ const printDayEndReport = async (dayEndData: any) => {
             const company = await BillPDFGenerator.loadSettings(outletId);
             if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
                 console.log('📡 Route DayEnd reprint to Network Printer IP:', company.networkPrinterIP);
-                const ThermalPrinter = require('react-native-thermal-printer');
-                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-                
-                const { NativeModules } = require('react-native');
-                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+                try {
+                    const ThermalPrinter = require('react-native-thermal-printer');
+                    const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                    
+                    const { NativeModules } = require('react-native');
+                    const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
 
-                if (!ThermalPrinterModule || !hasNativeModule) {
-                    throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                    if (!ThermalPrinterModule || !hasNativeModule) {
+                        throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                    }
+                    const reprintText80mm = '='.repeat(48) + '\n' +
+                                       centerText('REPRINT', 48) + '\n' +
+                                       '='.repeat(48) + '\n\n' +
+                                       buildDayEndReportText80mm(reportData, outletName);
+                    await ThermalPrinterModule.printTcp({
+                        ip: company.networkPrinterIP,
+                        port: 9100,
+                        payload: reprintText80mm,
+                        autoCut: true,
+                        openCashDrawer: false,
+                    });
+                    console.log('✅ Day End Report reprinted on Network Printer');
+                    Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+                    return;
+                } catch (netErr) {
+                    console.log('⚠️ Network Printer reprinting failed:', netErr);
                 }
-                const reprintText80mm = '='.repeat(48) + '\n' +
-                                   centerText('REPRINT', 48) + '\n' +
-                                   '='.repeat(48) + '\n\n' +
-                                   buildDayEndReportText80mm(reportData, outletName);
-                await ThermalPrinterModule.printTcp({
-                    ip: company.networkPrinterIP,
-                    port: 9100,
-                    payload: reprintText80mm,
-                    autoCut: true,
-                    openCashDrawer: false,
-                });
-                console.log('✅ Day End Report reprinted on Network Printer');
-                Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+                
+                // Fallback to PDF directly if network printer fails
+                console.log('⚠️ Network printer failed, saving as PDF');
+                const html = generateDayEndHTML(reportData, outletName);
+                const { uri } = await Print.printToFileAsync({ html });
+                await Sharing.shareAsync(uri);
+                Alert.alert('📄 PDF Saved', 'Report saved as PDF');
                 return;
             }
-        } catch (netErr) {
-            console.log('⚠️ Network Printer reprinting failed:', netErr);
+        } catch (loadErr) {
+            console.log('⚠️ Error loading settings for network printer reprint check:', loadErr);
         }
 
-        // 2. Try Sunmi printer if network is disabled or failed
+        // 2. Try Sunmi printer if network is disabled
         const sunmiReady = await SunmiPrinterService.init();
         if (sunmiReady) {
             await SunmiPrinterService.printRawText(reprintText);
@@ -732,14 +792,9 @@ const printDayEndReport = async (dayEndData: any) => {
     // ==================== EMAIL FUNCTIONS ====================
 
   const generateCSVData = (item: any, outletName?: string) => {
-    // ✅ ORIGINAL Day End Date (UTC)
-    const originalDate = item.closingDate ? new Date(item.closingDate) : new Date();
-    const origDay = String(originalDate.getUTCDate()).padStart(2, '0');
-    const origMonth = String(originalDate.getUTCMonth() + 1).padStart(2, '0');
-    const origYear = originalDate.getUTCFullYear();
-    const origHours = String(originalDate.getUTCHours()).padStart(2, '0');
-    const origMinutes = String(originalDate.getUTCMinutes()).padStart(2, '0');
-    const origDateStr = `${origDay}/${origMonth}/${origYear} ${origHours}:${origMinutes}`;
+    // ✅ ORIGINAL Day End Date
+    const parsedOriginal = parseRawDateTime(item.closingDate);
+    const origDateStr = parsedOriginal.dateStr;
     
     // ✅ CURRENT Date (Generated on)
     const now = new Date();

@@ -256,26 +256,26 @@ static async smartPrint(
   try {
     const company = await BillPDFGenerator.loadSettings(outletId);
     
-    // ✅ 1. If network printer toggle is ON, print directly to network printer
     if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+      // Print ONLY to network printer
       const printed = await this.printNetwork(saleData, outletId, discountInfo);
       if (printed) {
         return true;
       }
-    }
-    
-    // ✅ 2. If network printer is OFF or fails, try Sunmi direct print
-    const printerType = await PrinterDetector.detectPrinter();
-    if (printerType === 'sunmi') {
-      const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
-      if (printed) {
-        return true;
+      // Fail -> Fallback to PDF directly
+      return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
+    } else {
+      // Print ONLY to Sunmi printer
+      const sunmiReady = await SunmiPrinterService.init();
+      if (sunmiReady) {
+        const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+        if (printed) {
+          return true;
+        }
       }
+      // Fail -> Fallback to PDF directly
+      return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
     }
-    
-    // ✅ 3. Fallback to PDF
-    return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
-    
   } catch (error) { 
     console.log('SmartPrint error:', error);
     return await this.offerPDFFallback(saleData, outletId, t, discountInfo); 
@@ -350,13 +350,8 @@ private static async printThermalReceipt(
     p += '='.repeat(32) + '\n';
 
     // Bill details
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+    const parsedDate = this.parseRawDateTime(saleData.originalDate || saleData.date || saleData.SaleDate);
+    const dateStr = parsedDate.dateStr;
 
     p += `INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
     p += `DATE: ${dateStr}\n`;
@@ -466,13 +461,8 @@ private static async printThermalReceipt(
     p += '='.repeat(48) + '\n';
 
     // Bill details
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+    const parsedDate = this.parseRawDateTime(saleData.originalDate || saleData.date || saleData.SaleDate);
+    const dateStr = parsedDate.dateStr;
 
     p += `INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
     p += `DATE: ${dateStr}\n`;
@@ -681,15 +671,8 @@ private static async printLaser(saleData: any, userId?: string | number, printer
     Alert.alert('Printer Detection', message);
   }
     // ==================== SALES REPORT THERMAL PRINT ====================
-  // ==================== SALES REPORT THERMAL PRINT ====================
 static async printSalesReportThermal(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
     try {
-        const sunmiReady = await SunmiPrinterService.init();
-        if (!sunmiReady) {
-            console.log('Sunmi printer not available, using PDF fallback');
-            return false;
-        }
-        
         const company = await BillPDFGenerator.loadSettings(userId);
         const symbol = company.currencySymbol || '$';
         
@@ -758,17 +741,47 @@ static async printSalesReportThermal(reportData: any, userId?: string | number, 
         text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
         text += '\n\n';
         
-        await SunmiPrinterService.printRawText(text);
-        await SunmiPrinterService.cutPaper();
-        
-        return true;
+
+        // ✅ Try network printer ONLY if enabled
+        if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+            try {
+                const ThermalPrinter = require('react-native-thermal-printer');
+                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                const { NativeModules } = require('react-native');
+                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+                
+                if (ThermalPrinterModule && hasNativeModule) {
+                    console.log('📡 Sales Report routing to Network Printer IP:', company.networkPrinterIP);
+                    await ThermalPrinterModule.printTcp({
+                        ip: company.networkPrinterIP,
+                        port: 9100,
+                        payload: text,
+                        autoCut: true,
+                        openCashDrawer: false,
+                    });
+                    return true;
+                }
+            } catch (netError) {
+                console.log('❌ Sales Report Network Print error:', netError);
+            }
+            return false; // Network failed -> PDF fallback directly
+        } else {
+            // Sunmi ONLY
+            const sunmiReady = await SunmiPrinterService.init();
+            if (sunmiReady) {
+                await SunmiPrinterService.printRawText(text);
+                await SunmiPrinterService.cutPaper();
+                return true;
+            }
+            console.log('Sunmi printer not available, using PDF fallback');
+            return false; // Sunmi failed -> PDF fallback directly
+        }
         
     } catch (error) {
         console.log('Thermal sales report error:', error);
         return false;
     }
 }
-  // ==================== CATEGORY REPORT THERMAL PRINT ====================
   // ==================== CATEGORY REPORT THERMAL PRINT ====================
 static async printCategoryReportThermal(
     categories: any[], 
@@ -780,11 +793,6 @@ static async printCategoryReportThermal(
     options?: any
 ): Promise<boolean> {
     try {
-        const sunmiReady = await SunmiPrinterService.init();
-        if (!sunmiReady) {
-            return false;
-        }
-        
         const company = await BillPDFGenerator.loadSettings(userId);
         const symbol = company.currencySymbol || '$';
         const summary = options?.summary || {};
@@ -916,10 +924,40 @@ static async printCategoryReportThermal(
         text += '='.repeat(32) + '\n\n';
         text += this.centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
         
-        await SunmiPrinterService.printRawText(text);
-        await SunmiPrinterService.cutPaper();
-        
-        return true;
+        // ✅ Try network printer ONLY if enabled
+        if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+            try {
+                const ThermalPrinter = require('react-native-thermal-printer');
+                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                const { NativeModules } = require('react-native');
+                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+                
+                if (ThermalPrinterModule && hasNativeModule) {
+                    console.log('📡 Category Report routing to Network Printer IP:', company.networkPrinterIP);
+                    await ThermalPrinterModule.printTcp({
+                        ip: company.networkPrinterIP,
+                        port: 9100,
+                        payload: text,
+                        autoCut: true,
+                        openCashDrawer: false,
+                    });
+                    return true;
+                }
+            } catch (netError) {
+                console.log('❌ Category Report Network Print error:', netError);
+            }
+            return false; // Network failed -> PDF fallback directly
+        } else {
+            // Sunmi ONLY
+            const sunmiReady = await SunmiPrinterService.init();
+            if (sunmiReady) {
+                await SunmiPrinterService.printRawText(text);
+                await SunmiPrinterService.cutPaper();
+                return true;
+            }
+            console.log('Sunmi printer not available, using PDF fallback');
+            return false; // Sunmi failed -> PDF fallback directly
+        }
         
     } catch (error) {
         console.log('Thermal category report error:', error);
@@ -927,6 +965,99 @@ static async printCategoryReportThermal(
     }
 }
   // ==================== HELPER METHODS ====================
+  private static getSingaporeDateTime(dateInput: Date = new Date()): string {
+    try {
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Singapore',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      };
+      const formatter = new Intl.DateTimeFormat('en-SG', options);
+      const parts = formatter.formatToParts(dateInput);
+      const day = parts.find(p => p.type === 'day')?.value || '00';
+      const month = parts.find(p => p.type === 'month')?.value || '00';
+      const year = parts.find(p => p.type === 'year')?.value || '0000';
+      const hour = parts.find(p => p.type === 'hour')?.value || '00';
+      const minute = parts.find(p => p.type === 'minute')?.value || '00';
+      return `${day}/${month}/${year} ${hour}:${minute}`;
+    } catch (e) {
+      const day = String(dateInput.getDate()).padStart(2, '0');
+      const month = String(dateInput.getMonth() + 1).padStart(2, '0');
+      const year = dateInput.getFullYear();
+      const hours = String(dateInput.getHours()).padStart(2, '0');
+      const minutes = String(dateInput.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    }
+  }
+
+  private static parseRawDateTime(dateString: any): { day: string; month: string; year: number; hours: string; minutes: string; dateStr: string } {
+    if (!dateString) {
+      const formattedNow = this.getSingaporeDateTime(new Date());
+      const [datePart, timePart] = formattedNow.split(' ');
+      const [day, month, year] = datePart.split('/');
+      const [hours, minutes] = timePart.split(':');
+      return {
+        day,
+        month,
+        year: parseInt(year, 10),
+        hours,
+        minutes,
+        dateStr: formattedNow
+      };
+    }
+    
+    if (dateString instanceof Date) {
+      const formatted = this.getSingaporeDateTime(dateString);
+      const [datePart, timePart] = formatted.split(' ');
+      const [day, month, year] = datePart.split('/');
+      const [hours, minutes] = timePart.split(':');
+      return {
+        day,
+        month,
+        year: parseInt(year, 10),
+        hours,
+        minutes,
+        dateStr: formatted
+      };
+    }
+    
+    const str = String(dateString);
+    const match = str.match(/^(\d{4})[./-](\d{2})[./-](\d{2})[T ](\d{2}):(\d{2})/);
+    if (match) {
+      const year = parseInt(match[1], 10);
+      const month = match[2];
+      const day = match[3];
+      const hours = match[4];
+      const minutes = match[5];
+      return {
+        day,
+        month,
+        year,
+        hours,
+        minutes,
+        dateStr: `${day}/${month}/${year} ${hours}:${minutes}`
+      };
+    }
+    
+    const date = new Date(dateString);
+    const formatted = this.getSingaporeDateTime(date);
+    const [datePart, timePart] = formatted.split(' ');
+    const [day, month, year] = datePart.split('/');
+    const [hours, minutes] = timePart.split(':');
+    return {
+      day,
+      month,
+      year: parseInt(year, 10),
+      hours,
+      minutes,
+      dateStr: formatted
+    };
+  }
+
   private static centerText(text: string, width: number): string {
     if (!text) return ' '.repeat(width);
     const padding = Math.max(0, width - text.length);
