@@ -15,7 +15,7 @@ const getDayEndStatus = async (req, res) => {
             .query(`
                 SELECT 
                     IsDayEnded,
-                    CurrentDayStart,
+                    CONVERT(varchar, CurrentDayStart, 126) as CurrentDayStart,
                     LastDayEndId,
                     (SELECT COUNT(*) FROM Sales 
                      WHERE OutletId = @outletId 
@@ -77,6 +77,7 @@ const performDayEnd = async (req, res) => {
                     PaymentMethod,
                     DiscountAmount,
                     ItemsJson,
+                    CONVERT(varchar, SaleDate, 126) as SaleDateStr,
                     SaleDate
                 FROM Sales 
                 WHERE OutletId = @outletId 
@@ -245,7 +246,7 @@ const transaction = pool.transaction();
                     paymentBreakdown,
                     categories: categoriesArray,
                     salesCount: sales.length,
-                    startDate: sales[0]?.SaleDate,
+                    startDate: sales[0]?.SaleDateStr || sales[0]?.SaleDate,
                     endDate: moment().tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss'),
                     closingDate: moment().tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss')
                 }
@@ -309,17 +310,16 @@ const getDayEndHistory = async (req, res) => {
             .query(`
                 SELECT TOP (@limit)
                     d.Id as DayEndId,
-                    d.OpeningDate,
-                    d.ClosingDate,
+                    CONVERT(varchar, d.OpeningDate, 126) as OpeningDateStr,
+                    CONVERT(varchar, d.ClosingDate, 126) as ClosingDateStr,
                     d.TotalSales,
                     d.TotalDiscount,
                     d.TotalItems,
                     d.NetSales,
                     d.PaymentBreakdown,
                     d.Categories,
-                    d.CreatedAt,
+                    CONVERT(varchar, d.CreatedAt, 126) as CreatedAtStr,
                     u.Username as ClosedByName,
-                    -- ✅ ADD sales count
                     (SELECT COUNT(*) FROM Sales WHERE DayEndId = d.Id) as SalesCount
                 FROM DayEndLogs d
                 LEFT JOIN Users u ON d.ClosedBy = u.Id
@@ -331,8 +331,8 @@ const getDayEndHistory = async (req, res) => {
             success: true,
             history: result.recordset.map(row => ({
                 id: row.DayEndId,
-                openingDate: row.OpeningDate ? moment(row.OpeningDate).tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss') : null,
-                closingDate: row.ClosingDate ? moment(row.ClosingDate).tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss') : null,
+                openingDate: row.OpeningDateStr,
+                closingDate: row.ClosingDateStr,
                 totalSales: row.TotalSales,
                 totalDiscount: row.TotalDiscount,
                 totalItems: row.TotalItems,
@@ -341,10 +341,9 @@ const getDayEndHistory = async (req, res) => {
                 paymentBreakdown: JSON.parse(row.PaymentBreakdown || '{}'),
                 categories: JSON.parse(row.Categories || '[]'),
                 closedBy: row.ClosedByName,
-                createdAt: row.CreatedAt ? moment(row.CreatedAt).tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss') : null
+                createdAt: row.CreatedAtStr
             }))
         });
-        
     } catch (err) {
         console.error('❌ Day end history error:', err);
         res.status(500).json({ error: err.message });
