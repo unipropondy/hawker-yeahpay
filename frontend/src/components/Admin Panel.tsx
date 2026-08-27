@@ -9,7 +9,9 @@ import {
   StyleSheet,
   Switch,
   Alert,
-  ScrollView
+  ScrollView,
+  Modal,
+  Platform
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import API from '../api';
@@ -118,14 +120,53 @@ export const CreateShopForm = ({ onSuccess, theme, t }) => {
       </TouchableOpacity>
       
       {showStartPicker && (
-        <DateTimePicker
-          value={startDate}
-          mode="date"
-          onChange={(event, date) => {
-            setShowStartPicker(false);
-            if (date) setStartDate(date);
-          }}
-        />
+        Platform.OS === 'web' ? (
+          <Modal
+            transparent={true}
+            animationType="slide"
+            visible={showStartPicker}
+            onRequestClose={() => setShowStartPicker(false)}
+          >
+            <View style={styles.webModalOverlay}>
+              <View style={[styles.webModalContent, { backgroundColor: theme.card }]}>
+                <View style={styles.webModalHeader}>
+                  <TouchableOpacity onPress={() => setShowStartPicker(false)}>
+                    <Text style={[styles.webModalButton, { color: theme.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.webModalTitle, { color: theme.text }]}>Select Start Date</Text>
+                  <TouchableOpacity onPress={() => setShowStartPicker(false)}>
+                    <Text style={[styles.webModalButton, { color: theme.primary, fontWeight: '700' }]}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  // @ts-ignore
+                  type="date"
+                  value={`${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`}
+                  onChangeText={(text) => {
+                    if (text) {
+                      const [y, m, d] = text.split('-').map(Number);
+                      const newD = new Date(startDate);
+                      newD.setFullYear(y);
+                      newD.setMonth(m - 1);
+                      newD.setDate(d);
+                      setStartDate(newD);
+                    }
+                  }}
+                  style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                />
+              </View>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={startDate}
+            mode="date"
+            onChange={(event, date) => {
+              setShowStartPicker(false);
+              if (date) setStartDate(date);
+            }}
+          />
+        )
       )}
       
       {/* End Date */}
@@ -140,14 +181,53 @@ export const CreateShopForm = ({ onSuccess, theme, t }) => {
       </TouchableOpacity>
       
       {showEndPicker && (
-        <DateTimePicker
-          value={endDate}
-          mode="date"
-          onChange={(event, date) => {
-            setShowEndPicker(false);
-            if (date) setEndDate(date);
-          }}
-        />
+        Platform.OS === 'web' ? (
+          <Modal
+            transparent={true}
+            animationType="slide"
+            visible={showEndPicker}
+            onRequestClose={() => setShowEndPicker(false)}
+          >
+            <View style={styles.webModalOverlay}>
+              <View style={[styles.webModalContent, { backgroundColor: theme.card }]}>
+                <View style={styles.webModalHeader}>
+                  <TouchableOpacity onPress={() => setShowEndPicker(false)}>
+                    <Text style={[styles.webModalButton, { color: theme.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.webModalTitle, { color: theme.text }]}>Select End Date</Text>
+                  <TouchableOpacity onPress={() => setShowEndPicker(false)}>
+                    <Text style={[styles.webModalButton, { color: theme.primary, fontWeight: '700' }]}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  // @ts-ignore
+                  type="date"
+                  value={`${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`}
+                  onChangeText={(text) => {
+                    if (text) {
+                      const [y, m, d] = text.split('-').map(Number);
+                      const newD = new Date(endDate);
+                      newD.setFullYear(y);
+                      newD.setMonth(m - 1);
+                      newD.setDate(d);
+                      setEndDate(newD);
+                    }
+                  }}
+                  style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                />
+              </View>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={endDate}
+            mode="date"
+            onChange={(event, date) => {
+              setShowEndPicker(false);
+              if (date) setEndDate(date);
+            }}
+          />
+        )
       )}
       
       {/* Create Button */}
@@ -240,5 +320,41 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 12,
     lineHeight: 18,
+  },
+  webModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  webModalContent: {
+    borderRadius: 16,
+    padding: 20,
+    width: 320,
+    alignItems: 'center',
+  },
+  webModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  webModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  webModalButton: {
+    fontSize: 16,
+    fontWeight: '500',
+    padding: 8,
+  },
+  webPickerInput: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 16,
+    width: '100%',
+    textAlign: 'center',
   },
 });

@@ -314,15 +314,27 @@ const groupItems = React.useMemo(() => {
       formData.append('outletId', outletId);
 
       if (newDish.imageUri) {
-        const filename = newDish.imageUri.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image';
-
-        formData.append('image', {
-          uri: newDish.imageUri,
-          name: filename || 'image.jpg',
-          type,
-        } as any);
+        if (Platform.OS === 'web') {
+          try {
+            const res = await fetch(newDish.imageUri);
+            const blob = await res.blob();
+            const mimeType = blob.type || 'image/jpeg';
+            const ext = mimeType.split('/')[1] || 'jpg';
+            const filename = `image.${ext}`;
+            formData.append('image', blob, filename);
+          } catch (e) {
+            console.error('Error preparing image blob on web:', e);
+          }
+        } else {
+          const filename = newDish.imageUri.split('/').pop();
+          const match = /\.(\w+)$/.exec(filename || '');
+          const type = match ? `image/${match[1]}` : 'image';
+          formData.append('image', {
+            uri: newDish.imageUri,
+            name: filename || 'image.jpg',
+            type,
+          } as any);
+        }
       }
 
       const response = await uploadAPI.post('/dishitems', formData, {
@@ -422,15 +434,27 @@ const groupItems = React.useMemo(() => {
       formData.append('outletId', outletId);
 
       if (newDish.imageUri && newDish.imageUri !== editingDish.imageUri) {
-        const filename = newDish.imageUri.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image';
-
-        formData.append('image', {
-          uri: newDish.imageUri,
-          name: filename || 'image.jpg',
-          type,
-        } as any);
+        if (Platform.OS === 'web') {
+          try {
+            const res = await fetch(newDish.imageUri);
+            const blob = await res.blob();
+            const mimeType = blob.type || 'image/jpeg';
+            const ext = mimeType.split('/')[1] || 'jpg';
+            const filename = `image.${ext}`;
+            formData.append('image', blob, filename);
+          } catch (e) {
+            console.error('Error preparing image blob on web:', e);
+          }
+        } else {
+          const filename = newDish.imageUri.split('/').pop();
+          const match = /\.(\w+)$/.exec(filename || '');
+          const type = match ? `image/${match[1]}` : 'image';
+          formData.append('image', {
+            uri: newDish.imageUri,
+            name: filename || 'image.jpg',
+            type,
+          } as any);
+        }
       }
 
       const response = await uploadAPI.put(`/dishitems/${editingDish.id}`, formData, {
@@ -784,7 +808,7 @@ useEffect(() => {
       {/* ADD DISH MODAL */}
       {/* ADD DISH MODAL */}
 <Modal visible={showAddDish} transparent animationType="slide">
-  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+  <TouchableWithoutFeedback onPress={Platform.OS === 'web' ? undefined : Keyboard.dismiss}>
     <View style={styles.modalOverlay}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -992,7 +1016,7 @@ useEffect(() => {
       {/* EDIT DISH MODAL */}
       {/* EDIT DISH MODAL */}
 <Modal visible={showEditDish} transparent animationType="slide">
-  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+  <TouchableWithoutFeedback onPress={Platform.OS === 'web' ? undefined : Keyboard.dismiss}>
     <View style={styles.modalOverlay}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1071,7 +1095,7 @@ useEffect(() => {
             <View style={styles.imageUploadContainer}>
               {newDish.imageUri ? (
                 <View style={styles.imagePreviewContainer}>
-                  <Image source={{ uri: newDish.imageUri }} style={styles.imagePreview} />
+                  <Image source={{ uri: getFullImageUrl(newDish.imageUri) }} style={styles.imagePreview} />
                   <TouchableOpacity
                     style={styles.removeImageButton}
                     onPress={() => setNewDish({ ...newDish, imageUri: null })}

@@ -4,8 +4,8 @@ const BASE_URL = 'https://hawker-yeahpay-production.up.railway.app';
 export const getFullImageUrl = (imagePath: string | null): string | null => {
   if (!imagePath) return null;
   
-  // If already full URL, return as is
-  if (imagePath.startsWith('http')) {
+  // If already full URL or local URI, return as is
+  if (imagePath.includes('://') || imagePath.startsWith('data:')) {
     return imagePath;
   }
   

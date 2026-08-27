@@ -1260,6 +1260,18 @@ const getEnglishCategory = (categoryName: string): string => {
   };
 
   const handleLogout = async () => {
+    if (Platform.OS === 'web') {
+      const confirmLogout = window.confirm('Are you sure you want to logout?');
+      if (confirmLogout) {
+        try {
+          await logout();
+        } catch (error) {
+          console.error('Logout failed:', error);
+        }
+      }
+      return;
+    }
+
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
@@ -2546,23 +2558,7 @@ const handleCashPayment = async (): Promise<void> => {
       }
     }
     
-    // Open cash drawer
-    const drawerOpened = await UniversalPrinter.openCashDrawer();
-    
     let drawerLogId = null;
-    if (drawerOpened) {
-      try {
-        const drawerResponse = await API.post('/cash-drawer/open', {
-          totalAmount: totalAmount,
-          paymentMethod: 'Cash',
-          notes: 'Cash payment'
-        });
-        drawerLogId = drawerResponse.data.log?.Id;
-        console.log('💰 Drawer opened and logged');
-      } catch (drawerError) {
-        console.log('Drawer log failed');
-      }
-    }
     
     // Create sale data
     const saleData = {
@@ -3308,6 +3304,26 @@ const handlePrintBill = async () => {
     
     if (printed) {
       console.log('✅ Print completed');
+      
+      // ✅ If the payment method is Cash, log the cash drawer open event (since the print job physically kicks it)
+      try {
+        const paymentMethod = pendingSaleData.paymentMethod?.toLowerCase() || '';
+        const isCash = paymentMethod.includes('cash') || (t.cash && paymentMethod.includes(t.cash.toLowerCase()));
+        if (isCash) {
+          try {
+            await API.post('/cash-drawer/open', {
+              totalAmount: pendingSaleData.total,
+              paymentMethod: 'Cash',
+              notes: 'Cash payment via Print Bill'
+            });
+            console.log('💰 Drawer log saved via Print Bill');
+          } catch (logErr) {
+            console.log('Drawer log failed during print');
+          }
+        }
+      } catch (drawerErr) {
+        console.log('❌ Cash drawer logging error during print:', drawerErr);
+      }
       
       // ✅ Clear data first
       setShowBillPrompt(false);
@@ -4514,6 +4530,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     minHeight: 60,
+    ...Platform.select({
+      web: {
+        zIndex: 100,
+      },
+      default: {},
+    }),
   },
   headerAndroid: { 
     paddingTop: (StatusBar.currentHeight || 0) + 10,
@@ -4521,6 +4543,12 @@ const styles = StyleSheet.create({
 headerLeft: { 
   width: 80,  // Fixed width for left side
   alignItems: 'flex-start',
+  ...Platform.select({
+    web: {
+      zIndex: 101,
+    },
+    default: {},
+  }),
 },
   homeButton: { 
     marginRight: 16, 
@@ -4549,6 +4577,12 @@ headerCenter: {
   flex: 1,  // Takes remaining space
   alignItems: 'center',     // ✅ Centers horizontally
   justifyContent: 'center', // ✅ Centers vertically
+  ...Platform.select({
+    web: {
+      zIndex: 101,
+    },
+    default: {},
+  }),
 },
  headerRight: { 
   width: 75,  // Fixed width for right side
@@ -4977,7 +5011,7 @@ registerText: {
     includeFontPadding: false,
   },
   menuContent: { 
-    flex: 1, 
+    flexGrow: 1, 
     padding: 16,
   },
   menuTitle: { 

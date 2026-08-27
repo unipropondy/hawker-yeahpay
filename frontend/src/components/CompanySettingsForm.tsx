@@ -65,7 +65,7 @@ const CompanySettingsForm: React.FC<Props> = ({
   defaultCashier
 }) => {
   const { refreshCurrency } = useCurrency();
-  
+
   const [settings, setSettings] = useState<CompanySettings>({
     name: userShopName || '',
     address: '',
@@ -83,7 +83,7 @@ const CompanySettingsForm: React.FC<Props> = ({
     networkPrinterIP: '',
     networkPrinterEnabled: false,
   });
-  
+
   const [enableGST, setEnableGST] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingCompanyLogo, setUploadingCompanyLogo] = useState(false);
@@ -109,46 +109,46 @@ const CompanySettingsForm: React.FC<Props> = ({
 
   const loadClientSettings = async () => {
     try {
-        if (clientId) {
-            console.log('🔄 Loading client settings with clientId:', clientId);
-            console.log('🔄 clientId type:', typeof clientId);
-            console.log('🔄 userShopName from parent:', userShopName);
-            
-            const savedSettings = await BillPDFGenerator.loadSettings(clientId);
-            
-            console.log('📥 SAVED SETTINGS FROM BILLPDFGENERATOR:', {
-                showCompanyLogo: savedSettings.showCompanyLogo,
-                showHalalLogo: savedSettings.showHalalLogo,
-                name: savedSettings.name,
-                type: typeof savedSettings.showCompanyLogo
-            });
-            
-            setSettings({
-                name: userShopName || savedSettings.name || '',
-                address: savedSettings.address || '',
-                gstNo: savedSettings.gstNo || '',
-                gstPercentage: savedSettings.gstPercentage || 0,
-                phone: savedSettings.phone || '',
-                email: savedSettings.email || '',
-                cashierName: savedSettings.cashierName || defaultCashier || '',
-                currency: savedSettings.currency || 'SGD',
-                currencySymbol: savedSettings.currencySymbol || '$',
-                companyLogo: savedSettings.companyLogo || '',
-                halalLogo: savedSettings.halalLogo || '',
-                showCompanyLogo: savedSettings.showCompanyLogo,
-                showHalalLogo: savedSettings.showHalalLogo,
-                networkPrinterIP: savedSettings.networkPrinterIP || '',
-                networkPrinterEnabled: savedSettings.networkPrinterEnabled === true,
-            });
-            
-            setEnableGST(savedSettings.gstPercentage > 0);
-        } else {
-            console.log('⚠️ No clientId provided!');
-        }
+      if (clientId) {
+        console.log('🔄 Loading client settings with clientId:', clientId);
+        console.log('🔄 clientId type:', typeof clientId);
+        console.log('🔄 userShopName from parent:', userShopName);
+
+        const savedSettings = await BillPDFGenerator.loadSettings(clientId);
+
+        console.log('📥 SAVED SETTINGS FROM BILLPDFGENERATOR:', {
+          showCompanyLogo: savedSettings.showCompanyLogo,
+          showHalalLogo: savedSettings.showHalalLogo,
+          name: savedSettings.name,
+          type: typeof savedSettings.showCompanyLogo
+        });
+
+        setSettings({
+          name: userShopName || savedSettings.name || '',
+          address: savedSettings.address || '',
+          gstNo: savedSettings.gstNo || '',
+          gstPercentage: savedSettings.gstPercentage || 0,
+          phone: savedSettings.phone || '',
+          email: savedSettings.email || '',
+          cashierName: savedSettings.cashierName || defaultCashier || '',
+          currency: savedSettings.currency || 'SGD',
+          currencySymbol: savedSettings.currencySymbol || '$',
+          companyLogo: savedSettings.companyLogo || '',
+          halalLogo: savedSettings.halalLogo || '',
+          showCompanyLogo: savedSettings.showCompanyLogo,
+          showHalalLogo: savedSettings.showHalalLogo,
+          networkPrinterIP: savedSettings.networkPrinterIP || '',
+          networkPrinterEnabled: savedSettings.networkPrinterEnabled === true,
+        });
+
+        setEnableGST(savedSettings.gstPercentage > 0);
+      } else {
+        console.log('⚠️ No clientId provided!');
+      }
     } catch (error) {
-        console.log('Error loading settings:', error);
+      console.log('Error loading settings:', error);
     }
-};
+  };
   // ✅ Upload logo function
   const uploadLogo = async (imageUri: string, type: 'company' | 'halal') => {
     try {
@@ -165,13 +165,13 @@ const CompanySettingsForm: React.FC<Props> = ({
 
       const imageUrl = response.data.imageUrl || response.data.imageUri;
       const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://hawker-yeahpay-production.up.railway.app${imageUrl}`;
-      
+
       if (type === 'company') {
         setSettings(prev => ({ ...prev, companyLogo: fullUrl }));
       } else {
         setSettings(prev => ({ ...prev, halalLogo: fullUrl }));
       }
-      
+
       return fullUrl;
     } catch (error) {
       console.log('Upload error:', error);
@@ -180,48 +180,48 @@ const CompanySettingsForm: React.FC<Props> = ({
   };
 
   // ✅ Pick image function
- const pickImage = async (type: 'company' | 'halal') => {
+  const pickImage = async (type: 'company' | 'halal') => {
     try {
-        // ✅ Mark image picker as open
-        // @ts-ignore
-        if (window.__markImagePickerOpen) {
-            console.log('📸 Marking image picker as open');
-            window.__markImagePickerOpen();
-        }
-        
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-        });
+      // ✅ Mark image picker as open
+      // @ts-ignore
+      if (window.__markImagePickerOpen) {
+        console.log('📸 Marking image picker as open');
+        window.__markImagePickerOpen();
+      }
 
-        if (!result.canceled && result.assets && result.assets[0]) {
-            if (type === 'company') {
-                setUploadingCompanyLogo(true);
-                await uploadLogo(result.assets[0].uri, 'company');
-                setUploadingCompanyLogo(false);
-            } else {
-                setUploadingHalalLogo(true);
-                await uploadLogo(result.assets[0].uri, 'halal');
-                setUploadingHalalLogo(false);
-            }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        if (type === 'company') {
+          setUploadingCompanyLogo(true);
+          await uploadLogo(result.assets[0].uri, 'company');
+          setUploadingCompanyLogo(false);
+        } else {
+          setUploadingHalalLogo(true);
+          await uploadLogo(result.assets[0].uri, 'halal');
+          setUploadingHalalLogo(false);
         }
+      }
     } catch (error) {
-        Alert.alert('Error', 'Failed to upload image');
-        if (type === 'company') setUploadingCompanyLogo(false);
-        else setUploadingHalalLogo(false);
+      Alert.alert('Error', 'Failed to upload image');
+      if (type === 'company') setUploadingCompanyLogo(false);
+      else setUploadingHalalLogo(false);
     } finally {
-        // ✅ DELAY closing marker to let app fully return to foreground
-        setTimeout(() => {
-            // @ts-ignore
-            if (window.__markImagePickerClose) {
-                console.log('📸 Marking image picker as closed (after delay)');
-                window.__markImagePickerClose();
-            }
-        }, 500); // 500ms delay
+      // ✅ DELAY closing marker to let app fully return to foreground
+      setTimeout(() => {
+        // @ts-ignore
+        if (window.__markImagePickerClose) {
+          console.log('📸 Marking image picker as closed (after delay)');
+          window.__markImagePickerClose();
+        }
+      }, 500); // 500ms delay
     }
-};
+  };
   // ✅ Remove logo function
   const removeLogo = (type: 'company' | 'halal') => {
     if (type === 'company') {
@@ -234,97 +234,97 @@ const CompanySettingsForm: React.FC<Props> = ({
   const handleSave = async () => {
     // ✅ ADD DEBUG LOG with GST
     console.log('🔍 HANDLE SAVE - Current settings:', {
-        showCompanyLogo: settings.showCompanyLogo,
-        showHalalLogo: settings.showHalalLogo,
-        gstPercentage: settings.gstPercentage,
-        enableGST: enableGST,
-        companyLogo: settings.companyLogo ? 'YES' : 'NO',
-        halalLogo: settings.halalLogo ? 'YES' : 'NO'
+      showCompanyLogo: settings.showCompanyLogo,
+      showHalalLogo: settings.showHalalLogo,
+      gstPercentage: settings.gstPercentage,
+      enableGST: enableGST,
+      companyLogo: settings.companyLogo ? 'YES' : 'NO',
+      halalLogo: settings.halalLogo ? 'YES' : 'NO'
     });
 
     if (!settings.name.trim()) {
-        Alert.alert(t.error, 'Shop name is required for bill receipt');
-        return;
+      Alert.alert(t.error, 'Shop name is required for bill receipt');
+      return;
     }
 
     const finalSettings = {
-        ...settings,
-        gstPercentage: enableGST ? settings.gstPercentage : 0,
-        showCompanyLogo: settings.showCompanyLogo,
-        showHalalLogo: settings.showHalalLogo,
-        companyLogo: settings.companyLogo,
-        halalLogo: settings.halalLogo,
-        networkPrinterIP: settings.networkPrinterIP || '',
-        networkPrinterEnabled: settings.networkPrinterEnabled || false
+      ...settings,
+      gstPercentage: enableGST ? settings.gstPercentage : 0,
+      showCompanyLogo: settings.showCompanyLogo,
+      showHalalLogo: settings.showHalalLogo,
+      companyLogo: settings.companyLogo,
+      halalLogo: settings.halalLogo,
+      networkPrinterIP: settings.networkPrinterIP || '',
+      networkPrinterEnabled: settings.networkPrinterEnabled || false
     };
 
     // ✅ ADD DEBUG LOG with GST
     console.log('🔍 FINAL SETTINGS TO SAVE:', {
-        gstPercentage: finalSettings.gstPercentage,
-        enableGST: enableGST,
-        showCompanyLogo: finalSettings.showCompanyLogo,
-        showHalalLogo: finalSettings.showHalalLogo
+      gstPercentage: finalSettings.gstPercentage,
+      enableGST: enableGST,
+      showCompanyLogo: finalSettings.showCompanyLogo,
+      showHalalLogo: finalSettings.showHalalLogo
     });
 
     setSaving(true);
-    
+
     try {
-        // ✅ STEP 1: Save to database
-        const success = await BillPDFGenerator.saveSettings(finalSettings, clientId);
-        
-        if (success) {
-            console.log('✅ Save successful, waiting for DB commit...');
-            
-            // ✅ STEP 2: Wait for database to commit
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // ✅ STEP 3: Force reload from database with cache-buster
-            console.log('🔄 Reloading settings from DB...');
-            const freshSettings = await BillPDFGenerator.loadSettings(clientId);
-            
-            console.log('📥 FRESH SETTINGS FROM DB:', {
-                gstPercentage: freshSettings.gstPercentage,
-                showCompanyLogo: freshSettings.showCompanyLogo,
-                showHalalLogo: freshSettings.showHalalLogo,
-                companyLogo: freshSettings.companyLogo ? 'YES' : 'NO',
-                halalLogo: freshSettings.halalLogo ? 'YES' : 'NO'
-            });
-            
-            // ✅ STEP 4: Update local state with DB values
-            setSettings({
-                ...settings,
-                gstPercentage: freshSettings.gstPercentage,
-                showCompanyLogo: freshSettings.showCompanyLogo,
-                showHalalLogo: freshSettings.showHalalLogo,
-                companyLogo: freshSettings.companyLogo,
-                halalLogo: freshSettings.halalLogo,
-                networkPrinterIP: freshSettings.networkPrinterIP || '',
-                networkPrinterEnabled: freshSettings.networkPrinterEnabled === true,
-            });
-            
-            // ✅ STEP 5: Update enableGST based on fresh value
-            setEnableGST(freshSettings.gstPercentage > 0);
-            
-            // ✅ STEP 6: Refresh currency
-            await refreshCurrency();
-            
-            // ✅ STEP 7: Small delay
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // ✅ STEP 8: Call onSave and close
-            onSave(finalSettings);
-            Alert.alert(t.success, 'Settings saved successfully');
-            onClose();
-        } else {
-            Alert.alert(t.error, 'Failed to save settings');
-        }
-    } catch (error) {
-        console.log('❌ Save error:', error);
+      // ✅ STEP 1: Save to database
+      const success = await BillPDFGenerator.saveSettings(finalSettings, clientId);
+
+      if (success) {
+        console.log('✅ Save successful, waiting for DB commit...');
+
+        // ✅ STEP 2: Wait for database to commit
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // ✅ STEP 3: Force reload from database with cache-buster
+        console.log('🔄 Reloading settings from DB...');
+        const freshSettings = await BillPDFGenerator.loadSettings(clientId);
+
+        console.log('📥 FRESH SETTINGS FROM DB:', {
+          gstPercentage: freshSettings.gstPercentage,
+          showCompanyLogo: freshSettings.showCompanyLogo,
+          showHalalLogo: freshSettings.showHalalLogo,
+          companyLogo: freshSettings.companyLogo ? 'YES' : 'NO',
+          halalLogo: freshSettings.halalLogo ? 'YES' : 'NO'
+        });
+
+        // ✅ STEP 4: Update local state with DB values
+        setSettings({
+          ...settings,
+          gstPercentage: freshSettings.gstPercentage,
+          showCompanyLogo: freshSettings.showCompanyLogo,
+          showHalalLogo: freshSettings.showHalalLogo,
+          companyLogo: freshSettings.companyLogo,
+          halalLogo: freshSettings.halalLogo,
+          networkPrinterIP: freshSettings.networkPrinterIP || '',
+          networkPrinterEnabled: freshSettings.networkPrinterEnabled === true,
+        });
+
+        // ✅ STEP 5: Update enableGST based on fresh value
+        setEnableGST(freshSettings.gstPercentage > 0);
+
+        // ✅ STEP 6: Refresh currency
+        await refreshCurrency();
+
+        // ✅ STEP 7: Small delay
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // ✅ STEP 8: Call onSave and close
+        onSave(finalSettings);
+        Alert.alert(t.success, 'Settings saved successfully');
+        onClose();
+      } else {
         Alert.alert(t.error, 'Failed to save settings');
+      }
+    } catch (error) {
+      console.log('❌ Save error:', error);
+      Alert.alert(t.error, 'Failed to save settings');
     } finally {
-        setSaving(false);
+      setSaving(false);
     }
-};
+  };
   const currencyOptions = [
     { code: 'SGD', symbol: '$', name: 'Singapore Dollar' },
     { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
@@ -338,7 +338,7 @@ const CompanySettingsForm: React.FC<Props> = ({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-          
+
           <View style={styles.header}>
             <Text style={[styles.title, { color: theme.text }]}>Bill Settings</Text>
             <TouchableOpacity onPress={onClose}>
@@ -347,12 +347,12 @@ const CompanySettingsForm: React.FC<Props> = ({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            
+
             {/* Shop Name - READONLY */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>
               Shop Name (from Admin) *
             </Text>
-            <View style={[styles.readonlyField, { 
+            <View style={[styles.readonlyField, {
               backgroundColor: theme.surface + '80',
               borderColor: theme.border
             }]}>
@@ -364,13 +364,13 @@ const CompanySettingsForm: React.FC<Props> = ({
             {/* Address */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>Address</Text>
             <TextInput
-              style={[styles.input, styles.textArea, { 
+              style={[styles.input, styles.textArea, {
                 backgroundColor: theme.surface,
                 color: theme.text,
                 borderColor: theme.border
               }]}
               value={settings.address}
-              onChangeText={(text) => setSettings({...settings, address: text})}
+              onChangeText={(text) => setSettings({ ...settings, address: text })}
               placeholder="Enter address"
               placeholderTextColor={theme.textSecondary}
               multiline
@@ -397,32 +397,32 @@ const CompanySettingsForm: React.FC<Props> = ({
                     Show Company Logo
                   </Text>
                 </View>
-              <Switch
-    value={settings.showCompanyLogo}
-    onValueChange={(val) => {
-        console.log('🔄 Toggle Company Logo:', {
-            old: settings.showCompanyLogo,
-            new: val,
-            type: typeof val
-        });
-        setSettings(prev => ({ ...prev, showCompanyLogo: val }));
-    }}
-    trackColor={{ false: theme.inactive, true: theme.success }}
-    thumbColor="#fff"
-    disabled={saving}
-/>
+                <Switch
+                  value={settings.showCompanyLogo}
+                  onValueChange={(val) => {
+                    console.log('🔄 Toggle Company Logo:', {
+                      old: settings.showCompanyLogo,
+                      new: val,
+                      type: typeof val
+                    });
+                    setSettings(prev => ({ ...prev, showCompanyLogo: val }));
+                  }}
+                  trackColor={{ false: theme.inactive, true: theme.success }}
+                  thumbColor="#fff"
+                  disabled={saving}
+                />
               </View>
-              
+
               {settings.showCompanyLogo && (
                 <View style={styles.logoUploadContainer}>
                   <Text style={[styles.label, { color: theme.textSecondary }]}>
                     Company Logo (Left Side)
                   </Text>
-                  
+
                   {settings.companyLogo ? (
                     <View style={styles.logoPreviewContainer}>
-                      <Image 
-                        source={{ uri: settings.companyLogo }} 
+                      <Image
+                        source={{ uri: settings.companyLogo }}
                         style={styles.logoPreview}
                         resizeMode="contain"
                       />
@@ -473,17 +473,17 @@ const CompanySettingsForm: React.FC<Props> = ({
                   disabled={saving}
                 />
               </View>
-              
+
               {settings.showHalalLogo && (
                 <View style={styles.logoUploadContainer}>
                   <Text style={[styles.label, { color: theme.textSecondary }]}>
                     Halal Logo (Right Side)
                   </Text>
-                  
+
                   {settings.halalLogo ? (
                     <View style={styles.logoPreviewContainer}>
-                      <Image 
-                        source={{ uri: settings.halalLogo }} 
+                      <Image
+                        source={{ uri: settings.halalLogo }}
                         style={styles.logoPreview}
                         resizeMode="contain"
                       />
@@ -529,7 +529,7 @@ const CompanySettingsForm: React.FC<Props> = ({
                   key={curr.code}
                   style={[
                     styles.currencyChip,
-                    { 
+                    {
                       backgroundColor: settings.currency === curr.code ? theme.primary : theme.surface,
                       borderColor: settings.currency === curr.code ? theme.primary : theme.border
                     }
@@ -555,7 +555,7 @@ const CompanySettingsForm: React.FC<Props> = ({
               Currency Code *
             </Text>
             <TextInput
-              style={[styles.input, { 
+              style={[styles.input, {
                 backgroundColor: theme.surface,
                 color: theme.text,
                 borderColor: theme.border
@@ -564,7 +564,7 @@ const CompanySettingsForm: React.FC<Props> = ({
               onChangeText={(text) => {
                 const upperText = text.toUpperCase();
                 let symbol = settings.currencySymbol;
-                
+
                 if (upperText === 'SGD') symbol = '$';
                 else if (upperText === 'MYR') symbol = 'RM';
                 else if (upperText === 'INR') symbol = '₹';
@@ -577,7 +577,7 @@ const CompanySettingsForm: React.FC<Props> = ({
                 else if (upperText === 'THB') symbol = '฿';
                 else if (upperText === 'VND') symbol = '₫';
                 else if (upperText === 'IDR') symbol = 'Rp';
-                
+
                 setSettings({
                   ...settings,
                   currency: upperText,
@@ -596,13 +596,13 @@ const CompanySettingsForm: React.FC<Props> = ({
               Currency Symbol
             </Text>
             <TextInput
-              style={[styles.input, { 
+              style={[styles.input, {
                 backgroundColor: theme.surface,
                 color: theme.text,
                 borderColor: theme.border
               }]}
               value={settings.currencySymbol}
-              onChangeText={(text) => setSettings({...settings, currencySymbol: text})}
+              onChangeText={(text) => setSettings({ ...settings, currencySymbol: text })}
               placeholder="$"
               placeholderTextColor={theme.textSecondary}
               maxLength={3}
@@ -625,13 +625,13 @@ const CompanySettingsForm: React.FC<Props> = ({
               <>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>GST Number</Text>
                 <TextInput
-                  style={[styles.input, { 
+                  style={[styles.input, {
                     backgroundColor: theme.surface,
                     color: theme.text,
                     borderColor: theme.border
                   }]}
                   value={settings.gstNo}
-                  onChangeText={(text) => setSettings({...settings, gstNo: text})}
+                  onChangeText={(text) => setSettings({ ...settings, gstNo: text })}
                   placeholder="Enter GST number"
                   placeholderTextColor={theme.textSecondary}
                   editable={!saving}
@@ -639,33 +639,33 @@ const CompanySettingsForm: React.FC<Props> = ({
 
                 <Text style={[styles.label, { color: theme.textSecondary }]}>GST Percentage (%)</Text>
                 <TextInput
-                  style={[styles.input, { 
+                  style={[styles.input, {
                     backgroundColor: theme.surface,
                     color: theme.text,
                     borderColor: theme.border
                   }]}
-                   value={settings.gstPercentage === 0 ? '' : settings.gstPercentage.toString()}
-    onChangeText={(text) => {
-        if (text === '') {
-            setSettings({...settings, gstPercentage: 0});
-        } else {
-            const num = parseFloat(text);
-            if (!isNaN(num)) {
-                setSettings({...settings, gstPercentage: num});
-            }
-        }
-    }}
-    placeholder="0"
-    placeholderTextColor={theme.textSecondary}
-    keyboardType="numeric"
-    editable={!saving && enableGST}  // ✅ Only editable when GST enabled
-/>
+                  value={settings.gstPercentage === 0 ? '' : settings.gstPercentage.toString()}
+                  onChangeText={(text) => {
+                    if (text === '') {
+                      setSettings({ ...settings, gstPercentage: 0 });
+                    } else {
+                      const num = parseFloat(text);
+                      if (!isNaN(num)) {
+                        setSettings({ ...settings, gstPercentage: num });
+                      }
+                    }
+                  }}
+                  placeholder="0"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="numeric"
+                  editable={!saving && enableGST}  // ✅ Only editable when GST enabled
+                />
               </>
             )}
 
             {/* Network Printer Configuration */}
             <View style={[styles.switchRow, { marginTop: 15 }]}>
-              <Text style={[styles.switchLabel, { color: theme.text }]}>Enable Network Printer (Wi-Fi/LAN)</Text>
+              <Text style={[styles.switchLabel, { color: theme.text }]}>Setup Printer(Wi-Fi/LAN)</Text>
               <Switch
                 value={settings.networkPrinterEnabled}
                 onValueChange={(val) => setSettings({ ...settings, networkPrinterEnabled: val })}
@@ -679,13 +679,13 @@ const CompanySettingsForm: React.FC<Props> = ({
               <>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Network Printer IP Address</Text>
                 <TextInput
-                  style={[styles.input, { 
+                  style={[styles.input, {
                     backgroundColor: theme.surface,
                     color: theme.text,
                     borderColor: theme.border
                   }]}
                   value={settings.networkPrinterIP}
-                  onChangeText={(text) => setSettings({...settings, networkPrinterIP: text})}
+                  onChangeText={(text) => setSettings({ ...settings, networkPrinterIP: text })}
                   placeholder="e.g. 192.168.1.100"
                   placeholderTextColor={theme.textSecondary}
                   keyboardType="numeric"
@@ -698,13 +698,13 @@ const CompanySettingsForm: React.FC<Props> = ({
             {/* Phone */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>Phone Number</Text>
             <TextInput
-              style={[styles.input, { 
+              style={[styles.input, {
                 backgroundColor: theme.surface,
                 color: theme.text,
                 borderColor: theme.border
               }]}
               value={settings.phone}
-              onChangeText={(text) => setSettings({...settings, phone: text})}
+              onChangeText={(text) => setSettings({ ...settings, phone: text })}
               placeholder="Enter phone number"
               placeholderTextColor={theme.textSecondary}
               keyboardType="phone-pad"
@@ -714,13 +714,13 @@ const CompanySettingsForm: React.FC<Props> = ({
             {/* Email */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>Email Address</Text>
             <TextInput
-              style={[styles.input, { 
+              style={[styles.input, {
                 backgroundColor: theme.surface,
                 color: theme.text,
                 borderColor: theme.border
               }]}
               value={settings.email}
-              onChangeText={(text) => setSettings({...settings, email: text})}
+              onChangeText={(text) => setSettings({ ...settings, email: text })}
               placeholder="Enter email"
               placeholderTextColor={theme.textSecondary}
               keyboardType="email-address"
@@ -730,13 +730,13 @@ const CompanySettingsForm: React.FC<Props> = ({
             {/* Cashier Name */}
             <Text style={[styles.label, { color: theme.textSecondary }]}>Default Cashier Name</Text>
             <TextInput
-              style={[styles.input, { 
+              style={[styles.input, {
                 backgroundColor: theme.surface,
                 color: theme.text,
                 borderColor: theme.border
               }]}
               value={settings.cashierName}
-              onChangeText={(text) => setSettings({...settings, cashierName: text})}
+              onChangeText={(text) => setSettings({ ...settings, cashierName: text })}
               placeholder="Cashier name"
               placeholderTextColor={theme.textSecondary}
               editable={!saving}
@@ -752,13 +752,13 @@ const CompanySettingsForm: React.FC<Props> = ({
             >
               <Text style={[styles.buttonText, { color: theme.text }]}>Cancel</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[styles.button, styles.saveButton, { backgroundColor: theme.primary }]}
               onPress={handleSave}
               disabled={saving}
             >
-              {saving ? <ActivityIndicator size="small" color="#fff" /> : 
+              {saving ? <ActivityIndicator size="small" color="#fff" /> :
                 <Text style={[styles.buttonText, { color: '#fff' }]}>Save Settings</Text>}
             </TouchableOpacity>
           </View>

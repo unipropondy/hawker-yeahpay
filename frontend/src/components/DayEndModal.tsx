@@ -653,7 +653,7 @@ const printDayEndReport = async (dayEndData: any) => {
                         port: 9100,
                         payload: reportText80mm,
                         autoCut: true,
-                        openCashDrawer: false,
+                        openCashbox: false,
                     });
                     console.log('✅ Day End Report printed on Network Printer');
                     return;
@@ -741,7 +741,7 @@ const printDayEndReport = async (dayEndData: any) => {
                         port: 9100,
                         payload: reprintText80mm,
                         autoCut: true,
-                        openCashDrawer: false,
+                        openCashbox: false,
                     });
                     console.log('✅ Day End Report reprinted on Network Printer');
                     Alert.alert('🖨️ Success', 'Report reprinted successfully!');

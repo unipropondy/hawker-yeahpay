@@ -1,6 +1,6 @@
 // components/DatePickerPortal.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Modal, View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { Modal, View, TouchableOpacity, Text, StyleSheet, Platform, TextInput } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 // ✅ Date picker in its own modal - completely isolated!
@@ -21,6 +21,47 @@ const DatePickerPortal: React.FC<{
   }, [visible]);
 
   if (!visible) return null;
+
+  if (Platform.OS === 'web') {
+    return (
+      <Modal
+        transparent={true}
+        animationType="slide"
+        visible={visible}
+        onRequestClose={onClose}
+      >
+        <View style={styles.webModalOverlay}>
+          <View style={[styles.webModalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.webModalHeader}>
+              <TouchableOpacity onPress={onClose}>
+                <Text style={[styles.webModalButton, { color: theme.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={[styles.webModalTitle, { color: theme.text }]}>{title}</Text>
+              <TouchableOpacity onPress={() => onConfirm(selectedDate)}>
+                <Text style={[styles.webModalButton, { color: theme.primary }]}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              // @ts-ignore
+              type="date"
+              value={`${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`}
+              onChangeText={(text) => {
+                if (text) {
+                  const [y, m, d] = text.split('-').map(Number);
+                  const newD = new Date(selectedDate);
+                  newD.setFullYear(y);
+                  newD.setMonth(m - 1);
+                  newD.setDate(d);
+                  setSelectedDate(newD);
+                }
+              }}
+              style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+            />
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   if (Platform.OS === 'android') {
     return (
@@ -99,6 +140,42 @@ const styles = StyleSheet.create({
   },
   iosPicker: {
     height: 200,
+  },
+  webModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  webModalContent: {
+    borderRadius: 16,
+    padding: 20,
+    width: 320,
+    alignItems: 'center',
+  },
+  webModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  webModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  webModalButton: {
+    fontSize: 16,
+    fontWeight: '500',
+    padding: 8,
+  },
+  webPickerInput: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 16,
+    width: '100%',
+    textAlign: 'center',
   },
 });
 

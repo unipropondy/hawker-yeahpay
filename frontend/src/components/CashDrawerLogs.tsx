@@ -9,11 +9,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
   Switch  // ✅ Add Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import API from '../api';
 import { useAuth } from '../context/AuthContext';
+import UniversalPrinter from './UniversalPrinter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface DrawerLog {
   Id: number;
@@ -52,12 +55,52 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
   const [openDrawers, setOpenDrawers] = useState<DrawerLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [openingDrawer, setOpeningDrawer] = useState(false);
   const [activeTab, setActiveTab] = useState<'open' | 'history'>('open');
   const [stats, setStats] = useState({
     totalOpens: 0,
     avgDuration: 0,
     totalCash: 0
   });
+
+  // ✅ Open Cash Drawer via network printer + log it
+  const handleOpenDrawer = async () => {
+    setOpeningDrawer(true);
+    try {
+      const storedOutletId = outletId || await AsyncStorage.getItem('selectedOutletId');
+      
+      // ✅ STEP 1: Physically open the cash drawer
+      const drawerOpened = await UniversalPrinter.openCashDrawer(storedOutletId);
+      
+      // ✅ STEP 2: Log it to the backend
+      if (drawerOpened) {
+        try {
+          await API.post('/cash-drawer/open', {
+            totalAmount: 0,
+            paymentMethod: 'Manual',
+            notes: 'Manual open from Cash Drawer Logs'
+          });
+          console.log('✅ Cash drawer opened and logged');
+        } catch (logError) {
+          console.log('❌ Drawer log failed:', logError);
+        }
+      }
+      
+      // ✅ STEP 3: Refresh the data
+      await loadAllData();
+      
+      if (drawerOpened) {
+        Alert.alert('✅ Success', 'Cash drawer opened successfully');
+      } else {
+        Alert.alert('⚠️ Warning', 'Could not open cash drawer. Check printer connection.');
+      }
+    } catch (error) {
+      console.log('❌ Open drawer error:', error);
+      Alert.alert('Error', 'Failed to open cash drawer');
+    } finally {
+      setOpeningDrawer(false);
+    }
+  };
 
   // ✅ Load data when modal opens
   useEffect(() => {
@@ -124,11 +167,24 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
   };
 
   const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return {
-      date: date.toLocaleDateString(),
-      time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
+    if (!dateString) return { date: 'N/A', time: 'N/A' };
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return { date: 'N/A', time: 'N/A' };
+      }
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return {
+        date: `${day}/${month}/${year}`,
+        time: `${hours}:${minutes}`
+      };
+    } catch (e) {
+      return { date: 'N/A', time: 'N/A' };
+    }
   };
 
   const formatDuration = (seconds: number): string => {
@@ -173,6 +229,24 @@ const CashDrawerLogs: React.FC<CashDrawerLogsProps> = ({
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ✅ Open Cash Drawer Button */}
+        <View style={{ paddingHorizontal: 15, paddingTop: 12, paddingBottom: 4 }}>
+          <TouchableOpacity
+            style={[styles.openDrawerBtn, { backgroundColor: theme.primary }]}
+            onPress={handleOpenDrawer}
+            disabled={openingDrawer}
+          >
+            {openingDrawer ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="lock-open-outline" size={22} color="#fff" />
+            )}
+            <Text style={styles.openDrawerBtnText}>
+              {openingDrawer ? 'Opening...' : 'Open Cash Drawer'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -554,6 +628,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  openDrawerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  openDrawerBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

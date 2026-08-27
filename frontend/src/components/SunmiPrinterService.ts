@@ -253,13 +253,49 @@ static async cutPaper(): Promise<boolean> {
       
       // ============ BILL DETAILS ============
       // ✅✅✅ FIXED: Date Format - DD/MM/YYYY ✅✅✅
-      const now = new Date();
-      const day = String(now.getDate()).padStart(2, '0');
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const year = now.getFullYear();
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+      let dateStr = '';
+      const rawDate = saleData.originalDate || saleData.date || saleData.SaleDate;
+      if (rawDate) {
+        const dateStrRaw = String(rawDate).trim();
+        const matchISO = dateStrRaw.match(/^(\d{4})[-/](\d{2})[-/](\d{2})[T ](\d{2}):(\d{2})/);
+        const matchSG = dateStrRaw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})[T ](\d{2}):(\d{2})/);
+        if (matchISO) {
+          const [_, yearStr, monthStr, dayStr, hourStr, minuteStr] = matchISO;
+          dateStr = `${dayStr}/${monthStr}/${yearStr} ${hourStr}:${minuteStr}`;
+        } else if (matchSG) {
+          const [_, dayStr, monthStr, yearStr, hourStr, minuteStr] = matchSG;
+          dateStr = `${dayStr}/${monthStr}/${yearStr} ${hourStr}:${minuteStr}`;
+        } else {
+          try {
+            let parsedDate = new Date(dateStrRaw);
+            if (isNaN(parsedDate.getTime())) {
+              parsedDate = new Date();
+            }
+            const day = String(parsedDate.getDate()).padStart(2, '0');
+            const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+            const year = parsedDate.getFullYear();
+            const hours = String(parsedDate.getHours()).padStart(2, '0');
+            const minutes = String(parsedDate.getMinutes()).padStart(2, '0');
+            dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+          } catch (e) {
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+          }
+        }
+      } else {
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
+      }
       
       await this.left(`INVOICE NO: ${saleData.invoiceNumber || saleData.id}`);
       await this.left(`DATE: ${dateStr}`);  // ✅ DD/MM/YYYY

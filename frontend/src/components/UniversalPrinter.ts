@@ -68,8 +68,67 @@ class UniversalPrinter {
     }
   }
 
-  static async openCashDrawer(): Promise<boolean> {
+  static async openCashDrawer(outletId?: string | number): Promise<boolean> {
     try {
+      // ✅ STEP 1: Try Network Printer cash drawer (if configured)
+      if (outletId) {
+        try {
+          const company = await BillPDFGenerator.loadSettings(outletId);
+          if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+            console.log('📡 Opening cash drawer via Network Printer IP:', company.networkPrinterIP);
+            const ThermalPrinter = require('react-native-thermal-printer');
+            const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+            const { NativeModules } = require('react-native');
+            const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+            if (ThermalPrinterModule && hasNativeModule) {
+              
+              // ✅ METHOD 1: Use printTcp with openCashbox: true (No payload, no feed, no autocut)
+              try {
+                console.log('📡 Method 1: printTcp with openCashbox: true');
+                await ThermalPrinterModule.printTcp({
+                  ip: company.networkPrinterIP,
+                  port: 9100,
+                  payload: '',
+                  autoCut: false,
+                  openCashbox: true,
+                  mmFeedPaper: 0,
+                });
+                console.log('✅ Cash drawer opened via Method 1');
+                return true;
+              } catch (e1: any) {
+                console.log('⚠️ Method 1 failed:', e1?.message || e1);
+              }
+
+              // ✅ METHOD 2: Send raw ESC/POS cash drawer kick bytes via payload
+              try {
+                console.log('📡 Method 2: Raw ESC/POS command via printTcp');
+                // Send combinations of Pin 2 / Pin 5 with both 25ms and 250ms timings for maximum compatibility
+                const pin2KickFA = '\x1B\x70\x00\x19\xFA';
+                const pin5KickFA = '\x1B\x70\x01\x19\xFA';
+                const pin2Kick19 = '\x1B\x70\x00\x19\x19';
+                const pin5Kick19 = '\x1B\x70\x01\x19\x19';
+                await ThermalPrinterModule.printTcp({
+                  ip: company.networkPrinterIP,
+                  port: 9100,
+                  payload: pin2KickFA + pin5KickFA + pin2Kick19 + pin5Kick19,
+                  autoCut: false,
+                  openCashbox: false,
+                  mmFeedPaper: 0,
+                });
+                console.log('✅ Cash drawer opened via Method 2 (raw ESC/POS)');
+                return true;
+              } catch (e2: any) {
+                console.log('⚠️ Method 2 failed:', e2?.message || e2);
+              }
+            }
+          }
+        } catch (netError: any) {
+          console.log('❌ Network cash drawer error:', netError?.message || netError);
+        }
+      }
+
+      // ✅ STEP 2: Try Sunmi built-in printer
       if (Platform.OS === 'android') {
         try {
           const SunmiPrinter = require('react-native-sunmi-inner-printer');
@@ -78,6 +137,7 @@ class UniversalPrinter {
             return true;
           }
         } catch (e) {}
+        // ✅ STEP 3: Try local thermal printer raw command
         try {
           const ThermalPrinter = require('react-native-thermal-printer');
           await ThermalPrinter.printRaw([0x1B, 0x70, 0x00, 0x19, 0xFA]);
@@ -86,6 +146,7 @@ class UniversalPrinter {
       }
       return false;
     } catch (error) {
+      console.log('❌ openCashDrawer error:', error);
       return false;
     }
   }
@@ -254,6 +315,10 @@ static async smartPrint(
   isReprint: boolean = false
 ): Promise<boolean> {
   try {
+    // Ensure reprint flag is propagated to saleData
+    if (saleData) {
+      saleData.isReprint = isReprint || saleData.isReprint || false;
+    }
     const company = await BillPDFGenerator.loadSettings(outletId);
     
     if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
@@ -329,38 +394,28 @@ private static async printThermalReceipt(
 
   private static formatThermalText58mm(saleData: any, company: any, discountInfo?: DiscountInfo): string {
     const symbol = company.currencySymbol || '$';
-    const centerText = (text: string, width: number = 32) => {
-      if (!text) return ' '.repeat(width);
-      const padding = Math.max(0, width - text.length);
-      return ' '.repeat(Math.floor(padding / 2)) + text + ' '.repeat(padding - Math.floor(padding / 2));
-    };
-
-    let p = '\n' + '='.repeat(32) + '\n';
-    p += centerText(company.name || 'STORE') + '\n';
+    let p = '[L]' + '='.repeat(32) + '\n';
+    p += `[C]<font size='big'><b>${company.name || 'STORE'}</b></font>\n`;
     
     if (company.address) {
       const addressLines = company.address.split('\n');
       for (const line of addressLines) {
-        if (line.trim()) p += centerText(line.trim()) + '\n';
+        if (line.trim()) p += `[C]${line.trim()}\n`;
       }
     }
-    if (company.phone) p += centerText(`📞 ${company.phone}`) + '\n';
-    if (company.email) p += centerText(`📧 ${company.email}`) + '\n';
-    if (company.gstNo) p += centerText(`GST: ${company.gstNo}`) + '\n';
-    p += '='.repeat(32) + '\n';
+    if (company.phone) p += `[C]📞 ${company.phone}\n`;
+    if (company.email) p += `[C]📧 ${company.email}\n`;
+    if (company.gstNo) p += `[C]GST: ${company.gstNo}\n`;
+    p += '[L]' + '='.repeat(32) + '\n';
 
-    // Bill details
     const parsedDate = this.parseRawDateTime(saleData.originalDate || saleData.date || saleData.SaleDate);
-    const dateStr = parsedDate.dateStr;
+    p += `[L]INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
+    p += `[L]DATE: ${parsedDate.dateStr}\n`;
+    p += `[L]CASHIER: ${saleData.cashier || company.cashierName || 'Staff'}\n`;
+    p += '[L]' + '-'.repeat(32) + '\n';
 
-    p += `INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
-    p += `DATE: ${dateStr}\n`;
-    p += `CASHIER: ${saleData.cashier || company.cashierName || 'Staff'}\n`;
-    p += '-'.repeat(32) + '\n';
-
-    // Item Header (ITEM 12 chars, QTY 3 chars, PRICE 6 chars, TOTAL 8 chars) + spaces = 32 chars
-    p += 'ITEM'.padEnd(12, ' ') + 'QTY'.padStart(3, ' ') + ' ' + 'PRICE'.padStart(6, ' ') + 'TOTAL'.padStart(8, ' ') + '\n';
-    p += '-'.repeat(32) + '\n';
+    p += '[L]' + 'ITEM'.padEnd(12, ' ') + 'QTY'.padStart(3, ' ') + ' ' + 'PRICE'.padStart(6, ' ') + 'TOTAL'.padStart(8, ' ') + '\n';
+    p += '[L]' + '-'.repeat(32) + '\n';
 
     const items = saleData.items || [];
     for (const item of items) {
@@ -368,110 +423,77 @@ private static async printThermalReceipt(
       const qty = (item.quantity || 1).toString().padStart(3, ' ');
       const price = `${symbol}${item.price.toFixed(2)}`.padStart(6, ' ');
       const total = `${symbol}${(item.price * item.quantity).toFixed(2)}`.padStart(8, ' ');
-      p += `${name}${qty} ${price}${total}\n`;
+      p += `[L]${name}${qty} ${price}${total}\n`;
       if (item.quantity > 10) {
-        p += `    @ ${symbol}${item.price.toFixed(2)} ea\n`;
+        p += `[L]    @ ${symbol}${item.price.toFixed(2)} ea\n`;
       }
     }
-    p += '-'.repeat(32) + '\n';
+    p += '[L]' + '-'.repeat(32) + '\n';
 
-    // Subtotal & Totals
     let subtotal = saleData.total;
-    const twoCols = (left: string, right: string) => {
-      const pad = 32 - left.length - right.length;
-      return left + ' '.repeat(Math.max(0, pad)) + right + '\n';
-    };
+    const twoCols = (left: string, right: string) => left + ' '.repeat(Math.max(0, 32 - left.length - right.length)) + right;
 
-    let discountAmount = 0;
-    let discountType = 'percentage';
-    let discountValue = 0;
-
-    if (discountInfo?.applied && discountInfo.amount > 0) {
-      discountAmount = discountInfo.amount;
-      discountType = discountInfo.type;
-      discountValue = discountInfo.value;
-    } else if (saleData.discountAmount && saleData.discountAmount > 0) {
-      discountAmount = saleData.discountAmount;
-      discountType = saleData.discountType;
-      discountValue = saleData.discountValue;
-    }
+    let discountAmount = discountInfo?.applied && discountInfo.amount > 0 ? discountInfo.amount : (saleData.discountAmount || 0);
+    let discountType = discountInfo?.applied ? discountInfo.type : (saleData.discountType || 'percentage');
+    let discountValue = discountInfo?.applied ? discountInfo.value : (saleData.discountValue || 0);
 
     if (discountAmount > 0) {
       const originalTotal = subtotal + discountAmount;
-      p += twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`);
-      p += twoCols('Discount:', `-${symbol}${discountAmount.toFixed(2)}`);
-      if (discountType === 'percentage') {
-        p += `    (${discountValue}% off)\n`;
-      }
-      p += '-'.repeat(32) + '\n';
+      p += `[L]${twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`)}\n`;
+      p += `[L]${twoCols('Discount:', `-${symbol}${discountAmount.toFixed(2)}`)}\n`;
+      if (discountType === 'percentage') p += `[L]    (${discountValue}% off)\n`;
+      p += '[L]' + '-'.repeat(32) + '\n';
     } else {
-      p += twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`);
-      p += '-'.repeat(32) + '\n';
+      p += `[L]${twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`)}\n`;
+      p += '[L]' + '-'.repeat(32) + '\n';
     }
 
     if (company.gstPercentage > 0) {
       const gstAmount = subtotal * (company.gstPercentage / (100 + company.gstPercentage));
-      const beforeGst = subtotal - gstAmount;
-      p += twoCols('Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`);
-      p += twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`);
-      p += '-'.repeat(32) + '\n';
+      p += `[L]${twoCols('Sub Total (before GST):', `${symbol}${(subtotal - gstAmount).toFixed(2)}`)}\n`;
+      p += `[L]${twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`)}\n`;
+      p += '[L]' + '-'.repeat(32) + '\n';
     }
 
-    p += twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`);
-    p += '='.repeat(32) + '\n';
-
-    p += twoCols('PAYMENT:', saleData.paymentMethod || 'Cash');
+    p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
+    p += '[L]' + '='.repeat(32) + '\n';
+    p += `[L]${twoCols('PAYMENT:', saleData.paymentMethod || 'Cash')}\n`;
+    
     if (saleData.cashPaid && saleData.cashPaid > 0) {
-      p += twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`);
-      if (saleData.change && saleData.change > 0) {
-        p += twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`);
-      }
+      p += `[L]${twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`)}\n`;
+      if (saleData.change && saleData.change > 0) p += `[L]${twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`)}\n`;
     }
 
-    p += '\n';
-    p += centerText('THANK YOU! COME AGAIN!') + '\n';
-    p += centerText('SMARTHAWKER BY UNIPROSG') + '\n';
-    if (company.gstPercentage > 0) {
-      p += centerText(`* Prices include ${company.gstPercentage}% GST`) + '\n';
-    }
-    p += '\n\n\n';
+    p += '[L]\n[C]THANK YOU! COME AGAIN!\n[C]SMARTHAWKER BY UNIPROSG\n';
+    if (company.gstPercentage > 0) p += `[C]* Prices include ${company.gstPercentage}% GST\n`;
+    p += '[L]\n\n';
     return p;
   }
 
   private static formatThermalText80mm(saleData: any, company: any, discountInfo?: DiscountInfo): string {
     const symbol = company.currencySymbol || '$';
-    const centerText = (text: string, width: number = 48) => {
-      if (!text) return ' '.repeat(width);
-      const padding = Math.max(0, width - text.length);
-      return ' '.repeat(Math.floor(padding / 2)) + text + ' '.repeat(padding - Math.floor(padding / 2));
-    };
-
-    let p = '\n' + '='.repeat(48) + '\n';
-    p += centerText(company.name || 'STORE', 48) + '\n';
+    let p = '[L]' + '='.repeat(48) + '\n';
+    p += `[C]<font size='big'><b>${company.name || 'STORE'}</b></font>\n`;
     
     if (company.address) {
       const addressLines = company.address.split('\n');
       for (const line of addressLines) {
-        if (line.trim()) p += centerText(line.trim(), 48) + '\n';
+        if (line.trim()) p += `[C]${line.trim()}\n`;
       }
     }
-    if (company.phone) p += centerText(`📞 ${company.phone}`, 48) + '\n';
-    if (company.email) p += centerText(`📧 ${company.email}`, 48) + '\n';
-    if (company.gstNo) p += centerText(`GST: ${company.gstNo}`, 48) + '\n';
-    p += '='.repeat(48) + '\n';
+    if (company.phone) p += `[C]📞 ${company.phone}\n`;
+    if (company.email) p += `[C]📧 ${company.email}\n`;
+    if (company.gstNo) p += `[C]GST: ${company.gstNo}\n`;
+    p += '[L]' + '='.repeat(48) + '\n';
 
-    // Bill details
     const parsedDate = this.parseRawDateTime(saleData.originalDate || saleData.date || saleData.SaleDate);
-    const dateStr = parsedDate.dateStr;
+    p += `[L]INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
+    p += `[L]DATE: ${parsedDate.dateStr}\n`;
+    p += `[L]CASHIER: ${saleData.cashier || company.cashierName || 'Staff'}\n`;
+    p += '[L]' + '-'.repeat(48) + '\n';
 
-    p += `INVOICE NO: ${saleData.invoiceNumber || saleData.id}\n`;
-    p += `DATE: ${dateStr}\n`;
-    p += `CASHIER: ${saleData.cashier || company.cashierName || 'Staff'}\n`;
-    p += '-'.repeat(48) + '\n';
-
-    // Item Header (ITEM 24 chars, QTY 4 chars, PRICE 9 chars, TOTAL 11 chars) = 48 chars
-    p += 'ITEM'.padEnd(24, ' ') + 'QTY'.padStart(4, ' ') + 'PRICE'.padStart(9, ' ') + 'TOTAL'.padStart(11, ' ') + '\n';
-    p += '-'.repeat(48) + '\n';
+    p += '[L]' + 'ITEM'.padEnd(24, ' ') + 'QTY'.padStart(4, ' ') + 'PRICE'.padStart(9, ' ') + 'TOTAL'.padStart(11, ' ') + '\n';
+    p += '[L]' + '-'.repeat(48) + '\n';
 
     const items = saleData.items || [];
     for (const item of items) {
@@ -479,73 +501,50 @@ private static async printThermalReceipt(
       const qty = (item.quantity || 1).toString().padStart(4, ' ');
       const price = `${symbol}${item.price.toFixed(2)}`.padStart(9, ' ');
       const total = `${symbol}${(item.price * item.quantity).toFixed(2)}`.padStart(11, ' ');
-      p += `${name}${qty}${price}${total}\n`;
+      p += `[L]${name}${qty}${price}${total}\n`;
       if (item.quantity > 10) {
-        p += `    @ ${symbol}${item.price.toFixed(2)} ea\n`;
+        p += `[L]    @ ${symbol}${item.price.toFixed(2)} ea\n`;
       }
     }
-    p += '-'.repeat(48) + '\n';
+    p += '[L]' + '-'.repeat(48) + '\n';
 
-    // Subtotal & Totals
     let subtotal = saleData.total;
-    const twoCols = (left: string, right: string) => {
-      const pad = 48 - left.length - right.length;
-      return left + ' '.repeat(Math.max(0, pad)) + right + '\n';
-    };
+    const twoCols = (left: string, right: string) => left + ' '.repeat(Math.max(0, 48 - left.length - right.length)) + right;
 
-    let discountAmount = 0;
-    let discountType = 'percentage';
-    let discountValue = 0;
-
-    if (discountInfo?.applied && discountInfo.amount > 0) {
-      discountAmount = discountInfo.amount;
-      discountType = discountInfo.type;
-      discountValue = discountInfo.value;
-    } else if (saleData.discountAmount && saleData.discountAmount > 0) {
-      discountAmount = saleData.discountAmount;
-      discountType = saleData.discountType;
-      discountValue = saleData.discountValue;
-    }
+    let discountAmount = discountInfo?.applied && discountInfo.amount > 0 ? discountInfo.amount : (saleData.discountAmount || 0);
+    let discountType = discountInfo?.applied ? discountInfo.type : (saleData.discountType || 'percentage');
+    let discountValue = discountInfo?.applied ? discountInfo.value : (saleData.discountValue || 0);
 
     if (discountAmount > 0) {
       const originalTotal = subtotal + discountAmount;
-      p += twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`);
-      p += twoCols('Discount:', `-${symbol}${discountAmount.toFixed(2)}`);
-      if (discountType === 'percentage') {
-        p += `    (${discountValue}% off)\n`;
-      }
-      p += '-'.repeat(48) + '\n';
+      p += `[L]${twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`)}\n`;
+      p += `[L]${twoCols('Discount:', `-${symbol}${discountAmount.toFixed(2)}`)}\n`;
+      if (discountType === 'percentage') p += `[L]    (${discountValue}% off)\n`;
+      p += '[L]' + '-'.repeat(48) + '\n';
     } else {
-      p += twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`);
-      p += '-'.repeat(48) + '\n';
+      p += `[L]${twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`)}\n`;
+      p += '[L]' + '-'.repeat(48) + '\n';
     }
 
     if (company.gstPercentage > 0) {
       const gstAmount = subtotal * (company.gstPercentage / (100 + company.gstPercentage));
-      const beforeGst = subtotal - gstAmount;
-      p += twoCols('Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`);
-      p += twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`);
-      p += '-'.repeat(48) + '\n';
+      p += `[L]${twoCols('Sub Total (before GST):', `${symbol}${(subtotal - gstAmount).toFixed(2)}`)}\n`;
+      p += `[L]${twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`)}\n`;
+      p += '[L]' + '-'.repeat(48) + '\n';
     }
 
-    p += twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`);
-    p += '='.repeat(48) + '\n';
+    p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
+    p += '[L]' + '='.repeat(48) + '\n';
+    p += `[L]${twoCols('PAYMENT:', saleData.paymentMethod || 'Cash')}\n`;
 
-    p += twoCols('PAYMENT:', saleData.paymentMethod || 'Cash');
     if (saleData.cashPaid && saleData.cashPaid > 0) {
-      p += twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`);
-      if (saleData.change && saleData.change > 0) {
-        p += twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`);
-      }
+      p += `[L]${twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`)}\n`;
+      if (saleData.change && saleData.change > 0) p += `[L]${twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`)}\n`;
     }
 
-    p += '\n';
-    p += centerText('THANK YOU! COME AGAIN!', 48) + '\n';
-    p += centerText('SMARTHAWKER BY UNIPROSG', 48) + '\n';
-    if (company.gstPercentage > 0) {
-      p += centerText(`* Prices include ${company.gstPercentage}% GST`, 48) + '\n';
-    }
-    p += '\n\n\n';
+    p += '[L]\n[C]THANK YOU! COME AGAIN!\n[C]SMARTHAWKER BY UNIPROSG\n';
+    if (company.gstPercentage > 0) p += `[C]* Prices include ${company.gstPercentage}% GST\n`;
+    p += '[L]\n\n';
     return p;
   }
 
@@ -600,13 +599,21 @@ private static async printLaser(saleData: any, userId?: string | number, printer
       // Format receipt text
       const receiptText = this.formatThermalText80mm(saleData, company, discountInfo);
 
+      // Determine if payment method is Cash to open cashbox during print job (only if not a reprint)
+      const paymentMethod = saleData?.paymentMethod?.toLowerCase() || '';
+      const isReprint = saleData?.isReprint === true;
+      const isOpenCashbox = !isReprint && (paymentMethod.includes('cash') || paymentMethod.includes('money'));
+      console.log('📡 Print Network Job - isOpenCashbox:', isOpenCashbox, 'isReprint:', isReprint);
+
       // Support react-native-thermal-printer TCP API
       await ThermalPrinterModule.printTcp({
         ip: company.networkPrinterIP,
         port: 9100,
         payload: receiptText,
         autoCut: true,
-        openCashDrawer: false,
+        openCashbox: isOpenCashbox, // Let the native module trigger it natively
+        mmFeedPaper: 30,
+        printerNbrCharactersPerLine: 48,
       });
 
       console.log('✅ Network Print successful');
@@ -759,7 +766,7 @@ static async printSalesReportThermal(reportData: any, userId?: string | number, 
                         port: 9100,
                         payload: text,
                         autoCut: true,
-                        openCashDrawer: false,
+                        openCashbox: false,
                     });
                     return true;
                 }
@@ -943,7 +950,7 @@ static async printCategoryReportThermal(
                         port: 9100,
                         payload: text,
                         autoCut: true,
-                        openCashDrawer: false,
+                        openCashbox: false,
                     });
                     return true;
                 }
@@ -1015,11 +1022,42 @@ static async printCategoryReportThermal(
     }
     
     try {
+      const dateStrRaw = String(dateString).trim();
+      
+      // ✅ 1. Try parsing ISO string directly (YYYY-MM-DDTHH:MM:SS...)
+      const matchISO = dateStrRaw.match(/^(\d{4})[-/](\d{2})[-/](\d{2})[T ](\d{2}):(\d{2})/);
+      if (matchISO) {
+        const [_, yearStr, monthStr, dayStr, hourStr, minuteStr] = matchISO;
+        return {
+          day: dayStr,
+          month: monthStr,
+          year: parseInt(yearStr, 10),
+          hours: hourStr,
+          minutes: minuteStr,
+          dateStr: `${dayStr}/${monthStr}/${yearStr} ${hourStr}:${minuteStr}`
+        };
+      }
+      
+      // ✅ 2. Try parsing SG formatted string directly (DD/MM/YYYY HH:MM...)
+      const matchSG = dateStrRaw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})[T ](\d{2}):(\d{2})/);
+      if (matchSG) {
+        const [_, dayStr, monthStr, yearStr, hourStr, minuteStr] = matchSG;
+        return {
+          day: dayStr,
+          month: monthStr,
+          year: parseInt(yearStr, 10),
+          hours: hourStr,
+          minutes: minuteStr,
+          dateStr: `${dayStr}/${monthStr}/${yearStr} ${hourStr}:${minuteStr}`
+        };
+      }
+
+      // 3. Fallback to timezone-based parsing
       let date: Date;
       if (dateString instanceof Date) {
         date = dateString;
       } else {
-        let str = String(dateString).trim();
+        let str = dateStrRaw;
         // If it doesn't have a timezone offset (ends with Z, or contains +xx:xx or -xx:xx)
         if (!str.endsWith('Z') && !str.match(/[+-]\d{2}:?\d{2}$/)) {
           if (str.includes(' ')) {

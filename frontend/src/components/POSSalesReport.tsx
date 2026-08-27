@@ -1203,95 +1203,8 @@ const formatDateTime = (dateString: string) => {
             ))}
           </View>
 
-          {/* ✅ Custom Date + Time Picker - FIXED */}
-{/* Custom Date + Time Picker - FIXED with ScrollView */}
-{/* ✅ Custom Date + Time Picker - Fully Scrollable */}
-{(selectedFilter === 'custom' || selectedFilter === 'Custom') && (
-    <ScrollView 
-        style={styles.customScrollView}
-        contentContainerStyle={styles.customScrollContent}
-        showsVerticalScrollIndicator={true}
-        nestedScrollEnabled={true}
-    >
-        <View style={[styles.customDateContainer, { backgroundColor: theme.surface }]}>
-            
-            {/* Start Date */}
-            <View style={styles.datePickerRow}>
-                <Text style={[styles.dateLabel, { color: theme.text }]}>{t.startDate}</Text>
-                <TouchableOpacity 
-                    style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
-                    onPress={openStartPicker}
-                >
-                    <Text style={[styles.dateButtonText, { color: theme.text }]}>
-                        {startDate.toLocaleDateString()}
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* End Date */}
-            <View style={styles.datePickerRow}>
-                <Text style={[styles.dateLabel, { color: theme.text }]}>{t.endDate}</Text>
-                <TouchableOpacity 
-                    style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
-                    onPress={openEndPicker}
-                >
-                    <Text style={[styles.dateButtonText, { color: theme.text }]}>
-                        {endDate.toLocaleDateString()}
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* TIME SELECTORS */}
-            <View style={styles.timeContainer}>
-                {/* Start Time */}
-                <View style={styles.timeRow}>
-                    <Text style={[styles.timeLabel, { color: theme.text }]}>
-                        ⏰ Start Time
-                    </Text>
-                    <TouchableOpacity 
-                        style={[styles.timeButton, { 
-                            backgroundColor: theme.surface, 
-                            borderColor: theme.border 
-                        }]}
-                        onPress={() => openTimePicker('start')}
-                    >
-                        <Text style={[styles.timeButtonText, { color: theme.text }]}>
-                            {formatTime(startTime)}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* End Time */}
-                <View style={styles.timeRow}>
-                    <Text style={[styles.timeLabel, { color: theme.text }]}>
-                        ⏰ End Time
-                    </Text>
-                    <TouchableOpacity 
-                        style={[styles.timeButton, { 
-                            backgroundColor: theme.surface, 
-                            borderColor: theme.border 
-                        }]}
-                        onPress={() => openTimePicker('end')}
-                    >
-                        <Text style={[styles.timeButtonText, { color: theme.text }]}>
-                            {formatTime(endTime)}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Apply Button */}
-            <TouchableOpacity 
-                style={[styles.applyButton, { backgroundColor: theme.secondary }]}
-                onPress={handleApplyCustomFilter}
-            >
-                <Text style={styles.applyButtonText}>{t.applyFilter}</Text>
-            </TouchableOpacity>
-        </View>
-    </ScrollView>
-)}
           {/* ✅ SINGLE DateTimePicker - Handles BOTH Date and Time */}
-          {showPicker && (
+          {showPicker && Platform.OS !== 'web' && (
             <DateTimePicker
               value={tempDate}
               mode={pickerType === 'startTime' || pickerType === 'endTime' ? 'time' : 'date'}
@@ -1301,12 +1214,225 @@ const formatDateTime = (dateString: string) => {
             />
           )}
 
+          {showPicker && Platform.OS === 'web' && (
+            <Modal
+              transparent={true}
+              animationType="slide"
+              visible={showPicker}
+              onRequestClose={() => {
+                setShowPicker(false);
+                isTimePickerOpen.current = false;
+              }}
+            >
+              <View style={styles.webModalOverlay}>
+                <View style={[styles.webModalContent, { backgroundColor: theme.card }]}>
+                  <View style={styles.webModalHeader}>
+                    <TouchableOpacity onPress={() => {
+                      setShowPicker(false);
+                      isTimePickerOpen.current = false;
+                    }}>
+                      <Text style={[styles.webModalButton, { color: theme.text }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.webModalTitle, { color: theme.text }]}>
+                      {pickerType === 'startTime' || pickerType === 'endTime' ? 'Select Time' : 'Select Date'}
+                    </Text>
+                    <TouchableOpacity onPress={() => {
+                      onDateChange({ type: 'set' }, tempDate);
+                    }}>
+                      <Text style={[styles.webModalButton, { color: theme.primary, fontWeight: '700' }]}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  {pickerType === 'startTime' || pickerType === 'endTime' ? (
+                    <TextInput
+                      // @ts-ignore
+                      type="time"
+                      value={`${String(tempDate.getHours()).padStart(2, '0')}:${String(tempDate.getMinutes()).padStart(2, '0')}`}
+                      onChangeText={(text) => {
+                        if (text) {
+                          const [h, m] = text.split(':').map(Number);
+                          const d = new Date(tempDate);
+                          d.setHours(h || 0, m || 0, 0, 0);
+                          setTempDate(d);
+                        }
+                      }}
+                      style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                    />
+                  ) : (
+                    <TextInput
+                      // @ts-ignore
+                      type="date"
+                      value={`${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}-${String(tempDate.getDate()).padStart(2, '0')}`}
+                      onChangeText={(text) => {
+                        if (text) {
+                          const [y, m, d] = text.split('-').map(Number);
+                          const newD = new Date(tempDate);
+                          newD.setFullYear(y);
+                          newD.setMonth(m - 1);
+                          newD.setDate(d);
+                          setTempDate(newD);
+                        }
+                      }}
+                      style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+                    />
+                  )}
+                </View>
+              </View>
+            </Modal>
+          )}
+
           {/* ScrollView Content */}
           <ScrollView 
             style={styles.contentScrollView}
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={true}
           >
+            {/* Custom Date + Time Picker - Now inline in main ScrollView so it scrolls with the content */}
+            {(selectedFilter === 'custom' || selectedFilter === 'Custom') && (
+              <View style={[
+                styles.customDateContainer, 
+                { backgroundColor: theme.surface },
+                Platform.OS === 'web' && { padding: 12, marginBottom: 15 }
+              ]}>
+                {Platform.OS === 'web' ? (
+                  // Web 2-Column Side-by-Side Layout to save vertical space
+                  <View style={{ gap: 10, marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      {/* Start Date */}
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[styles.dateLabel, { color: theme.text, flex: 0, minWidth: 80, fontSize: 13 }]}>{t.startDate}:</Text>
+                        <TouchableOpacity 
+                          style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border, flex: 1, minHeight: 40, padding: 8 }]}
+                          onPress={openStartPicker}
+                        >
+                          <Text style={[styles.dateButtonText, { color: theme.text, fontSize: 13 }]}>
+                            {startDate.toLocaleDateString()}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* End Date */}
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[styles.dateLabel, { color: theme.text, flex: 0, minWidth: 80, fontSize: 13 }]}>{t.endDate}:</Text>
+                        <TouchableOpacity 
+                          style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border, flex: 1, minHeight: 40, padding: 8 }]}
+                          onPress={openEndPicker}
+                        >
+                          <Text style={[styles.dateButtonText, { color: theme.text, fontSize: 13 }]}>
+                            {endDate.toLocaleDateString()}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      {/* Start Time */}
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[styles.timeLabel, { color: theme.text, flex: 0, minWidth: 80, fontSize: 13 }]}>⏰ Start:</Text>
+                        <TouchableOpacity 
+                          style={[styles.timeButton, { backgroundColor: theme.surface, borderColor: theme.border, flex: 1, minHeight: 38, padding: 6 }]}
+                          onPress={() => openTimePicker('start')}
+                        >
+                          <Text style={[styles.timeButtonText, { color: theme.text, fontSize: 13 }]}>
+                            {formatTime(startTime)}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* End Time */}
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[styles.timeLabel, { color: theme.text, flex: 0, minWidth: 80, fontSize: 13 }]}>⏰ End:</Text>
+                        <TouchableOpacity 
+                          style={[styles.timeButton, { backgroundColor: theme.surface, borderColor: theme.border, flex: 1, minHeight: 38, padding: 6 }]}
+                          onPress={() => openTimePicker('end')}
+                        >
+                          <Text style={[styles.timeButtonText, { color: theme.text, fontSize: 13 }]}>
+                            {formatTime(endTime)}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  // Native stacked layout
+                  <>
+                    {/* Start Date */}
+                    <View style={styles.datePickerRow}>
+                        <Text style={[styles.dateLabel, { color: theme.text }]}>{t.startDate}</Text>
+                        <TouchableOpacity 
+                            style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
+                            onPress={openStartPicker}
+                        >
+                            <Text style={[styles.dateButtonText, { color: theme.text }]}>
+                                {startDate.toLocaleDateString()}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* End Date */}
+                    <View style={styles.datePickerRow}>
+                        <Text style={[styles.dateLabel, { color: theme.text }]}>{t.endDate}</Text>
+                        <TouchableOpacity 
+                            style={[styles.dateButton, { backgroundColor: theme.card, borderColor: theme.border }]}
+                            onPress={openEndPicker}
+                        >
+                            <Text style={[styles.dateButtonText, { color: theme.text }]}>
+                                {endDate.toLocaleDateString()}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* TIME SELECTORS */}
+                    <View style={styles.timeContainer}>
+                        {/* Start Time */}
+                        <View style={styles.timeRow}>
+                            <Text style={[styles.timeLabel, { color: theme.text }]}>
+                                ⏰ Start Time
+                            </Text>
+                            <TouchableOpacity 
+                                style={[styles.timeButton, { 
+                                    backgroundColor: theme.surface, 
+                                    borderColor: theme.border 
+                                }]}
+                                onPress={() => openTimePicker('start')}
+                            >
+                                <Text style={[styles.timeButtonText, { color: theme.text }]}>
+                                    {formatTime(startTime)}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* End Time */}
+                        <View style={styles.timeRow}>
+                            <Text style={[styles.timeLabel, { color: theme.text }]}>
+                                ⏰ End Time
+                            </Text>
+                            <TouchableOpacity 
+                                style={[styles.timeButton, { 
+                                    backgroundColor: theme.surface, 
+                                    borderColor: theme.border 
+                                }]}
+                                onPress={() => openTimePicker('end')}
+                            >
+                                <Text style={[styles.timeButtonText, { color: theme.text }]}>
+                                    {formatTime(endTime)}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                  </>
+                )}
+
+                {/* Apply Button */}
+                <TouchableOpacity 
+                    style={[styles.applyButton, { backgroundColor: theme.secondary }]}
+                    onPress={handleApplyCustomFilter}
+                >
+                    <Text style={styles.applyButtonText}>{t.applyFilter}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={theme.primary} />
@@ -2825,9 +2951,16 @@ const styles = StyleSheet.create({
   fontStyle: 'italic',
 },
  customScrollView: {
-        maxHeight: 290,  // Increase if needed
-        marginHorizontal: 12,
-    },
+    ...Platform.select({
+      web: {
+        maxHeight: 200,
+      },
+      default: {
+        maxHeight: 290,
+      }
+    }),
+    marginHorizontal: 12,
+  },
     customScrollContent: {
         paddingBottom: 10,
         flexGrow: 1,
@@ -2897,7 +3030,7 @@ voidBadgeText: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: Platform.OS === 'web' ? 12 : 10,
   },
   timeLabel: {
     fontSize: 14,
@@ -2908,7 +3041,7 @@ voidBadgeText: {
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
-    flex: 1.5,
+    flex: Platform.OS === 'web' ? 2 : 1.5,
     alignItems: 'center',
     minHeight: 44,
     justifyContent: 'center',
@@ -2948,6 +3081,42 @@ voidedByText: {
   borderTopWidth: 1,
   borderTopColor: 'rgba(0,0,0,0.05)',
   fontStyle: 'italic',
+},
+webModalOverlay: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'rgba(0,0,0,0.5)',
+},
+webModalContent: {
+  borderRadius: 16,
+  padding: 20,
+  width: 320,
+  alignItems: 'center',
+},
+webModalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  width: '100%',
+  marginBottom: 20,
+  alignItems: 'center',
+},
+webModalTitle: {
+  fontSize: 16,
+  fontWeight: '600',
+},
+webModalButton: {
+  fontSize: 16,
+  fontWeight: '500',
+  padding: 8,
+},
+webPickerInput: {
+  padding: 12,
+  borderRadius: 8,
+  borderWidth: 1,
+  fontSize: 16,
+  width: '100%',
+  textAlign: 'center',
 },
 });
 

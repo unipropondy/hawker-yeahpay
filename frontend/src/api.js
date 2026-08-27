@@ -15,7 +15,7 @@ export const setNavigationCallback = (callback) => {
 
 const getBaseURL = () => {
   if (__DEV__) {
-    return 'http://192.168.0.192:5000/api';
+    return 'https://hawker-yeahpay-production.up.railway.app/api';
   } else {
     // Production URL
     return 'https://hawker-yeahpay-production.up.railway.app/api';
@@ -266,7 +266,7 @@ uploadAPI.interceptors.request.use(
 );
 export const getFullImageUrl = (imageUri) => {
   if (!imageUri) return null;
-  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+  if (imageUri.includes('://') || imageUri.startsWith('data:')) {
     return imageUri;
   }
   if (imageUri.startsWith('/')) {
