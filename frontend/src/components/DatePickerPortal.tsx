@@ -41,22 +41,32 @@ const DatePickerPortal: React.FC<{
                 <Text style={[styles.webModalButton, { color: theme.primary }]}>Done</Text>
               </TouchableOpacity>
             </View>
-            <TextInput
-              // @ts-ignore
-              type="date"
-              value={`${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`}
-              onChangeText={(text) => {
-                if (text) {
-                  const [y, m, d] = text.split('-').map(Number);
+            {React.createElement('input', {
+              type: 'date',
+              value: `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`,
+              onChange: (e: any) => {
+                const val = e.target.value;
+                if (val) {
+                  const [y, m, d] = val.split('-').map(Number);
                   const newD = new Date(selectedDate);
                   newD.setFullYear(y);
                   newD.setMonth(m - 1);
                   newD.setDate(d);
                   setSelectedDate(newD);
                 }
-              }}
-              style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-            />
+              },
+              style: {
+                width: '100%',
+                padding: '12px',
+                fontSize: '16px',
+                borderRadius: '8px',
+                border: '1px solid ' + (theme.border || '#ccc'),
+                backgroundColor: theme.surface || '#fff',
+                color: theme.text || '#000',
+                marginTop: '15px',
+                boxSizing: 'border-box'
+              }
+            })}
           </View>
         </View>
       </Modal>

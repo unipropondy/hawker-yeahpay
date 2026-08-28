@@ -240,14 +240,40 @@ class UniversalPrinter {
         ? this.generateCategoryDetailHTML(selectedCategory, categoryItems, categoryTransactions, company, enrichedOptions)
         : this.generateAllCategoriesHTML(categories, company, enrichedOptions);
 
-      // ✅ Save as PDF (no preview)
-      const { uri } = await Print.printToFileAsync({ html });
-      console.log('📄 Category report saved at:', uri);
+      if (Platform.OS === 'web') {
+        try {
+          // Load html2pdf from CDN
+          await new Promise<void>((resolve, reject) => {
+            const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+            if (document.querySelector(`script[src="${src}"]`)) {
+              resolve();
+              return;
+            }
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = () => resolve();
+            script.onerror = (e) => reject(e);
+            document.head.appendChild(script);
+          });
 
-      // ✅ Optionally share the PDF
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
+          const opt = {
+            margin: 0,
+            filename: `Sales_Analytics_Report_${new Date().toISOString().split('T')[0]}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 1.5, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+
+          await (window as any).html2pdf().from(html).set(opt).save();
+          return true;
+        } catch (err) {
+          console.log('Error downloading PDF file:', err);
+          return false;
+        }
       }
+
+      // ✅ Open native PDF print preview dialog
+      await Print.printAsync({ html });
 
       return true;
     } catch (error) {

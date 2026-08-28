@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     View, Text, Modal, ScrollView, TouchableOpacity,
     StyleSheet, ActivityIndicator, Alert, FlatList,
-    StatusBar, TextInput
+    StatusBar, TextInput, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1496,6 +1496,19 @@ const printDayEndReport = async (dayEndData: any) => {
         
         const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
         
+        let username = 'Admin';
+        try {
+            const userStr = await AsyncStorage.getItem('user');
+            if (userStr) {
+                const userObj = JSON.parse(userStr);
+                if (userObj && userObj.username) {
+                    username = userObj.username;
+                }
+            }
+        } catch (err) {
+            console.log('Error getting username:', err);
+        }
+        
         // ✅ Build report data with ALL fields
         const reportData = {
             totalSales: dayEndData.totalSales || 0,
@@ -1505,8 +1518,42 @@ const printDayEndReport = async (dayEndData: any) => {
             salesCount: dayEndData.salesCount || 0,
             paymentBreakdown: dayEndData.paymentBreakdown || {},
             categories: dayEndData.categories || [],
-            closingDate: dayEndData.closingDate || dayEndData.endDate || new Date()
+            closingDate: dayEndData.closingDate || dayEndData.endDate || new Date(),
+            closedBy: dayEndData.closedBy || username
         };
+        
+        if (Platform.OS === 'web') {
+            console.log('🌐 Web platform detected, downloading report PDF');
+            const html = generateDayEndHTML(reportData, outletName);
+            try {
+                // Load html2pdf from CDN
+                await new Promise<void>((resolve, reject) => {
+                    const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                    if (document.querySelector(`script[src="${src}"]`)) {
+                        resolve();
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = () => resolve();
+                    script.onerror = (e) => reject(e);
+                    document.head.appendChild(script);
+                });
+
+                const opt = {
+                    margin: 0,
+                    filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 1.5, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                await (window as any).html2pdf().from(html).set(opt).save();
+            } catch (err) {
+                console.log('Error downloading PDF file:', err);
+            }
+            return;
+        }
         
         console.log('📅 Report closingDate:', reportData.closingDate);
         
@@ -1541,10 +1588,9 @@ const printDayEndReport = async (dayEndData: any) => {
                 }
                 
                 // Fallback to PDF directly if network printer fails
-                console.log('⚠️ Network printer failed, saving as PDF');
+                console.log('⚠️ Network printer failed, opening print preview');
                 const html = generateDayEndHTML(reportData, outletName);
-                const { uri } = await Print.printToFileAsync({ html });
-                await Sharing.shareAsync(uri);
+                await Print.printAsync({ html });
                 return;
             }
         } catch (loadErr) {
@@ -1560,10 +1606,9 @@ const printDayEndReport = async (dayEndData: any) => {
             return;
         }
         
-        console.log('⚠️ No physical printer available, saving as PDF');
+        console.log('⚠️ No physical printer available, opening print preview');
         const html = generateDayEndHTML(reportData, outletName);
-        const { uri } = await Print.printToFileAsync({ html });
-        await Sharing.shareAsync(uri);
+        await Print.printAsync({ html });
         
     } catch (error) {
         console.log('❌ Print error:', error);
@@ -1577,6 +1622,19 @@ const printDayEndReport = async (dayEndData: any) => {
         
         const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
         
+        let username = 'Admin';
+        try {
+            const userStr = await AsyncStorage.getItem('user');
+            if (userStr) {
+                const userObj = JSON.parse(userStr);
+                if (userObj && userObj.username) {
+                    username = userObj.username;
+                }
+            }
+        } catch (err) {
+            console.log('Error getting username:', err);
+        }
+        
         // ✅ Pass ALL data including salesCount and closingDate
         const reportData = {
             totalSales: item.totalSales || 0,
@@ -1586,8 +1644,42 @@ const printDayEndReport = async (dayEndData: any) => {
             salesCount: item.salesCount || 0,  // ✅ FIX: Transactions
             paymentBreakdown: item.paymentBreakdown || {},
             categories: item.categories || [],
-            closingDate: item.closingDate  // ✅ FIX: Original day end date
+            closingDate: item.closingDate,  // ✅ FIX: Original day end date
+            closedBy: item.closedBy || username
         };
+        
+        if (Platform.OS === 'web') {
+            console.log('🌐 Web platform detected, downloading report reprint PDF');
+            const html = generateDayEndHTML(reportData, outletName);
+            try {
+                // Load html2pdf from CDN
+                await new Promise<void>((resolve, reject) => {
+                    const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                    if (document.querySelector(`script[src="${src}"]`)) {
+                        resolve();
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = () => resolve();
+                    script.onerror = (e) => reject(e);
+                    document.head.appendChild(script);
+                });
+
+                const opt = {
+                    margin: 0,
+                    filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}_Reprint.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 1.5, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                await (window as any).html2pdf().from(html).set(opt).save();
+            } catch (err) {
+                console.log('Error downloading PDF file:', err);
+            }
+            return;
+        }
         
         const reportText = buildDayEndReportText(reportData, outletName);
         
@@ -1630,11 +1722,9 @@ const printDayEndReport = async (dayEndData: any) => {
                 }
                 
                 // Fallback to PDF directly if network printer fails
-                console.log('⚠️ Network printer failed, saving as PDF');
+                console.log('⚠️ Network printer failed, opening print preview');
                 const html = generateDayEndHTML(reportData, outletName);
-                const { uri } = await Print.printToFileAsync({ html });
-                await Sharing.shareAsync(uri);
-                Alert.alert('📄 PDF Saved', 'Report saved as PDF');
+                await Print.printAsync({ html });
                 return;
             }
         } catch (loadErr) {
@@ -1651,11 +1741,9 @@ const printDayEndReport = async (dayEndData: any) => {
             return;
         }
         
-        console.log('⚠️ No physical printer available, saving as PDF');
+        console.log('⚠️ No physical printer available, opening print preview');
         const html = generateDayEndHTML(reportData, outletName);
-        const { uri } = await Print.printToFileAsync({ html });
-        await Sharing.shareAsync(uri);
-        Alert.alert('📄 PDF Saved', 'Report saved as PDF');
+        await Print.printAsync({ html });
         
     } catch (error) {
         console.log('❌ Reprint error:', error);
@@ -1748,9 +1836,22 @@ const sendEmailReport = async (item: any, email: string) => {
         console.log('💾 Email saved to storage:', email);
         const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
         const dateStr = new Date(item.closingDate).toLocaleDateString();
-        const cashierName = item.closedBy || 'Admin';
         
-       
+        let username = 'Admin';
+        try {
+            const userStr = await AsyncStorage.getItem('user');
+            if (userStr) {
+                const userObj = JSON.parse(userStr);
+                if (userObj && userObj.username) {
+                    username = userObj.username;
+                }
+            }
+        } catch (err) {
+            console.log('Error getting username:', err);
+        }
+        
+        const cashierName = item.closedBy || username;
+        
         const reportData = {
             totalSales: item.totalSales || 0,
             totalDiscount: item.totalDiscount || 0,
@@ -1760,7 +1861,8 @@ const sendEmailReport = async (item: any, email: string) => {
             paymentBreakdown: item.paymentBreakdown || {},
             categories: item.categories || [],
             closingDate: item.closingDate,
-            outletName: outletName
+            outletName: outletName,
+            closedBy: cashierName
         };
         
         // ✅ Generate PDF

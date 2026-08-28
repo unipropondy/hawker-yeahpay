@@ -1244,37 +1244,57 @@ const formatDateTime = (dateString: string) => {
                   </View>
                   
                   {pickerType === 'startTime' || pickerType === 'endTime' ? (
-                    <TextInput
-                      // @ts-ignore
-                      type="time"
-                      value={`${String(tempDate.getHours()).padStart(2, '0')}:${String(tempDate.getMinutes()).padStart(2, '0')}`}
-                      onChangeText={(text) => {
-                        if (text) {
-                          const [h, m] = text.split(':').map(Number);
+                    React.createElement('input', {
+                      type: 'time',
+                      value: `${String(tempDate.getHours()).padStart(2, '0')}:${String(tempDate.getMinutes()).padStart(2, '0')}`,
+                      onChange: (e: any) => {
+                        const val = e.target.value;
+                        if (val) {
+                          const [h, m] = val.split(':').map(Number);
                           const d = new Date(tempDate);
                           d.setHours(h || 0, m || 0, 0, 0);
                           setTempDate(d);
                         }
-                      }}
-                      style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-                    />
+                      },
+                      style: {
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '16px',
+                        borderRadius: '8px',
+                        border: '1px solid ' + (theme.border || '#ccc'),
+                        backgroundColor: theme.surface || '#fff',
+                        color: theme.text || '#000',
+                        marginTop: '15px',
+                        boxSizing: 'border-box'
+                      }
+                    })
                   ) : (
-                    <TextInput
-                      // @ts-ignore
-                      type="date"
-                      value={`${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}-${String(tempDate.getDate()).padStart(2, '0')}`}
-                      onChangeText={(text) => {
-                        if (text) {
-                          const [y, m, d] = text.split('-').map(Number);
+                    React.createElement('input', {
+                      type: 'date',
+                      value: `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}-${String(tempDate.getDate()).padStart(2, '0')}`,
+                      onChange: (e: any) => {
+                        const val = e.target.value;
+                        if (val) {
+                          const [y, m, d] = val.split('-').map(Number);
                           const newD = new Date(tempDate);
                           newD.setFullYear(y);
                           newD.setMonth(m - 1);
                           newD.setDate(d);
                           setTempDate(newD);
                         }
-                      }}
-                      style={[styles.webPickerInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-                    />
+                      },
+                      style: {
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '16px',
+                        borderRadius: '8px',
+                        border: '1px solid ' + (theme.border || '#ccc'),
+                        backgroundColor: theme.surface || '#fff',
+                        color: theme.text || '#000',
+                        marginTop: '15px',
+                        boxSizing: 'border-box'
+                      }
+                    })
                   )}
                 </View>
               </View>

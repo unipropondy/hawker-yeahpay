@@ -51,30 +51,30 @@ const MemoizedDatePicker: React.FC<Props> = ({ show, value, onChange, onClose })
                 <Text style={{ fontSize: 16, padding: 8, color: '#FF4444', fontWeight: '700' }}>Done</Text>
               </TouchableOpacity>
             </View>
-            <TextInput
-              // @ts-ignore
-              type="date"
-              value={`${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`}
-              onChangeText={(text) => {
-                if (text) {
-                  const [y, m, d] = text.split('-').map(Number);
+            {React.createElement('input', {
+              type: 'date',
+              value: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`,
+              onChange: (e: any) => {
+                const val = e.target.value;
+                if (val) {
+                  const [y, m, d] = val.split('-').map(Number);
                   const newD = new Date(value);
                   newD.setFullYear(y);
                   newD.setMonth(m - 1);
                   newD.setDate(d);
                   onChange({ type: 'set' }, newD);
                 }
-              }}
-              style={{
-                padding: 12,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: '#ccc',
-                fontSize: 16,
+              },
+              style: {
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid #ccc',
+                fontSize: '16px',
                 width: '100%',
                 textAlign: 'center',
-              }}
-            />
+                boxSizing: 'border-box'
+              }
+            })}
           </View>
         </View>
       </Modal>
