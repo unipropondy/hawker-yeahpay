@@ -507,108 +507,987 @@ const buildDayEndReportText80mm = (data: any, outletName: string) => {
     
     return text;
 };
+
 const generateDayEndHTML = (data: any, outletName: string) => {
     const symbol = '$';
-    
-    // ✅ ORIGINAL Day End Date - USE LOCAL TIME
     const parsedOriginal = parseRawDateTime(data.closingDate);
     const origDateStr = parsedOriginal.dateStr;
     
-    // ✅ CURRENT Date - USE LOCAL TIME (for "Generated on")
-    const now = new Date();
-    const nowDay = String(now.getDate()).padStart(2, '0');
-    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const nowYear = now.getFullYear();
-    const nowHours = String(now.getHours()).padStart(2, '0');
-    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
-    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+    const printTimeStr = new Date().toLocaleString('en-SG', { 
+      timeZone: 'Asia/Singapore',
+      dateStyle: 'medium',
+      timeStyle: 'medium'
+    });
     
-    console.log('📅 Original (UTC):', origDateStr);
-    console.log('📅 Current (Local):', nowDateStr);
+    // 2. Aggregate all items from categories to get "TOP SELLING PRODUCTS"
+    const aggregatedItemsMap = new Map();
+    const categories = data.categories || [];
+    categories.forEach((cat: any) => {
+      const catItems = cat.items || [];
+      catItems.forEach((item: any) => {
+        const key = item.name;
+        if (!aggregatedItemsMap.has(key)) {
+          aggregatedItemsMap.set(key, {
+            name: item.name,
+            category: cat.name || 'Uncategorized',
+            quantity: 0,
+            revenue: 0,
+            price: item.price || 0
+          });
+        }
+        const current = aggregatedItemsMap.get(key);
+        current.quantity += (item.quantity || 0);
+        current.revenue += (item.revenue || 0);
+        if (item.price) current.price = item.price;
+      });
+    });
     
-    return `
-<!DOCTYPE html>
+    const sortedItems = Array.from(aggregatedItemsMap.values())
+      .sort((a: any, b: any) => b.revenue - a.revenue);
+      
+    const top10Products = sortedItems.slice(0, 10);
+    const overallRevenue = data.totalSales || categories.reduce((sum: number, cat: any) => sum + (cat.totalRevenue || 0), 0);
+    
+    // 3. Category Contribution Analysis
+    const categoryContribution = categories.map((cat: any) => {
+      const contributionPercent = overallRevenue > 0 ? (cat.totalRevenue / overallRevenue) * 100 : 0;
+      return {
+        name: cat.name || 'Uncategorized',
+        qtySold: cat.totalQuantity || 0,
+        revenue: cat.totalRevenue || 0,
+        contribution: contributionPercent
+      };
+    }).sort((a: any, b: any) => b.revenue - a.revenue);
+    
+    const catContributionTotalQty = categoryContribution.reduce((sum: number, c: any) => sum + c.qtySold, 0);
+    const catContributionTotalRev = categoryContribution.reduce((sum: number, c: any) => sum + c.revenue, 0);
+    
+    // 4. Payment breakdown mapping
+    const rawPayment = data.paymentBreakdown || {};
+    const standardPaymentMethods = ['CASH', 'NETS', 'PAYNOW', 'CREDIT', 'CARD', 'FOC', 'CASH BOX ENTRY'];
+    
+    const normalizedPayment: Record<string, number> = {};
+    Object.entries(rawPayment).forEach(([method, val]) => {
+      const normalizedKey = method.toUpperCase().replace('_', ' ');
+      normalizedPayment[normalizedKey] = (normalizedPayment[normalizedKey] || 0) + (val as number);
+    });
+    
+    const paymentList: any[] = [];
+    Object.entries(normalizedPayment).forEach(([method, val]) => {
+      if (val > 0) {
+        const percentage = overallRevenue > 0 ? (val / overallRevenue) * 100 : 0;
+        paymentList.push({
+          name: method,
+          amount: val,
+          percentage
+        });
+      }
+    });
+    paymentList.sort((a, b) => b.amount - a.amount);
+    const totalPaymentsSum = paymentList.reduce((sum, p) => sum + p.amount, 0);
+    
+    // 5. Calculations for Cards
+    const totalSales = data.salesCount || data.transactions || 0;
+    const totalOrders = totalSales;
+    const avgOrderValue = totalOrders > 0 ? overallRevenue / totalOrders : 0;
+    const totalDiscount = data.totalDiscount || 0;
+    const netSales = data.netSales || (overallRevenue - totalDiscount);
+    
+    // 6. Conic gradient styling for donut chart
+    let gradientParts = [];
+    let currentAngle = 0;
+    const colors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
+    paymentList.forEach((p, idx) => {
+      const percentage = p.percentage;
+      if (percentage > 0) {
+        const nextAngle = currentAngle + (percentage * 3.6);
+        const color = colors[idx % colors.length];
+        gradientParts.push(`${color} ${currentAngle.toFixed(1)}deg ${nextAngle.toFixed(1)}deg`);
+        currentAngle = nextAngle;
+      }
+    });
+    const conicGradientStyle = gradientParts.length > 0 
+      ? `background: conic-gradient(${gradientParts.join(', ')});`
+      : 'background: #e2e8f0;';
+      
+    // 8. Executive Insights Calculations
+    const topCategoryName = categoryContribution[0]?.name || 'N/A';
+    const topCategoryRev = categoryContribution[0]?.revenue || 0;
+    const topCategoryPercent = overallRevenue > 0 ? ((topCategoryRev / overallRevenue) * 100).toFixed(1) : '0';
+    
+    const topProductName = top10Products[0]?.name || 'N/A';
+    const topProductQty = top10Products[0]?.quantity || 0;
+    const topProductRev = top10Products[0]?.revenue || 0;
+    
+    const sortedPayments = [...paymentList].sort((a, b) => b.amount - a.amount);
+    const prefPaymentName = sortedPayments[0]?.name || 'N/A';
+    const prefPaymentAmount = sortedPayments[0]?.amount || 0;
+    const prefPaymentPercent = overallRevenue > 0 ? ((prefPaymentAmount / overallRevenue) * 100).toFixed(1) : '0';
+    
+    const avgDishPrice = catContributionTotalQty > 0 ? (overallRevenue / catContributionTotalQty) : 0;
+    const avgItemsPerBill = totalSales > 0 ? (catContributionTotalQty / totalSales) : 0;
+    const generatedBy = data.closedBy || 'Admin';
+    
+    const maxCatRevenue = Math.max(...categoryContribution.map((c: any) => c.revenue), 1);
+    
+    return `<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Day End Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-        .title { font-size: 24px; font-weight: bold; color: #333; }
-        .subtitle { font-size: 14px; color: #666; }
-        .section { margin-bottom: 20px; }
-        .section-title { font-size: 18px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px; background: #f5f5f5; padding: 8px; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #eee; }
-        .amount { text-align: right; }
-        .total-row { font-weight: bold; border-top: 2px solid #000; background: #f9f9f9; }
-        .category-item { padding-left: 20px; }
-        .category-name { font-weight: bold; font-size: 14px; }
-        .item-name { padding-left: 30px; }
-        .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; color: #666; }
-    </style>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #333;
+      padding: 0;
+      margin: 0;
+      background: #fff;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    .page {
+      box-sizing: border-box;
+      padding: 15mm;
+      height: 282mm;
+      position: relative;
+      background: #fff;
+    }
+    .page-break {
+      page-break-before: always;
+      break-before: page;
+    }
+    
+    /* Header Styles */
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    .header-logo-cell {
+      width: 35%;
+      vertical-align: middle;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: #FF7A00;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-text {
+      font-size: 20px;
+      font-weight: bold;
+      color: #111827;
+      letter-spacing: -0.5px;
+    }
+    .logo-tagline {
+      font-size: 10px;
+      color: #6B7280;
+      margin-top: 2px;
+    }
+    .header-divider-cell {
+      width: 2%;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .header-divider {
+      width: 2px;
+      height: 45px;
+      background: #FF7A00;
+      margin: 0 auto;
+    }
+    .header-title-cell {
+      width: 38%;
+      vertical-align: middle;
+      padding-left: 10px;
+    }
+    .report-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #FF7A00;
+      letter-spacing: 0.5px;
+      margin: 0;
+    }
+    .report-subtitle {
+      font-size: 9px;
+      color: #6B7280;
+      margin-top: 2px;
+    }
+    .header-meta-cell {
+      width: 25%;
+      vertical-align: middle;
+      text-align: right;
+      font-size: 9px;
+      color: #4B5563;
+    }
+    .meta-item {
+      margin-bottom: 2px;
+    }
+    .meta-label {
+      font-weight: 500;
+      color: #9CA3AF;
+    }
+    .meta-value {
+      font-weight: 600;
+      color: #1F2937;
+    }
+    
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .metric-card {
+      background: #fff;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      padding: 8px 10px;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .metric-card.orange { border-top: 3px solid #FF7A00; }
+    .metric-card.blue { border-top: 3px solid #3B82F6; }
+    .metric-card.green { border-top: 3px solid #10B981; }
+    
+    .metric-title {
+      font-size: 8px;
+      font-weight: 700;
+      color: #6B7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .metric-value {
+      font-size: 16px;
+      font-weight: 800;
+      color: #111827;
+      margin: 4px 0;
+    }
+    .metric-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: 2px;
+    }
+    .metric-change {
+      font-size: 8px;
+      font-weight: 600;
+      color: #10B981;
+    }
+    .metric-icon-svg {
+      width: 24px;
+      height: 12px;
+      opacity: 0.7;
+    }
+    
+    /* Main Layout Grid */
+    .layout-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    .card-box {
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #FF7A00;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #F3F4F6;
+      padding-bottom: 6px;
+    }
+    
+    /* Sales Trend Chart (CSS Columns) */
+    .trend-chart-container {
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-end;
+      height: 110px;
+      padding: 10px 5px 5px;
+      position: relative;
+    }
+    .trend-bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 15%;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .trend-bar {
+      width: 16px;
+      background: #FF7A00;
+      border-radius: 3px 3px 0 0;
+      position: relative;
+      min-height: 2px;
+      transition: height 0.3s ease;
+    }
+    .trend-bar-value {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px;
+      font-weight: 600;
+      color: #4B5563;
+      white-space: nowrap;
+    }
+    .trend-bar-label {
+      font-size: 7px;
+      color: #9CA3AF;
+      margin-top: 4px;
+      max-width: 40px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    /* Payment Breakdown Layout */
+    .payment-layout {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .donut-container {
+      position: relative;
+      width: 90px;
+      height: 90px;
+    }
+    .donut-chart {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .donut-center {
+      width: 48px;
+      height: 48px;
+      background: #fff;
+      border-radius: 50%;
+    }
+    .payment-table {
+      flex: 1;
+      border-collapse: collapse;
+      font-size: 8px;
+    }
+    .payment-table td {
+      padding: 3px 4px;
+      border-bottom: 1px solid #F3F4F6;
+    }
+    .payment-bullet {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    
+    /* Horizontal Bar Chart (Sales by Category) */
+    .cat-bar-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 9px;
+    }
+    .cat-bar-label {
+      width: 70px;
+      font-weight: 600;
+      color: #4B5563;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cat-bar-track {
+      flex: 1;
+      height: 10px;
+      background: #F3F4F6;
+      border-radius: 5px;
+      margin: 0 8px;
+      overflow: hidden;
+    }
+    .cat-bar-fill {
+      height: 100%;
+      border-radius: 5px;
+    }
+    .cat-bar-value {
+      width: 40px;
+      text-align: right;
+      font-weight: 700;
+      color: #1F2937;
+    }
+    
+    /* Executive Insights */
+    .insight-card {
+      background: #FFFDF9;
+      border: 1px solid #FEF3C7;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 5px;
+    }
+    .insight-title {
+      font-size: 8px;
+      font-weight: 700;
+      color: #D97706;
+      text-transform: uppercase;
+    }
+    .insight-body {
+      font-size: 8.5px;
+      color: #4B5563;
+      margin-top: 2px;
+      font-weight: 500;
+    }
+    
+    /* Operational Metrics Grid */
+    .op-metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 15px;
+      border-top: 1px solid #E5E7EB;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    .op-metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9px;
+    }
+    .op-metrics-table td {
+      padding: 5px 0;
+      border-bottom: 1px solid #F3F4F6;
+    }
+    .op-metrics-table tr:last-child td {
+      border-bottom: none;
+    }
+    .op-label {
+      color: #6B7280;
+      font-weight: 500;
+    }
+    .op-value {
+      text-align: right;
+      font-weight: 700;
+      color: #111827;
+    }
+    
+    /* Page Footer styling */
+    .page-footer-table {
+      position: absolute;
+      bottom: 10mm;
+      left: 15mm;
+      right: 15mm;
+      width: calc(100% - 30mm);
+      border-top: 1px solid #E5E7EB;
+      padding-top: 6px;
+      font-size: 8px;
+      color: #9CA3AF;
+      border-collapse: collapse;
+    }
+    
+    /* Standard Tables Page 2 */
+    .table-section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #FF7A00;
+      margin: 15px 0 8px;
+      text-transform: uppercase;
+      border-bottom: 2px solid #FF7A00;
+      padding-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+      font-size: 9px;
+    }
+    .data-table th {
+      background: #FF7A00;
+      color: #fff;
+      font-weight: 700;
+      text-align: left;
+      padding: 6px 8px;
+      text-transform: uppercase;
+      font-size: 8px;
+    }
+    .data-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid #E5E7EB;
+      color: #374151;
+    }
+    .data-table tr.total-row td {
+      font-weight: 800;
+      background: #FFFBEB;
+      border-top: 1.5px solid #F59E0B;
+      border-bottom: 2px solid #F59E0B;
+      color: #1F2937;
+    }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    
+    .visual-share-bar {
+      height: 8px;
+      background: #F3F4F6;
+      border-radius: 4px;
+      overflow: hidden;
+      width: 100px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .visual-share-fill {
+      height: 100%;
+      background: #3B82F6;
+      border-radius: 4px;
+    }
+  </style>
 </head>
 <body>
-    <div class="header">
-        <div class="title">📊 DAY END REPORT</div>
-        <div class="subtitle">${outletName || 'Outlet'}</div>
-        <div class="subtitle">${origDateStr}</div>  <!-- ✅ Original Day End Time -->
-    </div>
-    
-    <div class="section">
-        <div class="section-title">📊 SUMMARY</div>
-        <table>
-            <tr><td><strong>Total Sales</strong></td><td class="amount"><strong>${symbol}${(data.totalSales || 0).toFixed(2)}</strong></td></tr>
-            <tr><td>Total Discount</td><td class="amount" style="color: #d32f2f;">-${symbol}${(data.totalDiscount || 0).toFixed(2)}</td></tr>
-            <tr class="total-row"><td><strong>Net Sales</strong></td><td class="amount"><strong>${symbol}${(data.netSales || 0).toFixed(2)}</strong></td></tr>
-            <tr><td>Total Items</td><td class="amount">${data.totalItems || 0}</td></tr>
-            <tr><td>Transactions</td><td class="amount">${data.salesCount || data.transactions || 0}</td></tr>
-        </table>
-    </div>
-    
-    <div class="section">
-        <div class="section-title">💳 PAYMENT BREAKDOWN</div>
-        <table>
-            ${data.paymentBreakdown && Object.keys(data.paymentBreakdown).length > 0 ? 
-                Object.entries(data.paymentBreakdown).map(([method, amount]) => `
-                    <tr><td>${method}</td><td class="amount">${symbol}${(amount as number).toFixed(2)}</td></tr>
-                `).join('') : 
-                '<tr><td>No payment data</td><td class="amount">$0.00</td></tr>'
-            }
-        </table>
-    </div>
-    
-    ${data.categories && data.categories.length > 0 ? `
-    <div class="section">
-        <div class="section-title">🏷️ CATEGORY BREAKDOWN</div>
-        ${data.categories.map((cat: any) => `
-            <div style="margin-bottom: 15px;">
-                <div class="category-name">${cat.name || 'Uncategorized'} - ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)</div>
-                ${cat.items && cat.items.length > 0 ? `
-                <table>
-                    ${cat.items.map((item: any) => `
-                        <tr>
-                            <td class="item-name">${item.name || 'Unknown Item'}</td>
-                            <td class="amount">x${item.quantity || 0}</td>
-                            <td class="amount">${symbol}${(item.revenue || 0).toFixed(2)}</td>
-                        </tr>
-                    `).join('')}
-                </table>
-                ` : '<div style="padding-left: 20px; color: #999;">No items in this category</div>'}
+
+  <!-- PAGE 1 -->
+  <div class="page">
+    <!-- Header -->
+    <table class="header-table">
+      <tr>
+        <td class="header-logo-cell">
+          <div class="logo-container">
+            <div class="logo-icon">
+              <!-- Inline SVG POS Terminal Device -->
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
             </div>
-        `).join('')}
-    </div>
-    ` : ''}
+            <div>
+              <div class="logo-text">${outletName || 'MY CLUB'}</div>
+              <div class="logo-tagline">Smart Hawker, Smarter Business</div>
+            </div>
+          </div>
+        </td>
+        <td class="header-divider-cell">
+          <div class="header-divider"></div>
+        </td>
+        <td class="header-title-cell">
+          <h1 class="report-title">DAY END REPORT</h1>
+          <div class="report-subtitle">Real-time business intelligence dashboard</div>
+        </td>
+        <td class="header-meta-cell">
+          <div class="meta-item"><span class="meta-label">Report Date:</span> <span class="meta-value">${origDateStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated On:</span> <span class="meta-value">${printTimeStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated By:</span> <span class="meta-value">${generatedBy}</span></div>
+        </td>
+      </tr>
+    </table>
     
-    <div class="footer">
-        <p><strong>SMARTHAWKER BY UNIPROSG</strong></p>
-        <p>© ${new Date().getFullYear()} UNIPRO SOFTWARES SG PTE LTD</p>
-        <p>Generated on: ${nowDateStr}</p>  <!-- ✅ Current Local Time -->
+    <!-- 6 Metrics Grid -->
+    <div class="metrics-grid">
+      <!-- Total Sales -->
+      <div class="metric-card orange">
+        <div class="metric-title">Total Sales</div>
+        <div class="metric-value">${symbol}${overallRevenue.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change">100% Volume</div>
+          <!-- Bar Graph SVG -->
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="8" width="5" height="7" fill="#FF7A00" rx="1"/>
+            <rect x="8" y="5" width="5" height="10" fill="#FF7A00" rx="1"/>
+            <rect x="16" y="2" width="5" height="13" fill="#FF7A00" rx="1"/>
+            <rect x="24" y="0" width="5" height="15" fill="#FF7A00" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Total Orders -->
+      <div class="metric-card blue">
+        <div class="metric-title">Total Orders</div>
+        <div class="metric-value">${totalOrders}</div>
+        <div class="metric-footer">
+          <div class="metric-change">Transactions Count</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="10" width="5" height="5" fill="#3B82F6" rx="1"/>
+            <rect x="8" y="7" width="5" height="8" fill="#3B82F6" rx="1"/>
+            <rect x="16" y="4" width="5" height="11" fill="#3B82F6" rx="1"/>
+            <rect x="24" y="1" width="5" height="14" fill="#3B82F6" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Avg Order Value -->
+      <div class="metric-card green">
+        <div class="metric-title">Avg Order Value</div>
+        <div class="metric-value">${symbol}${avgOrderValue.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change">AOV Metric</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="6" width="5" height="9" fill="#10B981" rx="1"/>
+            <rect x="8" y="8" width="5" height="7" fill="#10B981" rx="1"/>
+            <rect x="16" y="4" width="5" height="11" fill="#10B981" rx="1"/>
+            <rect x="24" y="2" width="5" height="13" fill="#10B981" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Net Sales -->
+      <div class="metric-card orange">
+        <div class="metric-title">Net Sales</div>
+        <div class="metric-value">${symbol}${netSales.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change">After Discount</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="9" width="5" height="6" fill="#FF7A00" rx="1"/>
+            <rect x="8" y="7" width="5" height="8" fill="#FF7A00" rx="1"/>
+            <rect x="16" y="3" width="5" height="12" fill="#FF7A00" rx="1"/>
+            <rect x="24" y="1" width="5" height="14" fill="#FF7A00" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Items Sold -->
+      <div class="metric-card blue">
+        <div class="metric-title">Items Sold</div>
+        <div class="metric-value">${data.totalItems || 0}</div>
+        <div class="metric-footer">
+          <div class="metric-change">Quantity Sold</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="11" width="5" height="4" fill="#3B82F6" rx="1"/>
+            <rect x="8" y="8" width="5" height="7" fill="#3B82F6" rx="1"/>
+            <rect x="16" y="5" width="5" height="10" fill="#3B82F6" rx="1"/>
+            <rect x="24" y="2" width="5" height="13" fill="#3B82F6" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Total Discount -->
+      <div class="metric-card green">
+        <div class="metric-title">Total Discount</div>
+        <div class="metric-value">${symbol}${totalDiscount.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change">Discounts Given</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="13" width="5" height="2" fill="#10B981" rx="1"/>
+            <rect x="8" y="10" width="5" height="5" fill="#10B981" rx="1"/>
+            <rect x="16" y="8" width="5" height="7" fill="#10B981" rx="1"/>
+            <rect x="24" y="6" width="5" height="9" fill="#10B981" rx="1"/>
+          </svg>
+        </div>
+      </div>
     </div>
+    
+    <!-- Sales by Category Vertical & Payment Breakdown Row -->
+    <div class="layout-grid">
+      <!-- Category Vertical Bars Card -->
+      <div class="card-box">
+        <div class="card-title">Category Revenue</div>
+        <div class="trend-chart-container">
+          ${categoryContribution.slice(0, 5).map((cat: any, idx: number) => {
+            const heightPercent = maxCatRevenue > 0 ? (cat.revenue / maxCatRevenue) * 100 : 0;
+            return `
+              <div class="trend-bar-wrapper">
+                <div class="trend-bar" style="height: ${heightPercent.toFixed(1)}%;">
+                  <span class="trend-bar-value">${symbol}${cat.revenue.toFixed(0)}</span>
+                </div>
+                <div class="trend-bar-label" title="${cat.name}">${cat.name}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+      
+      <!-- Payment Breakdown Card -->
+      <div class="card-box">
+        <div class="card-title">Payment Breakdown</div>
+        <div class="payment-layout">
+          <!-- Donut chart -->
+          <div class="donut-container">
+            <div class="donut-chart" style="${conicGradientStyle}">
+              <div class="donut-center"></div>
+            </div>
+          </div>
+          <!-- Legend Table -->
+          <table class="payment-table">
+            <tbody>
+              ${paymentList.map((p, idx) => {
+                const color = colors[idx % colors.length];
+                return `
+                  <tr>
+                    <td>
+                      <span class="payment-bullet" style="background: ${color};"></span>
+                      <strong>${p.name}</strong>
+                    </td>
+                    <td class="text-right">${symbol}${p.amount.toFixed(2)}</td>
+                    <td class="text-right" style="color: #6B7280; font-weight: 500;">${p.percentage.toFixed(1)}%</td>
+                  </tr>
+                `;
+              }).join('')}
+              <tr style="border-top: 1.5px solid #E5E7EB; font-weight: 800; color: #111827;">
+                <td style="padding-top: 6px;">Total</td>
+                <td class="text-right" style="padding-top: 6px;">${symbol}${totalPaymentsSum.toFixed(2)}</td>
+                <td class="text-right" style="padding-top: 6px;">100%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Sales By Category & Insights Row -->
+    <div class="layout-grid">
+      <!-- Sales By Category Horizontal Chart -->
+      <div class="card-box">
+        <div class="card-title">Sales By Category</div>
+        <div style="padding-top: 5px;">
+          ${categoryContribution.slice(0, 5).map((cat, idx) => {
+            const chartColors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6'];
+            const color = chartColors[idx % chartColors.length];
+            return `
+              <div class="cat-bar-row">
+                <div class="cat-bar-label">${cat.name}</div>
+                <div class="cat-bar-track">
+                  <div class="cat-bar-fill" style="width: ${cat.contribution.toFixed(1)}%; background: ${color};"></div>
+                </div>
+                <div class="cat-bar-value">${symbol}${cat.revenue.toFixed(2)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+      
+      <!-- Executive Insights Card -->
+      <div class="card-box">
+        <div class="card-title">Executive Insights</div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Revenue Leader</div>
+          <div class="insight-body">
+            <strong>${topCategoryName}</strong> is the top category generating ${symbol}${topCategoryRev.toFixed(2)} — ${topCategoryPercent}% of total revenue.
+          </div>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Top Product</div>
+          <div class="insight-body">
+            <strong>${topProductName}</strong> leads with ${topProductQty} units sold, generating ${symbol}${topProductRev.toFixed(2)} in revenue.
+          </div>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Payment Preference</div>
+          <div class="insight-body">
+            <strong>${prefPaymentName}</strong> is the preferred channel at ${symbol}${prefPaymentAmount.toFixed(2)} — ${prefPaymentPercent}% of total volume.
+          </div>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Operational Summary</div>
+          <div class="insight-body">
+            Avg ticket ${symbol}${avgOrderValue.toFixed(2)} · ${avgItemsPerBill.toFixed(1)} items/bill avg.
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Operational Metrics -->
+    <div>
+      <div style="font-size: 11px; font-weight: 800; color: #FF7A00; text-transform: uppercase; letter-spacing: 0.5px;">Operational Metrics</div>
+      <div class="op-metrics-grid" style="grid-template-columns: 1fr;">
+        <table class="op-metrics-table">
+          <tr>
+            <td class="op-label">Average Ticket Value</td>
+            <td class="op-value">${symbol}${avgOrderValue.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td class="op-label">Average Items per Bill</td>
+            <td class="op-value">${avgItemsPerBill.toFixed(1)}</td>
+          </tr>
+          <tr>
+            <td class="op-label">Net Collections</td>
+            <td class="op-value" style="color: #10B981; font-weight: 800;">${symbol}${netSales.toFixed(2)}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Footer Table -->
+    <table class="page-footer-table">
+      <tr>
+        <td style="text-align: left;">Report Period: ${origDateStr} | Printed: ${printTimeStr}</td>
+        <td style="text-align: right;">Page 1 of 2</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- PAGE 2 -->
+  <div class="page page-break">
+    <!-- Header Page 2 -->
+    <table class="header-table">
+      <tr>
+        <td class="header-logo-cell">
+          <div class="logo-container">
+            <div class="logo-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div>
+              <div class="logo-text">${outletName || 'MY CLUB'}</div>
+              <div class="logo-tagline">Smart Hawker, Smarter Business</div>
+            </div>
+          </div>
+        </td>
+        <td class="header-divider-cell">
+          <div class="header-divider"></div>
+        </td>
+        <td class="header-title-cell">
+          <h1 class="report-title">DAY END REPORT</h1>
+          <div class="report-subtitle">Real-time business intelligence dashboard</div>
+        </td>
+        <td class="header-meta-cell">
+          <div class="meta-item"><span class="meta-label">Report Date:</span> <span class="meta-value">${origDateStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated On:</span> <span class="meta-value">${printTimeStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated By:</span> <span class="meta-value">${generatedBy}</span></div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Top Selling Products -->
+    <div class="table-section-title">Top Selling Products</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 5%;">#</th>
+          <th style="width: 40%;">Product Name</th>
+          <th style="width: 25%;">Category</th>
+          <th class="text-center" style="width: 10%;">Qty Sold</th>
+          <th class="text-right" style="width: 12%;">Revenue (${symbol})</th>
+          <th class="text-right" style="width: 8%;">% of Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${top10Products.map((item, idx) => {
+          const percentOfTotal = overallRevenue > 0 ? (item.revenue / overallRevenue) * 100 : 0;
+          return `
+            <tr>
+              <td>${idx + 1}</td>
+              <td style="font-weight: 600;">${item.name}</td>
+              <td>${item.category}</td>
+              <td class="text-center">${item.quantity}</td>
+              <td class="text-right">${symbol}${item.revenue.toFixed(2)}</td>
+              <td class="text-right">${percentOfTotal.toFixed(1)}%</td>
+            </tr>
+          `;
+        }).join('')}
+        <tr class="total-row">
+          <td colspan="3">Total</td>
+          <td class="text-center">${top10Products.reduce((sum, item) => sum + item.quantity, 0)}</td>
+          <td class="text-right">${symbol}${top10Products.reduce((sum, item) => sum + item.revenue, 0).toFixed(2)}</td>
+          <td class="text-right">
+            ${(overallRevenue > 0 ? (top10Products.reduce((sum, item) => sum + item.revenue, 0) / overallRevenue) * 100 : 0).toFixed(1)}%
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Category Contribution Analysis -->
+    <div class="table-section-title">Category Contribution Analysis</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 40%;">Category Name</th>
+          <th class="text-center" style="width: 15%;">Qty Sold</th>
+          <th class="text-right" style="width: 20%;">Revenue (${symbol})</th>
+          <th class="text-right" style="width: 10%;">Contribution</th>
+          <th style="width: 15%;" class="text-center">Visual Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${categoryContribution.map(cat => {
+          return `
+            <tr>
+              <td style="font-weight: 600;">${cat.name}</td>
+              <td class="text-center">${cat.qtySold}</td>
+              <td class="text-right">${symbol}${cat.revenue.toFixed(2)}</td>
+              <td class="text-right">${cat.contribution.toFixed(1)}%</td>
+              <td class="text-center">
+                <div class="visual-share-bar">
+                  <div class="visual-share-fill" style="width: ${cat.contribution.toFixed(1)}%;"></div>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('')}
+        <tr class="total-row">
+          <td>TOTAL</td>
+          <td class="text-center">${catContributionTotalQty}</td>
+          <td class="text-right">${symbol}${catContributionTotalRev.toFixed(2)}</td>
+          <td class="text-right">100%</td>
+          <td class="text-center">
+            <div class="visual-share-bar">
+              <div class="visual-share-fill" style="width: 100%;"></div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Net Collection Breakdown -->
+    <div class="table-section-title">Net Collection Breakdown</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Collection Source</th>
+          <th class="text-right" style="width: 30%;">Amount (${symbol})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${paymentList.map(p => {
+          return `
+            <tr>
+              <td style="font-weight: 500;">${p.name} Sales</td>
+              <td class="text-right" style="font-weight: 600;">${symbol}${p.amount.toFixed(2)}</td>
+            </tr>
+          `;
+        }).join('')}
+        <tr class="total-row">
+          <td>NET COLLECTIONS (TOTAL)</td>
+          <td class="text-right" style="color: #FF7A00;">${symbol}${netSales.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Bottom notes -->
+    <div style="display: flex; justify-content: space-between; font-size: 8px; color: #9CA3AF; margin-top: 30px; border-top: 1px solid #E5E7EB; padding-top: 8px;">
+      <div>Thank you for using TECHPRO POS System</div>
+      <div style="font-weight: 700;">CONFIDENTIAL — INTERNAL BOARD USE ONLY</div>
+    </div>
+
+    <!-- Footer Page 2 -->
+    <table class="page-footer-table">
+      <tr>
+        <td style="text-align: left;">Report Period: ${origDateStr} | Printed: ${printTimeStr}</td>
+        <td style="text-align: right;">Page 2 of 2</td>
+      </tr>
+    </table>
+  </div>
+
 </body>
 </html>
-    `;
+`;
 };
 const printDayEndReport = async (dayEndData: any) => {
     try {

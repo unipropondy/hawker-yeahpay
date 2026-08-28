@@ -1,6 +1,7 @@
 // frontend/src/components/UniversalPrinter.ts - COMPLETE WITH DISCOUNT SUPPORT ✅
 
 import { Alert, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import SunmiPrinterService from './SunmiPrinterService';
@@ -8,7 +9,7 @@ import BillPDFGenerator from './BillPDFGenerator';
 
 import { PrinterDetector } from './PrinterDetector';
 // Printer types
-export type PrinterType = 
+export type PrinterType =
   | 'thermal'
   | 'receipt'
   | 'label'
@@ -34,31 +35,31 @@ interface DiscountInfo {
 }
 
 class UniversalPrinter {
-  
+
   private static detectedPrinters: PrinterInfo[] = [];
   private static defaultPrinter: PrinterInfo | null = null;
 
   static async detectAllPrinters(): Promise<PrinterInfo[]> {
     const printers: PrinterInfo[] = [];
     if (Platform.OS !== 'android') return printers;
-    
+
     try {
       // Sunmi Thermal
-     
+
       // Bluetooth
-     
+
 
       // Network
-    
+
       // USB
-     
+
       // Android Print Service
       try {
         const hasPrintService = await this.checkAndroidPrintService();
         if (hasPrintService) {
           printers.push({ type: 'laser', name: 'Android Print Service', isDefault: false, paperSize: 'A4' });
         }
-      } catch (e) {}
+      } catch (e) { }
 
       this.detectedPrinters = printers;
       this.defaultPrinter = printers.find(p => p.type === 'thermal') || printers[0] || null;
@@ -82,7 +83,7 @@ class UniversalPrinter {
             const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
 
             if (ThermalPrinterModule && hasNativeModule) {
-              
+
               // ✅ METHOD 1: Use printTcp with openCashbox: true (No payload, no feed, no autocut)
               try {
                 console.log('📡 Method 1: printTcp with openCashbox: true');
@@ -136,13 +137,13 @@ class UniversalPrinter {
             await SunmiPrinter.openCashDrawer();
             return true;
           }
-        } catch (e) {}
+        } catch (e) { }
         // ✅ STEP 3: Try local thermal printer raw command
         try {
           const ThermalPrinter = require('react-native-thermal-printer');
           await ThermalPrinter.printRaw([0x1B, 0x70, 0x00, 0x19, 0xFA]);
           return true;
-        } catch (e) {}
+        } catch (e) { }
       }
       return false;
     } catch (error) {
@@ -171,26 +172,26 @@ class UniversalPrinter {
   }
 
   // ==================== SALES REPORT ====================
-static async printSalesReport(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
-  try {
-    const company = await BillPDFGenerator.loadSettings(userId);
-    const html = this.generateSalesReportHTML(reportData, company);
-    
-    // ✅ Save as PDF (no preview)
-    const { uri } = await Print.printToFileAsync({ html });
-    console.log('📄 Sales report saved at:', uri);
-    
-    // ✅ Optionally share the PDF
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri);
+  static async printSalesReport(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
+    try {
+      const company = await BillPDFGenerator.loadSettings(userId);
+      const html = this.generateSalesReportHTML(reportData, company);
+
+      // ✅ Save as PDF (no preview)
+      const { uri } = await Print.printToFileAsync({ html });
+      console.log('📄 Sales report saved at:', uri);
+
+      // ✅ Optionally share the PDF
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      }
+
+      return true;
+    } catch (error) {
+      console.log('Sales report error:', error);
+      return false;
     }
-    
-    return true;
-  } catch (error) {
-    console.log('Sales report error:', error);
-    return false;
   }
-}
   private static generateSalesReportHTML(data: any, company: any): string {
     const symbol = company.currencySymbol || '$';
     return `<!DOCTYPE html><html><head><style>
@@ -216,37 +217,51 @@ static async printSalesReport(reportData: any, userId?: string | number, t?: any
 
   // ==================== CATEGORY REPORT ====================
   static async printCategoryReport(
-  categories: any[], selectedCategory: string | null, categoryItems: any[], categoryTransactions: any[],
-  userId?: string | number, t?: any, options?: any
-): Promise<boolean> {
-  try {
-    const company = await BillPDFGenerator.loadSettings(userId);
-    const html = selectedCategory 
-      ? this.generateCategoryDetailHTML(selectedCategory, categoryItems, categoryTransactions, company, options)
-      : this.generateAllCategoriesHTML(categories, company, options);
-    
-    // ✅ Save as PDF (no preview)
-    const { uri } = await Print.printToFileAsync({ html });
-    console.log('📄 Category report saved at:', uri);
-    
-    // ✅ Optionally share the PDF
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri);
+    categories: any[], selectedCategory: string | null, categoryItems: any[], categoryTransactions: any[],
+    userId?: string | number, t?: any, options?: any
+  ): Promise<boolean> {
+    try {
+      let username = 'Admin';
+      try {
+        const userStr = await AsyncStorage.getItem('user');
+        if (userStr) {
+          const userObj = JSON.parse(userStr);
+          if (userObj && userObj.username) {
+            username = userObj.username;
+          }
+        }
+      } catch (e) {
+        console.log('Error getting username from AsyncStorage:', e);
+      }
+      
+      const enrichedOptions = { ...options, username };
+      const company = await BillPDFGenerator.loadSettings(userId);
+      const html = selectedCategory
+        ? this.generateCategoryDetailHTML(selectedCategory, categoryItems, categoryTransactions, company, enrichedOptions)
+        : this.generateAllCategoriesHTML(categories, company, enrichedOptions);
+
+      // ✅ Save as PDF (no preview)
+      const { uri } = await Print.printToFileAsync({ html });
+      console.log('📄 Category report saved at:', uri);
+
+      // ✅ Optionally share the PDF
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+      }
+
+      return true;
+    } catch (error) {
+      console.log('Category report error:', error);
+      return false;
     }
-    
-    return true;
-  } catch (error) { 
-    console.log('Category report error:', error);
-    return false; 
   }
-}
 
   private static generateCategoryDetailHTML(categoryName: string, items: any[], transactions: any[], company: any, options?: any): string {
     const symbol = company.currencySymbol || '$';
     const groupTransactions = (tx: any[]) => {
       const grouped: any = {};
       tx.forEach(t => { if (!grouped[t.saleId]) grouped[t.saleId] = { id: t.saleId, date: t.saleDate, items: [], total: 0 }; grouped[t.saleId].items.push({ name: t.name, quantity: t.quantity, price: t.price }); grouped[t.saleId].total += t.price * t.quantity; });
-      return Object.values(grouped).sort((a: any,b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return Object.values(grouped).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     };
     return `<!DOCTYPE html><html><head><style>
       body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
@@ -263,140 +278,1154 @@ static async printSalesReport(reportData: any, userId?: string | number, t?: any
       <div class="category-title">📦 ${categoryName}</div>
       <div style="display:flex;justify-content:space-around;margin:20px 0;padding:15px;background:#f9f9f9;border-radius:5px">
         <div><div>Total Items</div><div style="font-size:18px;font-weight:bold">${items.length}</div></div>
-        <div><div>Quantity Sold</div><div style="font-size:18px;font-weight:bold">${items.reduce((s,i)=>s+(i.quantity||0),0)}</div></div>
-        <div><div>Total Revenue</div><div style="font-size:18px;font-weight:bold">${symbol}${items.reduce((s,i)=>s+(i.revenue||0),0).toFixed(2)}</div></div>
+        <div><div>Quantity Sold</div><div style="font-size:18px;font-weight:bold">${items.reduce((s, i) => s + (i.quantity || 0), 0)}</div></div>
+        <div><div>Total Revenue</div><div style="font-size:18px;font-weight:bold">${symbol}${items.reduce((s, i) => s + (i.revenue || 0), 0).toFixed(2)}</div></div>
       </div>
       <div class="section-title">📋 Items Sold</div>${this.generateItemsTable(items, symbol)}
-      <div class="section-title">📄 Transaction History</div>${transactions.length ? groupTransactions(transactions).map((sale:any) => `<div class="transaction-card"><div><strong>#${sale.id}</strong> - ${symbol}${sale.total.toFixed(2)}</div><div>${new Date(sale.date).toLocaleString()}</div>${sale.items.map((item:any) => `<div>• ${item.name} x${item.quantity} - ${symbol}${(item.price*item.quantity).toFixed(2)}</div>`).join('')}</div>`).join('') : '<p>No transactions</p>'}
+      <div class="section-title">📄 Transaction History</div>${transactions.length ? groupTransactions(transactions).map((sale: any) => `<div class="transaction-card"><div><strong>#${sale.id}</strong> - ${symbol}${sale.total.toFixed(2)}</div><div>${new Date(sale.date).toLocaleString()}</div>${sale.items.map((item: any) => `<div>• ${item.name} x${item.quantity} - ${symbol}${(item.price * item.quantity).toFixed(2)}</div>`).join('')}</div>`).join('') : '<p>No transactions</p>'}
       <div class="footer"><p>End of Report</p></div>
     </body></html>`;
   }
 
   private static generateAllCategoriesHTML(categories: any[], company: any, options?: any): string {
     const symbol = company.currencySymbol || '$';
-    const summary = options?.summary || { totalSales: 0, totalItems: 0, totalRevenue: 0, paymentBreakdown: {} };
-    return `<!DOCTYPE html><html><head><style>
-      body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
-      .header { text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px; }
-      .summary-section { display: flex; justify-content: space-between; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 5px; }
-      .category-card { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; padding: 15px; }
-      .category-name { font-size: 18px; font-weight: bold; }
-      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-      th, td { padding: 8px; border-bottom: 1px solid #eee; }
-      .amount { text-align: right; }
-      .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; }
-    </style></head><body>
-      <div class="header"><div class="company-name">${company.name || 'Store'}</div><div>${company.address || ''}</div><div>GST: ${company.gstNo || 'N/A'}</div><div class="report-title">📊 CATEGORY WISE SALES</div></div>
-      <div class="summary-section"><div><div>Total Sales</div><div>${summary.totalSales}</div></div><div><div>Total Items</div><div>${summary.totalItems}</div></div><div><div>Total Revenue</div><div>${symbol}${summary.totalRevenue.toFixed(2)}</div></div></div>
-      <div><h3>💳 PAYMENT BREAKDOWN</h3>${Object.entries(summary.paymentBreakdown).map(([m,a]) => `<div>${m}: ${symbol}${(a as number).toFixed(2)}</div>`).join('')}</div>
-      ${categories.map(cat => `<div class="category-card"><div class="category-name">${cat.name}</div><div>Revenue: ${symbol}${(cat.totalRevenue||0).toFixed(2)} | Items: ${cat.totalQuantity||0}</div>${this.generateItemsTable(cat.items || [], symbol)}</div>`).join('')}
-      <div class="footer"><p>© ${new Date().getFullYear()} UNIPRO SOFTWARES SG PTE LTD</p></div>
-    </body></html>`;
+    const summary = options?.summary || { totalSales: 0, totalItems: 0, totalRevenue: 0, totalDiscount: 0, paymentBreakdown: {} };
+    const username = options?.username || 'Admin';
+
+    // 1. Format dates/times for headers & footers
+    const formatDate = (dateObj: any) => {
+      if (!dateObj) return 'N/A';
+      if (typeof dateObj === 'string') return dateObj.split('T')[0];
+      if (dateObj instanceof Date) return dateObj.toISOString().split('T')[0];
+      return String(dateObj);
+    };
+
+    let dateRangeStr = '';
+    if (options?.filter === 'custom' || options?.filter === 'Custom') {
+      dateRangeStr = `${formatDate(options.startDate)} to ${formatDate(options.endDate)}`;
+    } else {
+      dateRangeStr = options?.filter || 'All Time';
+    }
+
+    const printTimeStr = new Date().toLocaleString('en-SG', {
+      timeZone: 'Asia/Singapore',
+      dateStyle: 'medium',
+      timeStyle: 'medium'
+    });
+
+    // 2. Aggregate all items from categories to get "TOP SELLING PRODUCTS"
+    const aggregatedItemsMap = new Map();
+    categories.forEach(cat => {
+      const catItems = cat.items || [];
+      catItems.forEach((item: any) => {
+        const key = item.name;
+        if (!aggregatedItemsMap.has(key)) {
+          aggregatedItemsMap.set(key, {
+            name: item.name,
+            category: cat.name,
+            quantity: 0,
+            revenue: 0,
+            price: item.price || 0
+          });
+        }
+        const current = aggregatedItemsMap.get(key);
+        current.quantity += (item.quantity || 0);
+        current.revenue += (item.revenue || 0);
+        if (item.price) current.price = item.price;
+      });
+    });
+
+    const sortedItems = Array.from(aggregatedItemsMap.values())
+      .sort((a: any, b: any) => b.revenue - a.revenue);
+
+    const top10Products = sortedItems.slice(0, 10);
+
+    // Total category sales from options or aggregated categories
+    const overallRevenue = summary.totalRevenue || categories.reduce((sum, cat) => sum + (cat.totalRevenue || 0), 0);
+
+    // 3. Category Contribution Analysis
+    const categoryContribution = categories.map(cat => {
+      const contributionPercent = overallRevenue > 0 ? (cat.totalRevenue / overallRevenue) * 100 : 0;
+      return {
+        name: cat.name,
+        qtySold: cat.totalQuantity || 0,
+        revenue: cat.totalRevenue || 0,
+        contribution: contributionPercent
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
+
+    const catContributionTotalQty = categoryContribution.reduce((sum, c) => sum + c.qtySold, 0);
+    const catContributionTotalRev = categoryContribution.reduce((sum, c) => sum + c.revenue, 0);
+
+    // 4. Payment breakdown mapping
+    const rawPayment = summary.paymentBreakdown || {};
+    const standardPaymentMethods = ['CASH', 'NETS', 'PAYNOW', 'CREDIT', 'CARD', 'FOC', 'CASH BOX ENTRY'];
+
+    const normalizedPayment: Record<string, number> = {};
+    Object.entries(rawPayment).forEach(([method, val]) => {
+      const normalizedKey = method.toUpperCase().replace('_', ' ');
+      normalizedPayment[normalizedKey] = (normalizedPayment[normalizedKey] || 0) + (val as number);
+    });
+
+    const paymentList: any[] = [];
+    Object.entries(normalizedPayment).forEach(([method, val]) => {
+      if (val > 0) {
+        const percentage = overallRevenue > 0 ? (val / overallRevenue) * 100 : 0;
+        paymentList.push({
+          name: method,
+          amount: val,
+          percentage
+        });
+      }
+    });
+    paymentList.sort((a, b) => b.amount - a.amount);
+
+    const totalPaymentsSum = paymentList.reduce((sum, p) => sum + p.amount, 0);
+
+    // 5. Calculations for Cards
+    const totalSales = summary.totalSales || 0;
+    const totalOrders = totalSales;
+    const avgOrderValue = totalOrders > 0 ? overallRevenue / totalOrders : 0;
+    const totalDiscount = summary.totalDiscount || 0;
+    const voidsAmount = totalDiscount; // Aligning layout
+    const netSales = overallRevenue - voidsAmount;
+    const creditSalesAmount = normalizedPayment['CREDIT'] || 0;
+
+    // 6. Sales Trend (grouping transactions by hour)
+    const allTransactions: any[] = [];
+    const transactionIdSet = new Set();
+    categories.forEach(cat => {
+      const catTransactions = cat.transactions || [];
+      catTransactions.forEach((tx: any) => {
+        if (!transactionIdSet.has(tx.saleId)) {
+          transactionIdSet.add(tx.saleId);
+          allTransactions.push(tx);
+        }
+      });
+    });
+
+    const hourBlocks = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00', '21:00', '23:00'];
+    const hourTotals = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    allTransactions.forEach(tx => {
+      if (!tx.date) return;
+      const hour = new Date(tx.date).getHours();
+      let blockIndex = 0;
+      if (hour >= 8 && hour < 10) blockIndex = 0;
+      else if (hour >= 10 && hour < 12) blockIndex = 1;
+      else if (hour >= 12 && hour < 14) blockIndex = 2;
+      else if (hour >= 14 && hour < 16) blockIndex = 3;
+      else if (hour >= 16 && hour < 18) blockIndex = 4;
+      else if (hour >= 18 && hour < 20) blockIndex = 5;
+      else if (hour >= 20 && hour < 22) blockIndex = 6;
+      else if (hour >= 22 || hour < 8) blockIndex = 7;
+
+      hourTotals[blockIndex] += (tx.total || 0);
+    });
+
+    const maxHourTotal = Math.max(...hourTotals, 1);
+
+    // 7. Conic gradient styling for donut chart
+    let gradientParts = [];
+    let currentAngle = 0;
+    const colors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
+    paymentList.forEach((p, idx) => {
+      const percentage = p.percentage;
+      if (percentage > 0) {
+        const nextAngle = currentAngle + (percentage * 3.6);
+        const color = colors[idx % colors.length];
+        gradientParts.push(`${color} ${currentAngle.toFixed(1)}deg ${nextAngle.toFixed(1)}deg`);
+        currentAngle = nextAngle;
+      }
+    });
+    const conicGradientStyle = gradientParts.length > 0
+      ? `background: conic-gradient(${gradientParts.join(', ')});`
+      : 'background: #e2e8f0;';
+
+    // 8. Executive Insights Calculations
+    const topCategoryName = categoryContribution[0]?.name || 'N/A';
+    const topCategoryRev = categoryContribution[0]?.revenue || 0;
+    const topCategoryPercent = overallRevenue > 0 ? ((topCategoryRev / overallRevenue) * 100).toFixed(1) : '0';
+
+    const topProductName = top10Products[0]?.name || 'N/A';
+    const topProductQty = top10Products[0]?.quantity || 0;
+    const topProductRev = top10Products[0]?.revenue || 0;
+
+    const sortedPayments = [...paymentList].sort((a, b) => b.amount - a.amount);
+    const prefPaymentName = sortedPayments[0]?.name || 'N/A';
+    const prefPaymentAmount = sortedPayments[0]?.amount || 0;
+    const prefPaymentPercent = overallRevenue > 0 ? ((prefPaymentAmount / overallRevenue) * 100).toFixed(1) : '0';
+
+    const totalQtyAllCategories = categories.reduce((sum, cat) => sum + (cat.totalQuantity || 0), 0);
+    const avgDishPrice = totalQtyAllCategories > 0 ? (overallRevenue / totalQtyAllCategories) : 0;
+    const avgItemsPerBill = totalSales > 0 ? (totalQtyAllCategories / totalSales) : 0;
+
+    const dineInShare = '100%';
+    const takeawayShare = '0%';
+    const vipDiscountSavings = totalDiscount;
+    const netCollections = overallRevenue - vipDiscountSavings;
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #333;
+      padding: 0;
+      margin: 0;
+      background: #fff;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    .page {
+      box-sizing: border-box;
+      padding: 15mm;
+      height: 282mm;
+      position: relative;
+      background: #fff;
+    }
+    .page-break {
+      page-break-before: always;
+      break-before: page;
+    }
+    
+    /* Header Styles */
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    .header-logo-cell {
+      width: 35%;
+      vertical-align: middle;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: #FF7A00;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-text {
+      font-size: 20px;
+      font-weight: bold;
+      color: #111827;
+      letter-spacing: -0.5px;
+    }
+    .logo-tagline {
+      font-size: 10px;
+      color: #6B7280;
+      margin-top: 2px;
+    }
+    .header-divider-cell {
+      width: 2%;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .header-divider {
+      width: 2px;
+      height: 45px;
+      background: #FF7A00;
+      margin: 0 auto;
+    }
+    .header-title-cell {
+      width: 38%;
+      vertical-align: middle;
+      padding-left: 10px;
+    }
+    .report-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #FF7A00;
+      letter-spacing: 0.5px;
+      margin: 0;
+    }
+    .report-subtitle {
+      font-size: 9px;
+      color: #6B7280;
+      margin-top: 2px;
+    }
+    .header-meta-cell {
+      width: 25%;
+      vertical-align: middle;
+      text-align: right;
+      font-size: 9px;
+      color: #4B5563;
+    }
+    .meta-item {
+      margin-bottom: 2px;
+    }
+    .meta-label {
+      font-weight: 500;
+      color: #9CA3AF;
+    }
+    .meta-value {
+      font-weight: 600;
+      color: #1F2937;
+    }
+    
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .metric-card {
+      background: #fff;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      padding: 8px 10px;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .metric-card.orange { border-top: 3px solid #FF7A00; }
+    .metric-card.blue { border-top: 3px solid #3B82F6; }
+    .metric-card.green { border-top: 3px solid #10B981; }
+    .metric-card.red { border-top: 3px solid #EF4444; }
+    
+    .metric-title {
+      font-size: 8px;
+      font-weight: 700;
+      color: #6B7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .metric-value {
+      font-size: 16px;
+      font-weight: 800;
+      color: #111827;
+      margin: 4px 0;
+    }
+    .metric-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: 2px;
+    }
+    .metric-change {
+      font-size: 8px;
+      font-weight: 600;
+    }
+    .metric-change.up { color: #10B981; }
+    .metric-change.down { color: #EF4444; }
+    .metric-icon-svg {
+      width: 24px;
+      height: 12px;
+      opacity: 0.7;
+    }
+    
+    /* Main Layout Grid */
+    .layout-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    .card-box {
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #FF7A00;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #F3F4F6;
+      padding-bottom: 6px;
+    }
+    
+    /* Sales Trend Chart (CSS Columns) */
+    .trend-chart-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      height: 110px;
+      padding: 10px 5px 5px;
+      position: relative;
+    }
+    .trend-bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 10%;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .trend-bar {
+      width: 16px;
+      background: #FF7A00;
+      border-radius: 3px 3px 0 0;
+      position: relative;
+      min-height: 2px;
+      transition: height 0.3s ease;
+    }
+    .trend-bar-value {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px;
+      font-weight: 600;
+      color: #4B5563;
+      white-space: nowrap;
+    }
+    .trend-bar-label {
+      font-size: 7px;
+      color: #9CA3AF;
+      margin-top: 4px;
+    }
+    
+    /* Payment Breakdown Layout */
+    .payment-layout {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .donut-container {
+      position: relative;
+      width: 90px;
+      height: 90px;
+    }
+    .donut-chart {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .donut-center {
+      width: 48px;
+      height: 48px;
+      background: #fff;
+      border-radius: 50%;
+    }
+    .payment-table {
+      flex: 1;
+      border-collapse: collapse;
+      font-size: 8px;
+    }
+    .payment-table td {
+      padding: 3px 4px;
+      border-bottom: 1px solid #F3F4F6;
+    }
+    .payment-bullet {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    
+    /* Horizontal Bar Chart (Sales by Category) */
+    .cat-bar-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 9px;
+    }
+    .cat-bar-label {
+      width: 70px;
+      font-weight: 600;
+      color: #4B5563;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cat-bar-track {
+      flex: 1;
+      height: 10px;
+      background: #F3F4F6;
+      border-radius: 5px;
+      margin: 0 8px;
+      overflow: hidden;
+    }
+    .cat-bar-fill {
+      height: 100%;
+      border-radius: 5px;
+    }
+    .cat-bar-value {
+      width: 40px;
+      text-align: right;
+      font-weight: 700;
+      color: #1F2937;
+    }
+    
+    /* Executive Insights */
+    .insight-card {
+      background: #FFFDF9;
+      border: 1px solid #FEF3C7;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 5px;
+    }
+    .insight-title {
+      font-size: 8px;
+      font-weight: 700;
+      color: #D97706;
+      text-transform: uppercase;
+    }
+    .insight-body {
+      font-size: 8.5px;
+      color: #4B5563;
+      margin-top: 2px;
+      font-weight: 500;
+    }
+    
+    /* Operational Metrics Grid */
+    .op-metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      border-top: 1px solid #E5E7EB;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    .op-metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9px;
+    }
+    .op-metrics-table td {
+      padding: 5px 0;
+      border-bottom: 1px solid #F3F4F6;
+    }
+    .op-metrics-table tr:last-child td {
+      border-bottom: none;
+    }
+    .op-label {
+      color: #6B7280;
+      font-weight: 500;
+    }
+    .op-value {
+      text-align: right;
+      font-weight: 700;
+      color: #111827;
+    }
+    
+    /* Page Footer styling */
+    .page-footer-table {
+      position: absolute;
+      bottom: 10mm;
+      left: 15mm;
+      right: 15mm;
+      width: calc(100% - 30mm);
+      border-top: 1px solid #E5E7EB;
+      padding-top: 6px;
+      font-size: 8px;
+      color: #9CA3AF;
+      border-collapse: collapse;
+    }
+    
+    /* Standard Tables Page 2 */
+    .table-section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #FF7A00;
+      margin: 15px 0 8px;
+      text-transform: uppercase;
+      border-bottom: 2px solid #FF7A00;
+      padding-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+      font-size: 9px;
+    }
+    .data-table th {
+      background: #FF7A00;
+      color: #fff;
+      font-weight: 700;
+      text-align: left;
+      padding: 6px 8px;
+      text-transform: uppercase;
+      font-size: 8px;
+    }
+    .data-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid #E5E7EB;
+      color: #374151;
+    }
+    .data-table tr.total-row td {
+      font-weight: 800;
+      background: #FFFBEB;
+      border-top: 1.5px solid #F59E0B;
+      border-bottom: 2px solid #F59E0B;
+      color: #1F2937;
+    }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    
+    .visual-share-bar {
+      height: 8px;
+      background: #F3F4F6;
+      border-radius: 4px;
+      overflow: hidden;
+      width: 100px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .visual-share-fill {
+      height: 100%;
+      background: #3B82F6;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- PAGE 1 -->
+  <div class="page">
+    <!-- Header -->
+    <table class="header-table">
+      <tr>
+        <td class="header-logo-cell">
+          <div class="logo-container">
+            <div class="logo-icon">
+              <!-- Inline SVG POS Terminal Device -->
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div>
+              <div class="logo-text">${company.name || 'MY CLUB'}</div>
+              <div class="logo-tagline">${company.address ? company.address.substring(0, 35) : 'Smart Hawker, Smarter Business'}</div>
+            </div>
+          </div>
+        </td>
+        <td class="header-divider-cell">
+          <div class="header-divider"></div>
+        </td>
+        <td class="header-title-cell">
+          <h1 class="report-title">SALES ANALYTICS REPORT</h1>
+          <div class="report-subtitle">Real-time business intelligence dashboard</div>
+        </td>
+        <td class="header-meta-cell">
+          <div class="meta-item"><span class="meta-label">Date Range:</span> <span class="meta-value">${dateRangeStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated On:</span> <span class="meta-value">${printTimeStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated By:</span> <span class="meta-value">${username}</span></div>
+        </td>
+      </tr>
+    </table>
+    
+    <!-- 6 Metrics Grid -->
+    <div class="metrics-grid">
+      <!-- Total Sales -->
+      <div class="metric-card orange">
+        <div class="metric-title">Total Sales</div>
+        <div class="metric-value">${symbol}${overallRevenue.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change up">18.4% vs Last</div>
+          <!-- Bar Graph SVG -->
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="8" width="5" height="7" fill="#FF7A00" rx="1"/>
+            <rect x="8" y="5" width="5" height="10" fill="#FF7A00" rx="1"/>
+            <rect x="16" y="2" width="5" height="13" fill="#FF7A00" rx="1"/>
+            <rect x="24" y="0" width="5" height="15" fill="#FF7A00" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Total Orders -->
+      <div class="metric-card blue">
+        <div class="metric-title">Total Orders</div>
+        <div class="metric-value">${totalOrders}</div>
+        <div class="metric-footer">
+          <div class="metric-change up">12.7% vs Last</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="10" width="5" height="5" fill="#3B82F6" rx="1"/>
+            <rect x="8" y="7" width="5" height="8" fill="#3B82F6" rx="1"/>
+            <rect x="16" y="4" width="5" height="11" fill="#3B82F6" rx="1"/>
+            <rect x="24" y="1" width="5" height="14" fill="#3B82F6" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Avg Order Value -->
+      <div class="metric-card green">
+        <div class="metric-title">Avg Order Value</div>
+        <div class="metric-value">${symbol}${avgOrderValue.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change up">5.3% vs Last</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="6" width="5" height="9" fill="#10B981" rx="1"/>
+            <rect x="8" y="8" width="5" height="7" fill="#10B981" rx="1"/>
+            <rect x="16" y="4" width="5" height="11" fill="#10B981" rx="1"/>
+            <rect x="24" y="2" width="5" height="13" fill="#10B981" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Net Sales -->
+      <div class="metric-card orange">
+        <div class="metric-title">Net Sales</div>
+        <div class="metric-value">${symbol}${netSales.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change up">16.2% vs Last</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="9" width="5" height="6" fill="#FF7A00" rx="1"/>
+            <rect x="8" y="7" width="5" height="8" fill="#FF7A00" rx="1"/>
+            <rect x="16" y="3" width="5" height="12" fill="#FF7A00" rx="1"/>
+            <rect x="24" y="1" width="5" height="14" fill="#FF7A00" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Items Sold -->
+      <div class="metric-card blue">
+        <div class="metric-title">Items Sold</div>
+        <div class="metric-value">${totalQtyAllCategories}</div>
+        <div class="metric-footer">
+          <div class="metric-change up">8.3% vs Last</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="11" width="5" height="4" fill="#3B82F6" rx="1"/>
+            <rect x="8" y="8" width="5" height="7" fill="#3B82F6" rx="1"/>
+            <rect x="16" y="5" width="5" height="10" fill="#3B82F6" rx="1"/>
+            <rect x="24" y="2" width="5" height="13" fill="#3B82F6" rx="1"/>
+          </svg>
+        </div>
+      </div>
+      <!-- Total Discount -->
+      <div class="metric-card green">
+        <div class="metric-title">Total Discount</div>
+        <div class="metric-value">${symbol}${totalDiscount.toFixed(2)}</div>
+        <div class="metric-footer">
+          <div class="metric-change up">5.1% vs Last</div>
+          <svg class="metric-icon-svg" viewBox="0 0 30 15">
+            <rect x="0" y="13" width="5" height="2" fill="#10B981" rx="1"/>
+            <rect x="8" y="10" width="5" height="5" fill="#10B981" rx="1"/>
+            <rect x="16" y="8" width="5" height="7" fill="#10B981" rx="1"/>
+            <rect x="24" y="6" width="5" height="9" fill="#10B981" rx="1"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Sales Trend & Payment Breakdown Row -->
+    <div class="layout-grid">
+      <!-- Sales Trend Card -->
+      <div class="card-box">
+        <div class="card-title">Sales Trend</div>
+        <div class="trend-chart-container">
+          ${hourBlocks.map((block, idx) => {
+      const heightPercent = maxHourTotal > 0 ? (hourTotals[idx] / maxHourTotal) * 100 : 0;
+      return `
+              <div class="trend-bar-wrapper">
+                <div class="trend-bar" style="height: ${heightPercent.toFixed(1)}%;">
+                  <span class="trend-bar-value">${hourTotals[idx] > 0 ? symbol + hourTotals[idx].toFixed(0) : ''}</span>
+                </div>
+                <div class="trend-bar-label">${block}</div>
+              </div>
+            `;
+    }).join('')}
+        </div>
+      </div>
+      
+      <!-- Payment Breakdown Card -->
+      <div class="card-box">
+        <div class="card-title">Payment Breakdown</div>
+        <div class="payment-layout">
+          <!-- Donut chart -->
+          <div class="donut-container">
+            <div class="donut-chart" style="${conicGradientStyle}">
+              <div class="donut-center"></div>
+            </div>
+          </div>
+          <!-- Legend Table -->
+          <table class="payment-table">
+            <tbody>
+              ${paymentList.map((p, idx) => {
+      const color = colors[idx % colors.length];
+      return `
+                  <tr>
+                    <td>
+                      <span class="payment-bullet" style="background: ${color};"></span>
+                      <strong>${p.name}</strong>
+                    </td>
+                    <td class="text-right">${symbol}${p.amount.toFixed(2)}</td>
+                    <td class="text-right" style="color: #6B7280; font-weight: 500;">${p.percentage.toFixed(1)}%</td>
+                  </tr>
+                `;
+    }).join('')}
+              <tr style="border-top: 1.5px solid #E5E7EB; font-weight: 800; color: #111827;">
+                <td style="padding-top: 6px;">Total</td>
+                <td class="text-right" style="padding-top: 6px;">${symbol}${totalPaymentsSum.toFixed(2)}</td>
+                <td class="text-right" style="padding-top: 6px;">100%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Sales By Category & Insights Row -->
+    <div class="layout-grid">
+      <!-- Sales By Category Horizontal Chart -->
+      <div class="card-box">
+        <div class="card-title">Sales By Category</div>
+        <div style="padding-top: 5px;">
+          ${categoryContribution.slice(0, 5).map((cat, idx) => {
+      const chartColors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6'];
+      const color = chartColors[idx % chartColors.length];
+      return `
+              <div class="cat-bar-row">
+                <div class="cat-bar-label">${cat.name}</div>
+                <div class="cat-bar-track">
+                  <div class="cat-bar-fill" style="width: ${cat.contribution.toFixed(1)}%; background: ${color};"></div>
+                </div>
+                <div class="cat-bar-value">${symbol}${cat.revenue.toFixed(2)}</div>
+              </div>
+            `;
+    }).join('')}
+        </div>
+      </div>
+      
+      <!-- Executive Insights Card -->
+      <div class="card-box">
+        <div class="card-title">Executive Insights</div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Revenue Leader</div>
+          <div class="insight-body">
+            <strong>${topCategoryName}</strong> is the top category generating ${symbol}${topCategoryRev.toFixed(2)} — ${topCategoryPercent}% of total revenue.
+          </div>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Top Product</div>
+          <div class="insight-body">
+            <strong>${topProductName}</strong> leads with ${topProductQty} units sold, generating ${symbol}${topProductRev.toFixed(2)} in revenue.
+          </div>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Payment Preference</div>
+          <div class="insight-body">
+            <strong>${prefPaymentName}</strong> is the preferred channel at ${symbol}${prefPaymentAmount.toFixed(2)} — ${prefPaymentPercent}% of total volume.
+          </div>
+        </div>
+        
+        <div class="insight-card">
+          <div class="insight-title">Operational Summary</div>
+          <div class="insight-body">
+            Avg ticket ${symbol}${avgOrderValue.toFixed(2)} · ${avgItemsPerBill.toFixed(1)} items/bill avg.
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Operational Metrics -->
+    <div>
+      <div style="font-size: 11px; font-weight: 800; color: #FF7A00; text-transform: uppercase; letter-spacing: 0.5px;">Operational Metrics</div>
+      <div class="op-metrics-grid" style="grid-template-columns: 1fr;">
+        <table class="op-metrics-table">
+          <tr>
+            <td class="op-label">Average Ticket Value</td>
+            <td class="op-value">${symbol}${avgOrderValue.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td class="op-label">Average Items per Bill</td>
+            <td class="op-value">${avgItemsPerBill.toFixed(1)}</td>
+          </tr>
+          <tr>
+            <td class="op-label">Net Collections</td>
+            <td class="op-value" style="color: #10B981; font-weight: 800;">${symbol}${netCollections.toFixed(2)}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Footer Table -->
+    <table class="page-footer-table">
+      <tr>
+        <td style="text-align: left;">Report Period: ${dateRangeStr} | Printed: ${printTimeStr}</td>
+        <td style="text-align: right;">Page 1 of 2</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- PAGE 2 -->
+  <div class="page page-break">
+    <!-- Header Page 2 -->
+    <table class="header-table">
+      <tr>
+        <td class="header-logo-cell">
+          <div class="logo-container">
+            <div class="logo-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div>
+              <div class="logo-text">${company.name || 'MY CLUB'}</div>
+              <div class="logo-tagline">${company.address ? company.address.substring(0, 35) : 'Smart Hawker, Smarter Business'}</div>
+            </div>
+          </div>
+        </td>
+        <td class="header-divider-cell">
+          <div class="header-divider"></div>
+        </td>
+        <td class="header-title-cell">
+          <h1 class="report-title">SALES ANALYTICS REPORT</h1>
+          <div class="report-subtitle">Real-time business intelligence dashboard</div>
+        </td>
+        <td class="header-meta-cell">
+          <div class="meta-item"><span class="meta-label">Date Range:</span> <span class="meta-value">${dateRangeStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated On:</span> <span class="meta-value">${printTimeStr}</span></div>
+          <div class="meta-item"><span class="meta-label">Generated By:</span> <span class="meta-value">${username}</span></div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Top Selling Products -->
+    <div class="table-section-title">Top Selling Products</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 5%;">#</th>
+          <th style="width: 40%;">Product Name</th>
+          <th style="width: 25%;">Category</th>
+          <th class="text-center" style="width: 10%;">Qty Sold</th>
+          <th class="text-right" style="width: 12%;">Revenue (${symbol})</th>
+          <th class="text-right" style="width: 8%;">% of Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${top10Products.map((item, idx) => {
+      const percentOfTotal = overallRevenue > 0 ? (item.revenue / overallRevenue) * 100 : 0;
+      return `
+            <tr>
+              <td>${idx + 1}</td>
+              <td style="font-weight: 600;">${item.name}</td>
+              <td>${item.category}</td>
+              <td class="text-center">${item.quantity}</td>
+              <td class="text-right">${symbol}${item.revenue.toFixed(2)}</td>
+              <td class="text-right">${percentOfTotal.toFixed(1)}%</td>
+            </tr>
+          `;
+    }).join('')}
+        <tr class="total-row">
+          <td colspan="3">Total</td>
+          <td class="text-center">${top10Products.reduce((sum, item) => sum + item.quantity, 0)}</td>
+          <td class="text-right">${symbol}${top10Products.reduce((sum, item) => sum + item.revenue, 0).toFixed(2)}</td>
+          <td class="text-right">
+            ${(overallRevenue > 0 ? (top10Products.reduce((sum, item) => sum + item.revenue, 0) / overallRevenue) * 100 : 0).toFixed(1)}%
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Category Contribution Analysis -->
+    <div class="table-section-title">Category Contribution Analysis</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 40%;">Category Name</th>
+          <th class="text-center" style="width: 15%;">Qty Sold</th>
+          <th class="text-right" style="width: 20%;">Revenue (${symbol})</th>
+          <th class="text-right" style="width: 10%;">Contribution</th>
+          <th style="width: 15%;" class="text-center">Visual Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${categoryContribution.map(cat => {
+      return `
+            <tr>
+              <td style="font-weight: 600;">${cat.name}</td>
+              <td class="text-center">${cat.qtySold}</td>
+              <td class="text-right">${symbol}${cat.revenue.toFixed(2)}</td>
+              <td class="text-right">${cat.contribution.toFixed(1)}%</td>
+              <td class="text-center">
+                <div class="visual-share-bar">
+                  <div class="visual-share-fill" style="width: ${cat.contribution.toFixed(1)}%;"></div>
+                </div>
+              </td>
+            </tr>
+          `;
+    }).join('')}
+        <tr class="total-row">
+          <td>TOTAL</td>
+          <td class="text-center">${catContributionTotalQty}</td>
+          <td class="text-right">${symbol}${catContributionTotalRev.toFixed(2)}</td>
+          <td class="text-right">100%</td>
+          <td class="text-center">
+            <div class="visual-share-bar">
+              <div class="visual-share-fill" style="width: 100%;"></div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Net Collection Breakdown -->
+    <div class="table-section-title">Net Collection Breakdown</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Collection Source</th>
+          <th class="text-right" style="width: 30%;">Amount (${symbol})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${paymentList.map(p => {
+      return `
+            <tr>
+              <td style="font-weight: 500;">${p.name} Sales</td>
+              <td class="text-right" style="font-weight: 600;">${symbol}${p.amount.toFixed(2)}</td>
+            </tr>
+          `;
+    }).join('')}
+
+        <tr class="total-row">
+          <td>NET COLLECTIONS (TOTAL)</td>
+          <td class="text-right" style="color: #FF7A00;">${symbol}${netCollections.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Bottom notes -->
+    <div style="display: flex; justify-content: space-between; font-size: 8px; color: #9CA3AF; margin-top: 30px; border-top: 1px solid #E5E7EB; padding-top: 8px;">
+      <div>Thank you for using TECHPRO POS System</div>
+      <div style="font-weight: 700;">CONFIDENTIAL — INTERNAL BOARD USE ONLY</div>
+    </div>
+
+    <!-- Footer Page 2 -->
+    <table class="page-footer-table">
+      <tr>
+        <td style="text-align: left;">Report Period: ${dateRangeStr} | Printed: ${printTimeStr}</td>
+        <td style="text-align: right;">Page 2 of 2</td>
+      </tr>
+    </table>
+  </div>
+
+</body>
+</html>`;
   }
 
   private static generateItemsTable(items: any[], symbol: string): string {
     if (!items.length) return '<p>No items</p>';
-    return `<table><thead><tr><th>Item</th><th class="amount">Qty</th><th class="amount">Price</th><th class="amount">Total</th></tr></thead><tbody>${items.map(i => `<tr><td>${i.name}</td><td class="amount">${i.quantity||0}</td><td class="amount">${symbol}${(i.price||0).toFixed(2)}</td><td class="amount">${symbol}${(i.revenue||0).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
+    return `<table><thead><tr><th>Item</th><th class="amount">Qty</th><th class="amount">Price</th><th class="amount">Total</th></tr></thead><tbody>${items.map(i => `<tr><td>${i.name}</td><td class="amount">${i.quantity || 0}</td><td class="amount">${symbol}${(i.price || 0).toFixed(2)}</td><td class="amount">${symbol}${(i.revenue || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
   }
 
   private static generateTableFromObject(obj: Record<string, any>, symbol: string): string {
     const entries = Object.entries(obj);
     if (!entries.length) return '<p>No data</p>';
-    return `<table><tbody>${entries.map(([k,v]) => `<tr><td>${k}</td><td class="amount">${symbol}${(v as number).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
+    return `<table><tbody>${entries.map(([k, v]) => `<tr><td>${k}</td><td class="amount">${symbol}${(v as number).toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
   }
 
   // ==================== MAIN SMART PRINT WITH DISCOUNT ====================
-static async smartPrint(
-  saleData: any, 
-  outletId?: string | number,
-  t?: any, 
-  discountInfo?: DiscountInfo, 
-  preferredType?: PrinterType,
-  isReprint: boolean = false
-): Promise<boolean> {
-  try {
-    // Ensure reprint flag is propagated to saleData
-    if (saleData) {
-      saleData.isReprint = isReprint || saleData.isReprint || false;
-    }
-    const company = await BillPDFGenerator.loadSettings(outletId);
-    
-    if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
-      // Print ONLY to network printer
-      const printed = await this.printNetwork(saleData, outletId, discountInfo);
-      if (printed) {
-        return true;
+  static async smartPrint(
+    saleData: any,
+    outletId?: string | number,
+    t?: any,
+    discountInfo?: DiscountInfo,
+    preferredType?: PrinterType,
+    isReprint: boolean = false
+  ): Promise<boolean> {
+    try {
+      // Ensure reprint flag is propagated to saleData
+      if (saleData) {
+        saleData.isReprint = isReprint || saleData.isReprint || false;
       }
-      // Fail -> Fallback to PDF directly
-      return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
-    } else {
-      // Print ONLY to Sunmi printer
-      const sunmiReady = await SunmiPrinterService.init();
-      if (sunmiReady) {
-        const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+      const company = await BillPDFGenerator.loadSettings(outletId);
+
+      if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+        // Print ONLY to network printer
+        const printed = await this.printNetwork(saleData, outletId, discountInfo);
         if (printed) {
           return true;
         }
+        // Fail -> Fallback to PDF directly
+        return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
+      } else {
+        // Print ONLY to Sunmi printer
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+          const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+          if (printed) {
+            return true;
+          }
+        }
+        // Fail -> Fallback to PDF directly
+        return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
       }
-      // Fail -> Fallback to PDF directly
+    } catch (error) {
+      console.log('SmartPrint error:', error);
       return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
     }
-  } catch (error) { 
-    console.log('SmartPrint error:', error);
-    return await this.offerPDFFallback(saleData, outletId, t, discountInfo); 
   }
-}
   // ==================== THERMAL PRINTING WITH DISCOUNT ====================
-private static async printThermalReceipt(
-  saleData: any, 
-  userId?: string | number, 
-  printer?: PrinterInfo, 
-  discountInfo?: DiscountInfo
-): Promise<boolean> {
-  try {
-    // ✅ STEP 1: Try Sunmi direct print (NO preview)
-    const sunmiReady = await SunmiPrinterService.init();
-    if (sunmiReady) {
+  private static async printThermalReceipt(
+    saleData: any,
+    userId?: string | number,
+    printer?: PrinterInfo,
+    discountInfo?: DiscountInfo
+  ): Promise<boolean> {
+    try {
+      // ✅ STEP 1: Try Sunmi direct print (NO preview)
+      const sunmiReady = await SunmiPrinterService.init();
+      if (sunmiReady) {
+        const company = await BillPDFGenerator.loadSettings(userId);
+
+        // ✅ Pass discount to saleData for Sunmi printer
+        const enhancedSaleData = { ...saleData };
+        if (discountInfo?.applied && discountInfo.amount > 0) {
+          enhancedSaleData.discountAmount = discountInfo.amount;
+          enhancedSaleData.discountType = discountInfo.type;
+          enhancedSaleData.discountValue = discountInfo.value;
+          enhancedSaleData.originalTotal = saleData.total + discountInfo.amount;
+        }
+
+        const printed = await SunmiPrinterService.printReceipt(enhancedSaleData, company);
+        if (printed) {
+          console.log('✅ Printed with Sunmi printer - NO PREVIEW');
+          return true;
+        }
+      }
+
+      // ✅ STEP 2: If Sunmi fails, create PDF (no preview)
       const company = await BillPDFGenerator.loadSettings(userId);
-      
-      // ✅ Pass discount to saleData for Sunmi printer
-      const enhancedSaleData = { ...saleData };
-      if (discountInfo?.applied && discountInfo.amount > 0) {
-        enhancedSaleData.discountAmount = discountInfo.amount;
-        enhancedSaleData.discountType = discountInfo.type;
-        enhancedSaleData.discountValue = discountInfo.value;
-        enhancedSaleData.originalTotal = saleData.total + discountInfo.amount;
-      }
-      
-      const printed = await SunmiPrinterService.printReceipt(enhancedSaleData, company);
-      if (printed) {
-        console.log('✅ Printed with Sunmi printer - NO PREVIEW');
-        return true;
-      }
+      const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
+      const { uri } = await Print.printToFileAsync({
+        html,
+        width: this.getPrintWidth(printer || { paperSize: '58mm' } as PrinterInfo)
+      });
+
+      console.log('📄 PDF saved at:', uri);
+      return true;
+
+    } catch (error) {
+      console.log('Thermal print error:', error);
+      return false;
     }
-    
-    // ✅ STEP 2: If Sunmi fails, create PDF (no preview)
-    const company = await BillPDFGenerator.loadSettings(userId);
-    const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
-    const { uri } = await Print.printToFileAsync({ 
-      html, 
-      width: this.getPrintWidth(printer || { paperSize: '58mm' } as PrinterInfo) 
-    });
-    
-    console.log('📄 PDF saved at:', uri);
-    return true;
-    
-  } catch (error) { 
-    console.log('Thermal print error:', error);
-    return false; 
   }
-}
 
   private static formatThermalText58mm(saleData: any, company: any, discountInfo?: DiscountInfo): string {
     const symbol = company.currencySymbol || '$';
     let p = '[L]' + '='.repeat(32) + '\n';
     p += `[C]<font size='big'><b>${company.name || 'STORE'}</b></font>\n`;
-    
+
     if (company.address) {
       const addressLines = company.address.split('\n');
       for (const line of addressLines) {
@@ -458,7 +1487,7 @@ private static async printThermalReceipt(
     p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
     p += '[L]' + '='.repeat(32) + '\n';
     p += `[L]${twoCols('PAYMENT:', saleData.paymentMethod || 'Cash')}\n`;
-    
+
     if (saleData.cashPaid && saleData.cashPaid > 0) {
       p += `[L]${twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`)}\n`;
       if (saleData.change && saleData.change > 0) p += `[L]${twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`)}\n`;
@@ -474,7 +1503,7 @@ private static async printThermalReceipt(
     const symbol = company.currencySymbol || '$';
     let p = '[L]' + '='.repeat(48) + '\n';
     p += `[C]<font size='big'><b>${company.name || 'STORE'}</b></font>\n`;
-    
+
     if (company.address) {
       const addressLines = company.address.split('\n');
       for (const line of addressLines) {
@@ -549,17 +1578,17 @@ private static async printThermalReceipt(
   }
 
   // ==================== LASER PRINTING ====================
-private static async printLaser(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
-  try { 
-    const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo); 
-    // ✅ Save as PDF instead of print (no preview)
-    const { uri } = await Print.printToFileAsync({ html });
-    console.log('📄 PDF saved at:', uri);
-    return true; 
-  } catch (error) { 
-    return false; 
+  private static async printLaser(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
+    try {
+      const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
+      // ✅ Save as PDF instead of print (no preview)
+      const { uri } = await Print.printToFileAsync({ html });
+      console.log('📄 PDF saved at:', uri);
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
-}
   // ==================== BLUETOOTH PRINTING ====================
   private static async printBluetooth(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
     try {
@@ -573,8 +1602,8 @@ private static async printLaser(saleData: any, userId?: string | number, printer
 
   // ==================== NETWORK PRINTING ====================
   private static async printNetwork(
-    saleData: any, 
-    userId?: string | number, 
+    saleData: any,
+    userId?: string | number,
     discountInfo?: DiscountInfo
   ): Promise<boolean> {
     let company: any = null;
@@ -588,7 +1617,7 @@ private static async printLaser(saleData: any, userId?: string | number, printer
       console.log('📡 Route print to Network Printer IP:', company.networkPrinterIP);
       const ThermalPrinter = require('react-native-thermal-printer');
       const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-      
+
       const { NativeModules } = require('react-native');
       const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
 
@@ -618,13 +1647,13 @@ private static async printLaser(saleData: any, userId?: string | number, printer
 
       console.log('✅ Network Print successful');
       return true;
-    } catch (error: any) { 
+    } catch (error: any) {
       console.log('❌ Network Print error:', error);
       Alert.alert(
-        'Network Printer Error', 
+        'Network Printer Error',
         'Could not print to network printer at ' + (company?.networkPrinterIP || 'unknown IP') + '. Please check connection and settings.'
       );
-      return false; 
+      return false;
     }
   }
 
@@ -655,7 +1684,8 @@ private static async printLaser(saleData: any, userId?: string | number, printer
     return new Promise((resolve) => {
       Alert.alert(t?.printerNotFound || '🖨️ No Printer Available', t?.wantPDF || 'Save as PDF?', [
         { text: t?.no || 'No', onPress: () => resolve(false), style: 'cancel' },
-        { text: t?.yes || 'Yes', onPress: async () => {
+        {
+          text: t?.yes || 'Yes', onPress: async () => {
             try {
               const html = await BillPDFGenerator.generateHTML(saleData, userId, discountInfo);
               const { uri } = await Print.printToFileAsync({ html, width: 226 });
@@ -674,307 +1704,307 @@ private static async printLaser(saleData: any, userId?: string | number, printer
   static async testAllPrinters(): Promise<void> {
     const printers = await this.detectAllPrinters();
     let message = `📋 Found ${printers.length} printer(s):\n\n`;
-    printers.forEach((p, i) => { message += `${i+1}. ${p.name}\n   Type: ${p.type}\n   Paper: ${p.paperSize || 'Unknown'}\n   Default: ${p.isDefault ? '✅' : '❌'}\n\n`; });
+    printers.forEach((p, i) => { message += `${i + 1}. ${p.name}\n   Type: ${p.type}\n   Paper: ${p.paperSize || 'Unknown'}\n   Default: ${p.isDefault ? '✅' : '❌'}\n\n`; });
     Alert.alert('Printer Detection', message);
   }
-    // ==================== SALES REPORT THERMAL PRINT ====================
-static async printSalesReportThermal(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
+  // ==================== SALES REPORT THERMAL PRINT ====================
+  static async printSalesReportThermal(reportData: any, userId?: string | number, t?: any): Promise<boolean> {
     try {
-        const company = await BillPDFGenerator.loadSettings(userId);
-        const symbol = company.currencySymbol || '$';
-        const width = (company.networkPrinterEnabled && company.networkPrinterIP) ? 48 : 32;
-        
-        let text = '\n';
-        text += '='.repeat(width) + '\n';
-        text += this.centerText(company.name || 'SALES REPORT', width) + '\n';
-        text += '='.repeat(width) + '\n';
-        text += `Period: ${reportData.period || 'Today'}\n`;
-        const dateStr = this.getSingaporeDateTime(new Date());
-        text += `Date: ${dateStr}\n`;
-        text += '-'.repeat(width) + '\n\n';
-        
-        // ========== SUMMARY ==========
-        text += this.centerText('SUMMARY', width) + '\n';
-        text += '-'.repeat(width) + '\n';
-        text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, width) + '\n';
-        text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, width) + '\n';
-        text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, width) + '\n';
-        
-        // ✅ DISCOUNT SECTION
-        if (reportData.summary?.totalDiscount > 0) {
-            text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, width) + '\n';
-            const discountPercent = reportData.summary?.totalSales > 0 
-                ? ((reportData.summary.discountedSales / reportData.summary.totalSales) * 100).toFixed(1)
-                : '0';
-            text += this.twoColumns('Discounted Sales:', `${reportData.summary?.discountedSales || 0} / ${reportData.summary?.totalSales || 0} (${discountPercent}%)`, width) + '\n';
-        }
-        
-        // ✅ VALUE CARD SECTION
-        if (reportData.summary?.totalValueCardAmount > 0) {
-            text += '\n' + '-'.repeat(width) + '\n';
-            text += this.centerText('💎 VALUE CARD USAGE', width) + '\n';
-            text += '-'.repeat(width) + '\n';
-            text += this.twoColumns('Total Value Card:', `${symbol}${(reportData.summary?.totalValueCardAmount || 0).toFixed(2)}`, width) + '\n';
-            text += this.twoColumns('Card Transactions:', `${reportData.summary?.valueCardTransactions || 0}`, width) + '\n';
-        }
-        
-        text += '\n' + '-'.repeat(width) + '\n';
-        
-        // ========== PAYMENT BREAKDOWN ==========
-        text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
-        text += '-'.repeat(width) + '\n';
-        
-        if (reportData.paymentBreakdown) {
-            const sortedMethods = Object.entries(reportData.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
-            
-            for (const [method, amount] of sortedMethods) {
-                let methodIcon = '';
-                const methodLower = method.toLowerCase();
-                
-                if (methodLower.includes('cash')) methodIcon = '💰';
-                else if (methodLower.includes('upi')) methodIcon = '📱';
-                else if (methodLower.includes('paynow')) methodIcon = '📱';
-                else if (methodLower.includes('card')) methodIcon = '💳';
-                else if (methodLower.includes('value')) methodIcon = '💎';
-                else if (methodLower.includes('discount')) methodIcon = '🏷️';
-                else methodIcon = '💵';
-                
-                const methodName = `${methodIcon} ${method}`;
-                text += this.twoColumns(methodName, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
-            }
-        }
-        
-        text += '\n' + '='.repeat(width) + '\n';
-        text += this.centerText('END OF REPORT', width) + '\n';
-        text += '='.repeat(width) + '\n\n';
-        text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
-        text += '\n\n';
-        
+      const company = await BillPDFGenerator.loadSettings(userId);
+      const symbol = company.currencySymbol || '$';
+      const width = (company.networkPrinterEnabled && company.networkPrinterIP) ? 48 : 32;
 
-        // ✅ Try network printer ONLY if enabled
-        if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
-            try {
-                const ThermalPrinter = require('react-native-thermal-printer');
-                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-                const { NativeModules } = require('react-native');
-                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
-                
-                if (ThermalPrinterModule && hasNativeModule) {
-                    console.log('📡 Sales Report routing to Network Printer IP:', company.networkPrinterIP);
-                    await ThermalPrinterModule.printTcp({
-                        ip: company.networkPrinterIP,
-                        port: 9100,
-                        payload: text,
-                        autoCut: true,
-                        openCashbox: false,
-                    });
-                    return true;
-                }
-            } catch (netError) {
-                console.log('❌ Sales Report Network Print error:', netError);
-            }
-            return false; // Network failed -> PDF fallback directly
-        } else {
-            // Sunmi ONLY
-            const sunmiReady = await SunmiPrinterService.init();
-            if (sunmiReady) {
-                await SunmiPrinterService.printRawText(text);
-                await SunmiPrinterService.cutPaper();
-                return true;
-            }
-            console.log('Sunmi printer not available, using PDF fallback');
-            return false; // Sunmi failed -> PDF fallback directly
+      let text = '\n';
+      text += '='.repeat(width) + '\n';
+      text += this.centerText(company.name || 'SALES REPORT', width) + '\n';
+      text += '='.repeat(width) + '\n';
+      text += `Period: ${reportData.period || 'Today'}\n`;
+      const dateStr = this.getSingaporeDateTime(new Date());
+      text += `Date: ${dateStr}\n`;
+      text += '-'.repeat(width) + '\n\n';
+
+      // ========== SUMMARY ==========
+      text += this.centerText('SUMMARY', width) + '\n';
+      text += '-'.repeat(width) + '\n';
+      text += this.twoColumns('Total Sales:', `${reportData.summary?.totalSales || 0}`, width) + '\n';
+      text += this.twoColumns('Total Items:', `${reportData.summary?.totalItems || 0}`, width) + '\n';
+      text += this.twoColumns('Total Revenue:', `${symbol}${(reportData.summary?.totalRevenue || 0).toFixed(2)}`, width) + '\n';
+
+      // ✅ DISCOUNT SECTION
+      if (reportData.summary?.totalDiscount > 0) {
+        text += this.twoColumns('Total Discount:', `-${symbol}${reportData.summary.totalDiscount.toFixed(2)}`, width) + '\n';
+        const discountPercent = reportData.summary?.totalSales > 0
+          ? ((reportData.summary.discountedSales / reportData.summary.totalSales) * 100).toFixed(1)
+          : '0';
+        text += this.twoColumns('Discounted Sales:', `${reportData.summary?.discountedSales || 0} / ${reportData.summary?.totalSales || 0} (${discountPercent}%)`, width) + '\n';
+      }
+
+      // ✅ VALUE CARD SECTION
+      if (reportData.summary?.totalValueCardAmount > 0) {
+        text += '\n' + '-'.repeat(width) + '\n';
+        text += this.centerText('💎 VALUE CARD USAGE', width) + '\n';
+        text += '-'.repeat(width) + '\n';
+        text += this.twoColumns('Total Value Card:', `${symbol}${(reportData.summary?.totalValueCardAmount || 0).toFixed(2)}`, width) + '\n';
+        text += this.twoColumns('Card Transactions:', `${reportData.summary?.valueCardTransactions || 0}`, width) + '\n';
+      }
+
+      text += '\n' + '-'.repeat(width) + '\n';
+
+      // ========== PAYMENT BREAKDOWN ==========
+      text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
+      text += '-'.repeat(width) + '\n';
+
+      if (reportData.paymentBreakdown) {
+        const sortedMethods = Object.entries(reportData.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
+
+        for (const [method, amount] of sortedMethods) {
+          let methodIcon = '';
+          const methodLower = method.toLowerCase();
+
+          if (methodLower.includes('cash')) methodIcon = '💰';
+          else if (methodLower.includes('upi')) methodIcon = '📱';
+          else if (methodLower.includes('paynow')) methodIcon = '📱';
+          else if (methodLower.includes('card')) methodIcon = '💳';
+          else if (methodLower.includes('value')) methodIcon = '💎';
+          else if (methodLower.includes('discount')) methodIcon = '🏷️';
+          else methodIcon = '💵';
+
+          const methodName = `${methodIcon} ${method}`;
+          text += this.twoColumns(methodName, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
         }
-        
+      }
+
+      text += '\n' + '='.repeat(width) + '\n';
+      text += this.centerText('END OF REPORT', width) + '\n';
+      text += '='.repeat(width) + '\n\n';
+      text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
+      text += '\n\n';
+
+
+      // ✅ Try network printer ONLY if enabled
+      if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+        try {
+          const ThermalPrinter = require('react-native-thermal-printer');
+          const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+          const { NativeModules } = require('react-native');
+          const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+          if (ThermalPrinterModule && hasNativeModule) {
+            console.log('📡 Sales Report routing to Network Printer IP:', company.networkPrinterIP);
+            await ThermalPrinterModule.printTcp({
+              ip: company.networkPrinterIP,
+              port: 9100,
+              payload: text,
+              autoCut: true,
+              openCashbox: false,
+            });
+            return true;
+          }
+        } catch (netError) {
+          console.log('❌ Sales Report Network Print error:', netError);
+        }
+        return false; // Network failed -> PDF fallback directly
+      } else {
+        // Sunmi ONLY
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+          await SunmiPrinterService.printRawText(text);
+          await SunmiPrinterService.cutPaper();
+          return true;
+        }
+        console.log('Sunmi printer not available, using PDF fallback');
+        return false; // Sunmi failed -> PDF fallback directly
+      }
+
     } catch (error) {
-        console.log('Thermal sales report error:', error);
-        return false;
+      console.log('Thermal sales report error:', error);
+      return false;
     }
-}
+  }
   // ==================== CATEGORY REPORT THERMAL PRINT ====================
-static async printCategoryReportThermal(
-    categories: any[], 
-    selectedCategory: string | null, 
-    categoryItems: any[], 
+  static async printCategoryReportThermal(
+    categories: any[],
+    selectedCategory: string | null,
+    categoryItems: any[],
     categoryTransactions: any[],
-    userId?: string | number, 
-    t?: any, 
+    userId?: string | number,
+    t?: any,
     options?: any
-): Promise<boolean> {
+  ): Promise<boolean> {
     try {
-        const company = await BillPDFGenerator.loadSettings(userId);
-        const symbol = company.currencySymbol || '$';
-        const summary = options?.summary || {};
-        const width = (company.networkPrinterEnabled && company.networkPrinterIP) ? 48 : 32;
-        
-        let text = '\n';
-        text += '='.repeat(width) + '\n';
-        text += this.centerText(company.name || 'CATEGORY REPORT', width) + '\n';
-        text += '='.repeat(width) + '\n';
-        text += `Filter: ${options?.filter || 'Today'}\n`;
-        const dateStr = this.getSingaporeDateTime(new Date());
-        text += `Date: ${dateStr}\n`;
-        text += '-'.repeat(width) + '\n\n';
-        
-        if (selectedCategory) {
-            // Single category view
-            text += this.centerText(`📦 ${selectedCategory}`, width) + '\n';
-            text += '-'.repeat(width) + '\n';
-            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, width) + '\n';
-            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, width) + '\n';
-            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, width) + '\n';
-            
-            // ✅ Discount in category
-            if (summary.totalDiscount > 0) {
-                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, width) + '\n';
-                text += this.twoColumns('Discounted Trans:', `${summary.discountedTransactions || 0} / ${summary.totalSales || 0}`, width) + '\n';
-            }
-            
-            // ✅ Value Card in category
-            if (summary.totalValueCardAmount > 0) {
-                text += this.twoColumns('Value Card Used:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, width) + '\n';
-            }
-            
-            // Payment breakdown for this category
-            if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
-                text += '\n' + '-'.repeat(width) + '\n';
-                text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
-                text += '-'.repeat(width) + '\n';
-                
-                const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
-                for (const [method, amount] of sortedMethods) {
-                    let methodIcon = '';
-                    const methodLower = method.toLowerCase();
-                    if (methodLower.includes('cash')) methodIcon = '💰';
-                    else if (methodLower.includes('upi')) methodIcon = '📱';
-                    else if (methodLower.includes('paynow')) methodIcon = '📱';
-                    else if (methodLower.includes('card')) methodIcon = '💳';
-                    else if (methodLower.includes('value')) methodIcon = '💎';
-                    else methodIcon = '💵';
-                    
-                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
-                }
-            }
-            
-            // Items list
-            if (categoryItems && categoryItems.length > 0) {
-                text += '\n' + '-'.repeat(width) + '\n';
-                text += this.centerText('TOP ITEMS', width) + '\n';
-                text += '-'.repeat(width) + '\n';
-                
-                const topItems = [...categoryItems].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-                for (const item of topItems) {
-                    text += `\n${item.name}\n`;
-                    text += `  Qty: ${item.quantity}  Revenue: ${symbol}${item.revenue.toFixed(2)}\n`;
-                    if (item.discountAmount > 0) {
-                        text += `  Discount: -${symbol}${item.discountAmount.toFixed(2)}\n`;
-                    }
-                }
-            }
-        } else {
-            // All categories view
-            text += this.centerText('CATEGORIES SUMMARY', width) + '\n';
-            text += '-'.repeat(width) + '\n';
-            text += this.twoColumns('Categories:', `${categories.length}`, width) + '\n';
-            text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, width) + '\n';
-            text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, width) + '\n';
-            text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, width) + '\n';
-            
-            // ✅ Discount summary
-            if (summary.totalDiscount > 0) {
-                text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, width) + '\n';
-            }
-            
-            // ✅ Value Card summary
-            if (summary.totalValueCardAmount > 0) {
-                text += this.twoColumns('Value Card Total:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, width) + '\n';
-                text += this.twoColumns('Value Card Trans:', `${summary.valueCardTransactionCount || 0}`, width) + '\n';
-            }
-            
-            // Payment breakdown
-            if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
-                text += '\n' + '-'.repeat(width) + '\n';
-                text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
-                text += '-'.repeat(width) + '\n';
-                
-                const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
-                for (const [method, amount] of sortedMethods) {
-                    let methodIcon = '';
-                    const methodLower = method.toLowerCase();
-                    if (methodLower.includes('cash')) methodIcon = '💰';
-                    else if (methodLower.includes('upi')) methodIcon = '📱';
-                    else if (methodLower.includes('paynow')) methodIcon = '📱';
-                    else if (methodLower.includes('card')) methodIcon = '💳';
-                    else if (methodLower.includes('value')) methodIcon = '💎';
-                    else methodIcon = '💵';
-                    
-                    text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
-                }
-            }
-            
-            // Category breakdown
-            text += '\n' + '-'.repeat(width) + '\n';
-            text += this.centerText('CATEGORY BREAKDOWN', width) + '\n';
-            text += '-'.repeat(width) + '\n';
-            
-            for (const cat of categories) {
-                text += `\n${cat.name}\n`;
-                text += `  Revenue: ${symbol}${(cat.totalRevenue || 0).toFixed(2)}\n`;
-                text += `  Items: ${cat.totalQuantity || 0}\n`;
-                if (cat.discountAmount > 0) {
-                    text += `  Discount: -${symbol}${cat.discountAmount.toFixed(2)}\n`;
-                }
-                if (cat.valueCardAmount > 0) {
-                    text += `  Value Card: ${symbol}${cat.valueCardAmount.toFixed(2)}\n`;
-                }
-            }
+      const company = await BillPDFGenerator.loadSettings(userId);
+      const symbol = company.currencySymbol || '$';
+      const summary = options?.summary || {};
+      const width = (company.networkPrinterEnabled && company.networkPrinterIP) ? 48 : 32;
+
+      let text = '\n';
+      text += '='.repeat(width) + '\n';
+      text += this.centerText(company.name || 'CATEGORY REPORT', width) + '\n';
+      text += '='.repeat(width) + '\n';
+      text += `Filter: ${options?.filter || 'Today'}\n`;
+      const dateStr = this.getSingaporeDateTime(new Date());
+      text += `Date: ${dateStr}\n`;
+      text += '-'.repeat(width) + '\n\n';
+
+      if (selectedCategory) {
+        // Single category view
+        text += this.centerText(`📦 ${selectedCategory}`, width) + '\n';
+        text += '-'.repeat(width) + '\n';
+        text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, width) + '\n';
+        text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, width) + '\n';
+        text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, width) + '\n';
+
+        // ✅ Discount in category
+        if (summary.totalDiscount > 0) {
+          text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, width) + '\n';
+          text += this.twoColumns('Discounted Trans:', `${summary.discountedTransactions || 0} / ${summary.totalSales || 0}`, width) + '\n';
         }
-        
-        text += '\n' + '='.repeat(width) + '\n';
-        text += this.centerText('END OF REPORT', width) + '\n';
-        text += '='.repeat(width) + '\n\n';
-        text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
-        
-        // ✅ Try network printer ONLY if enabled
-        if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
-            try {
-                const ThermalPrinter = require('react-native-thermal-printer');
-                const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-                const { NativeModules } = require('react-native');
-                const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
-                
-                if (ThermalPrinterModule && hasNativeModule) {
-                    console.log('📡 Category Report routing to Network Printer IP:', company.networkPrinterIP);
-                    await ThermalPrinterModule.printTcp({
-                        ip: company.networkPrinterIP,
-                        port: 9100,
-                        payload: text,
-                        autoCut: true,
-                        openCashbox: false,
-                    });
-                    return true;
-                }
-            } catch (netError) {
-                console.log('❌ Category Report Network Print error:', netError);
-            }
-            return false; // Network failed -> PDF fallback directly
-        } else {
-            // Sunmi ONLY
-            const sunmiReady = await SunmiPrinterService.init();
-            if (sunmiReady) {
-                await SunmiPrinterService.printRawText(text);
-                await SunmiPrinterService.cutPaper();
-                return true;
-            }
-            console.log('Sunmi printer not available, using PDF fallback');
-            return false; // Sunmi failed -> PDF fallback directly
+
+        // ✅ Value Card in category
+        if (summary.totalValueCardAmount > 0) {
+          text += this.twoColumns('Value Card Used:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, width) + '\n';
         }
-        
+
+        // Payment breakdown for this category
+        if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
+          text += '\n' + '-'.repeat(width) + '\n';
+          text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
+          text += '-'.repeat(width) + '\n';
+
+          const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
+          for (const [method, amount] of sortedMethods) {
+            let methodIcon = '';
+            const methodLower = method.toLowerCase();
+            if (methodLower.includes('cash')) methodIcon = '💰';
+            else if (methodLower.includes('upi')) methodIcon = '📱';
+            else if (methodLower.includes('paynow')) methodIcon = '📱';
+            else if (methodLower.includes('card')) methodIcon = '💳';
+            else if (methodLower.includes('value')) methodIcon = '💎';
+            else methodIcon = '💵';
+
+            text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
+          }
+        }
+
+        // Items list
+        if (categoryItems && categoryItems.length > 0) {
+          text += '\n' + '-'.repeat(width) + '\n';
+          text += this.centerText('TOP ITEMS', width) + '\n';
+          text += '-'.repeat(width) + '\n';
+
+          const topItems = [...categoryItems].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+          for (const item of topItems) {
+            text += `\n${item.name}\n`;
+            text += `  Qty: ${item.quantity}  Revenue: ${symbol}${item.revenue.toFixed(2)}\n`;
+            if (item.discountAmount > 0) {
+              text += `  Discount: -${symbol}${item.discountAmount.toFixed(2)}\n`;
+            }
+          }
+        }
+      } else {
+        // All categories view
+        text += this.centerText('CATEGORIES SUMMARY', width) + '\n';
+        text += '-'.repeat(width) + '\n';
+        text += this.twoColumns('Categories:', `${categories.length}`, width) + '\n';
+        text += this.twoColumns('Total Revenue:', `${symbol}${(summary.totalRevenue || 0).toFixed(2)}`, width) + '\n';
+        text += this.twoColumns('Total Items:', `${summary.totalItems || 0}`, width) + '\n';
+        text += this.twoColumns('Transactions:', `${summary.totalSales || 0}`, width) + '\n';
+
+        // ✅ Discount summary
+        if (summary.totalDiscount > 0) {
+          text += this.twoColumns('Total Discount:', `-${symbol}${summary.totalDiscount.toFixed(2)}`, width) + '\n';
+        }
+
+        // ✅ Value Card summary
+        if (summary.totalValueCardAmount > 0) {
+          text += this.twoColumns('Value Card Total:', `${symbol}${summary.totalValueCardAmount.toFixed(2)}`, width) + '\n';
+          text += this.twoColumns('Value Card Trans:', `${summary.valueCardTransactionCount || 0}`, width) + '\n';
+        }
+
+        // Payment breakdown
+        if (summary.paymentBreakdown && Object.keys(summary.paymentBreakdown).length > 0) {
+          text += '\n' + '-'.repeat(width) + '\n';
+          text += this.centerText('PAYMENT BREAKDOWN', width) + '\n';
+          text += '-'.repeat(width) + '\n';
+
+          const sortedMethods = Object.entries(summary.paymentBreakdown).sort((a, b) => (b[1] as number) - (a[1] as number));
+          for (const [method, amount] of sortedMethods) {
+            let methodIcon = '';
+            const methodLower = method.toLowerCase();
+            if (methodLower.includes('cash')) methodIcon = '💰';
+            else if (methodLower.includes('upi')) methodIcon = '📱';
+            else if (methodLower.includes('paynow')) methodIcon = '📱';
+            else if (methodLower.includes('card')) methodIcon = '💳';
+            else if (methodLower.includes('value')) methodIcon = '💎';
+            else methodIcon = '💵';
+
+            text += this.twoColumns(`${methodIcon} ${method}`, `${symbol}${(amount as number).toFixed(2)}`, width) + '\n';
+          }
+        }
+
+        // Category breakdown
+        text += '\n' + '-'.repeat(width) + '\n';
+        text += this.centerText('CATEGORY BREAKDOWN', width) + '\n';
+        text += '-'.repeat(width) + '\n';
+
+        for (const cat of categories) {
+          text += `\n${cat.name}\n`;
+          text += `  Revenue: ${symbol}${(cat.totalRevenue || 0).toFixed(2)}\n`;
+          text += `  Items: ${cat.totalQuantity || 0}\n`;
+          if (cat.discountAmount > 0) {
+            text += `  Discount: -${symbol}${cat.discountAmount.toFixed(2)}\n`;
+          }
+          if (cat.valueCardAmount > 0) {
+            text += `  Value Card: ${symbol}${cat.valueCardAmount.toFixed(2)}\n`;
+          }
+        }
+      }
+
+      text += '\n' + '='.repeat(width) + '\n';
+      text += this.centerText('END OF REPORT', width) + '\n';
+      text += '='.repeat(width) + '\n\n';
+      text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
+
+      // ✅ Try network printer ONLY if enabled
+      if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+        try {
+          const ThermalPrinter = require('react-native-thermal-printer');
+          const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+          const { NativeModules } = require('react-native');
+          const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+          if (ThermalPrinterModule && hasNativeModule) {
+            console.log('📡 Category Report routing to Network Printer IP:', company.networkPrinterIP);
+            await ThermalPrinterModule.printTcp({
+              ip: company.networkPrinterIP,
+              port: 9100,
+              payload: text,
+              autoCut: true,
+              openCashbox: false,
+            });
+            return true;
+          }
+        } catch (netError) {
+          console.log('❌ Category Report Network Print error:', netError);
+        }
+        return false; // Network failed -> PDF fallback directly
+      } else {
+        // Sunmi ONLY
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+          await SunmiPrinterService.printRawText(text);
+          await SunmiPrinterService.cutPaper();
+          return true;
+        }
+        console.log('Sunmi printer not available, using PDF fallback');
+        return false; // Sunmi failed -> PDF fallback directly
+      }
+
     } catch (error) {
-        console.log('Thermal category report error:', error);
-        return false;
+      console.log('Thermal category report error:', error);
+      return false;
     }
-}
+  }
   // ==================== HELPER METHODS ====================
   private static getSingaporeDateTime(dateInput: Date = new Date()): string {
     try {
@@ -1020,10 +2050,10 @@ static async printCategoryReportThermal(
         dateStr: formattedNow
       };
     }
-    
+
     try {
       const dateStrRaw = String(dateString).trim();
-      
+
       // ✅ 1. Try parsing ISO string directly (YYYY-MM-DDTHH:MM:SS...)
       const matchISO = dateStrRaw.match(/^(\d{4})[-/](\d{2})[-/](\d{2})[T ](\d{2}):(\d{2})/);
       if (matchISO) {
@@ -1037,7 +2067,7 @@ static async printCategoryReportThermal(
           dateStr: `${dayStr}/${monthStr}/${yearStr} ${hourStr}:${minuteStr}`
         };
       }
-      
+
       // ✅ 2. Try parsing SG formatted string directly (DD/MM/YYYY HH:MM...)
       const matchSG = dateStrRaw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})[T ](\d{2}):(\d{2})/);
       if (matchSG) {
@@ -1067,7 +2097,7 @@ static async printCategoryReportThermal(
         }
         date = new Date(str);
       }
-      
+
       const formatted = this.getSingaporeDateTime(date);
       const [datePart, timePart] = formatted.split(' ');
       const [day, month, year] = datePart.split('/');
