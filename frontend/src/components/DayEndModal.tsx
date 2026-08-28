@@ -593,22 +593,36 @@ const generateDayEndHTML = (data: any, outletName: string) => {
     const totalDiscount = data.totalDiscount || 0;
     const netSales = data.netSales || (overallRevenue - totalDiscount);
     
-    // 6. Conic gradient styling for donut chart
-    let gradientParts = [];
-    let currentAngle = 0;
+    // 7. SVG Donut chart calculation
     const colors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius; // ≈ 125.66
+    const strokeWidth = 10;
+    let accumulatedPercentage = 0;
+    let svgCircles = '';
+    
     paymentList.forEach((p, idx) => {
       const percentage = p.percentage;
       if (percentage > 0) {
-        const nextAngle = currentAngle + (percentage * 3.6);
         const color = colors[idx % colors.length];
-        gradientParts.push(`${color} ${currentAngle.toFixed(1)}deg ${nextAngle.toFixed(1)}deg`);
-        currentAngle = nextAngle;
+        const dashArray = `${(percentage * circumference / 100).toFixed(2)} ${circumference.toFixed(2)}`;
+        const dashOffset = (-((accumulatedPercentage * circumference / 100))).toFixed(2);
+        
+        svgCircles += `<circle cx="25" cy="25" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 25 25)" />`;
+        
+        accumulatedPercentage += percentage;
       }
     });
-    const conicGradientStyle = gradientParts.length > 0 
-      ? `background: conic-gradient(${gradientParts.join(', ')});`
-      : 'background: #e2e8f0;';
+
+    const donutSvgMarkup = accumulatedPercentage > 0
+      ? `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
+           ${svgCircles}
+           <circle cx="25" cy="25" r="13" fill="white" />
+         </svg>`
+      : `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
+           <circle cx="25" cy="25" r="${radius}" fill="none" stroke="#e2e8f0" stroke-width="${strokeWidth}" />
+           <circle cx="25" cy="25" r="13" fill="white" />
+         </svg>`;
       
     // 8. Executive Insights Calculations
     const topCategoryName = categoryContribution[0]?.name || 'N/A';
@@ -1211,11 +1225,8 @@ const generateDayEndHTML = (data: any, outletName: string) => {
       <div class="card-box">
         <div class="card-title">Payment Breakdown</div>
         <div class="payment-layout">
-          <!-- Donut chart -->
           <div class="donut-container">
-            <div class="donut-chart" style="${conicGradientStyle}">
-              <div class="donut-center"></div>
-            </div>
+            ${donutSvgMarkup}
           </div>
           <!-- Legend Table -->
           <table class="payment-table">
@@ -1867,20 +1878,52 @@ const sendEmailReport = async (item: any, email: string) => {
         
         // ✅ Generate PDF
         const html = generateDayEndHTML(reportData, outletName);
-        const pdfUri = await Print.printToFileAsync({ html });
+        let pdfBase64 = '';
         
-        // ✅ Read PDF as base64
-        const response = await fetch(pdfUri.uri);
-        const blob = await response.blob();
-        const pdfBase64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const result = reader.result as string;
-                const base64 = result.split(',')[1];
-                resolve(base64);
-            };
-            reader.readAsDataURL(blob);
-        });
+        if (Platform.OS === 'web') {
+            try {
+                // Load html2pdf from CDN
+                await new Promise<void>((resolve, reject) => {
+                    const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                    if (document.querySelector(`script[src="${src}"]`)) {
+                        resolve();
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.onload = () => resolve();
+                    script.onerror = (e) => reject(e);
+                    document.head.appendChild(script);
+                });
+                
+                const opt = {
+                    margin: 0,
+                    filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 1.5, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                
+                const dataUri = await (window as any).html2pdf().from(html).set(opt).output('datauristring');
+                pdfBase64 = dataUri.split(',')[1];
+            } catch (webErr) {
+                console.log('Error generating PDF on web:', webErr);
+            }
+        } else {
+            const pdfUri = await Print.printToFileAsync({ html });
+            // ✅ Read PDF as base64
+            const response = await fetch(pdfUri.uri);
+            const blob = await response.blob();
+            pdfBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result as string;
+                    const base64 = result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.readAsDataURL(blob);
+            });
+        }
         
         // ✅ Generate CSV
         const csvData = generateCSVData(reportData, outletName);

@@ -233,7 +233,7 @@ class UniversalPrinter {
       } catch (e) {
         console.log('Error getting username from AsyncStorage:', e);
       }
-      
+
       const enrichedOptions = { ...options, username };
       const company = await BillPDFGenerator.loadSettings(userId);
       const html = selectedCategory
@@ -451,22 +451,36 @@ class UniversalPrinter {
 
     const maxHourTotal = Math.max(...hourTotals, 1);
 
-    // 7. Conic gradient styling for donut chart
-    let gradientParts = [];
-    let currentAngle = 0;
+    // 7. SVG Donut chart calculation
     const colors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius; // ≈ 125.66
+    const strokeWidth = 10;
+    let accumulatedPercentage = 0;
+    let svgCircles = '';
+    
     paymentList.forEach((p, idx) => {
       const percentage = p.percentage;
       if (percentage > 0) {
-        const nextAngle = currentAngle + (percentage * 3.6);
         const color = colors[idx % colors.length];
-        gradientParts.push(`${color} ${currentAngle.toFixed(1)}deg ${nextAngle.toFixed(1)}deg`);
-        currentAngle = nextAngle;
+        const dashArray = `${(percentage * circumference / 100).toFixed(2)} ${circumference.toFixed(2)}`;
+        const dashOffset = (-((accumulatedPercentage * circumference / 100))).toFixed(2);
+        
+        svgCircles += `<circle cx="25" cy="25" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 25 25)" />`;
+        
+        accumulatedPercentage += percentage;
       }
     });
-    const conicGradientStyle = gradientParts.length > 0
-      ? `background: conic-gradient(${gradientParts.join(', ')});`
-      : 'background: #e2e8f0;';
+
+    const donutSvgMarkup = accumulatedPercentage > 0
+      ? `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
+           ${svgCircles}
+           <circle cx="25" cy="25" r="13" fill="white" />
+         </svg>`
+      : `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
+           <circle cx="25" cy="25" r="${radius}" fill="none" stroke="#e2e8f0" stroke-width="${strokeWidth}" />
+           <circle cx="25" cy="25" r="13" fill="white" />
+         </svg>`;
 
     // 8. Executive Insights Calculations
     const topCategoryName = categoryContribution[0]?.name || 'N/A';
@@ -1072,9 +1086,7 @@ class UniversalPrinter {
         <div class="payment-layout">
           <!-- Donut chart -->
           <div class="donut-container">
-            <div class="donut-chart" style="${conicGradientStyle}">
-              <div class="donut-center"></div>
-            </div>
+            ${donutSvgMarkup}
           </div>
           <!-- Legend Table -->
           <table class="payment-table">
