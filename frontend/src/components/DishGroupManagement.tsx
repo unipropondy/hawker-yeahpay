@@ -10,6 +10,8 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Platform,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -284,78 +286,124 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
     setShowEditGroup(true);
   };
 
-  const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<DishGroup>) => {
+  const moveGroup = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= displayGroups.length) return;
+
+    const newGroups = [...displayGroups];
+    const temp = newGroups[index];
+    newGroups[index] = newGroups[targetIndex];
+    newGroups[targetIndex] = temp;
+
+    setDishGroups(newGroups);
+    await saveOrderToBackend(newGroups);
+    onGroupUpdate();
+  };
+
+  const renderGroupCard = (item: DishGroup, drag?: any, isActive?: boolean, index?: number) => {
+    const cardContent = (
+      <TouchableOpacity
+        activeOpacity={1}
+        onLongPress={!loading && drag ? drag : null}
+        delayLongPress={200}
+        style={[
+          styles.groupCard,
+          {
+            backgroundColor: currentTheme.card,
+            borderColor: currentTheme.border,
+            opacity: item.active ? 1 : 0.6,
+            transform: [{ scale: isActive ? 1.02 : 1 }],
+            ...(item.name === 'Favourites' && styles.favouritesGroup)
+          }
+        ]}
+      >
+        <View style={styles.groupInfo}>
+          {Platform.OS === 'web' && index !== undefined && (
+            <View style={{ flexDirection: 'column', marginRight: 8, justifyContent: 'center' }}>
+              <TouchableOpacity
+                onPress={() => moveGroup(index, 'up')}
+                disabled={index === 0 || loading}
+                style={{ opacity: index === 0 ? 0.2 : 0.9, paddingVertical: 2 }}
+              >
+                <Ionicons name="chevron-up" size={18} color={currentTheme.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => moveGroup(index, 'down')}
+                disabled={index === displayGroups.length - 1 || loading}
+                style={{ opacity: index === displayGroups.length - 1 ? 0.2 : 0.9, paddingVertical: 2 }}
+              >
+                <Ionicons name="chevron-down" size={18} color={currentTheme.text} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Ionicons 
+            name={item.name === 'Favourites' ? "star" : "menu"} 
+            size={24} 
+            color={item.name === 'Favourites' ? currentTheme.warning : (isActive ? currentTheme.primary : currentTheme.textSecondary)} 
+            style={styles.dragIcon}
+          />
+          
+          <View style={styles.groupNameContainer}>
+            <Text style={[styles.groupName, { color: currentTheme.text }]}>
+              {item.name} {item.name === 'Favourites' && '⭐'}
+            </Text>
+            <Text style={[styles.groupCount, { color: currentTheme.textSecondary }]}>
+              {item.itemCount || 0} {t.items_lower}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.groupActions}>
+          {/* ✅ Hide actions for Favourites */}
+          {item.name !== 'Favourites' && (
+            <>
+              <TouchableOpacity
+                style={[styles.actionBtn, { 
+                  backgroundColor: item.active ? currentTheme.success : currentTheme.inactive 
+                }]}
+                onPress={() => toggleActive(item)}
+                disabled={loading}
+              >
+                <Ionicons name={item.active ? "eye" : "eye-off"} size={18} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: currentTheme.primary }]}
+                onPress={() => openEditForm(item)}
+                disabled={loading}
+              >
+                <Ionicons name="pencil" size={18} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: currentTheme.danger }]}
+                onPress={() => handleDeleteGroup(item)}
+                disabled={loading}
+              >
+                <Ionicons name="trash" size={18} color="#fff" />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+
+    if (Platform.OS === 'web') {
+      return cardContent;
+    }
+
     return (
       <ScaleDecorator>
-        <TouchableOpacity
-          activeOpacity={1}
-          onLongPress={!loading ? drag : null}
-          delayLongPress={200}
-          style={[
-            styles.groupCard,
-            {
-              backgroundColor: currentTheme.card,
-              borderColor: currentTheme.border,
-              opacity: item.active ? 1 : 0.6,
-              transform: [{ scale: isActive ? 1.02 : 1 }],
-              ...(item.name === 'Favourites' && styles.favouritesGroup)
-            }
-          ]}
-        >
-          <View style={styles.groupInfo}>
-            <Ionicons 
-              name={item.name === 'Favourites' ? "star" : "menu"} 
-              size={24} 
-              color={item.name === 'Favourites' ? currentTheme.warning : (isActive ? currentTheme.primary : currentTheme.textSecondary)} 
-              style={styles.dragIcon}
-            />
-            
-            <View style={styles.groupNameContainer}>
-              <Text style={[styles.groupName, { color: currentTheme.text }]}>
-                {item.name} {item.name === 'Favourites' && '⭐'}
-              </Text>
-              <Text style={[styles.groupCount, { color: currentTheme.textSecondary }]}>
-                {item.itemCount || 0} {t.items_lower}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.groupActions}>
-            {/* ✅ Hide actions for Favourites */}
-            {item.name !== 'Favourites' && (
-              <>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { 
-                    backgroundColor: item.active ? currentTheme.success : currentTheme.inactive 
-                  }]}
-                  onPress={() => toggleActive(item)}
-                  disabled={loading}
-                >
-                  <Ionicons name={item.active ? "eye" : "eye-off"} size={18} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: currentTheme.primary }]}
-                  onPress={() => openEditForm(item)}
-                  disabled={loading}
-                >
-                  <Ionicons name="pencil" size={18} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: currentTheme.danger }]}
-                  onPress={() => handleDeleteGroup(item)}
-                  disabled={loading}
-                >
-                  <Ionicons name="trash" size={18} color="#fff" />
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </TouchableOpacity>
+        {cardContent}
       </ScaleDecorator>
     );
-  }, [currentTheme, loading, t]);
+  };
+
+  const renderItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<DishGroup> & { getIndex?: () => number | undefined }) => {
+    const idx = getIndex ? getIndex() : undefined;
+    return renderGroupCard(item, drag, isActive, idx);
+  }, [currentTheme, loading, t, displayGroups]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -369,7 +417,7 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
             </Text>
 
             <Text style={[styles.dragHint, { color: currentTheme.textSecondary }]}>
-              👆 Long press and drag to reorder groups
+              {Platform.OS === 'web' ? '👆 Scroll & click arrows or drag to reorder groups' : '👆 Long press and drag to reorder groups'}
             </Text>
 
             <TouchableOpacity
@@ -391,29 +439,50 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
             </View>
           )}
 
-          {/* Draggable List */}
-          <View style={{ flex: 1, marginTop: 10 }}>
-            <DraggableFlatList
-              data={displayGroups}
-              onDragEnd={handleDragEnd}
-              keyExtractor={(item) => `group-${item.id}`}
-              renderItem={renderItem}
-              contentContainerStyle={{ 
-                paddingBottom: 20,
-                flexGrow: 1
-              }}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-              alwaysBounceVertical={true}
-              onDragBegin={() => setIsDragging(true)}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={{ color: currentTheme.textSecondary }}>
-                    No groups yet. Tap "Add New Group" to create one.
-                  </Text>
-                </View>
-              }
-            />
+          {/* List Section */}
+          <View style={[{ flex: 1, marginTop: 10 }, Platform.OS === 'web' && ({ overflowY: 'auto' } as any)]}>
+            {Platform.OS === 'web' ? (
+              <FlatList
+                data={displayGroups}
+                keyExtractor={(item) => `group-${item.id}`}
+                renderItem={({ item, index }) => renderGroupCard(item, undefined, false, index)}
+                contentContainerStyle={{ 
+                  paddingBottom: 100,
+                  flexGrow: 1
+                }}
+                showsVerticalScrollIndicator={true}
+                style={{ flex: 1 }}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={{ color: currentTheme.textSecondary }}>
+                      No groups yet. Tap "Add New Group" to create one.
+                    </Text>
+                  </View>
+                }
+              />
+            ) : (
+              <DraggableFlatList
+                data={displayGroups}
+                onDragEnd={handleDragEnd}
+                keyExtractor={(item) => `group-${item.id}`}
+                renderItem={renderItem}
+                contentContainerStyle={{ 
+                  paddingBottom: 100,
+                  flexGrow: 1
+                }}
+                showsVerticalScrollIndicator={true}
+                bounces={true}
+                alwaysBounceVertical={true}
+                onDragBegin={() => setIsDragging(true)}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={{ color: currentTheme.textSecondary }}>
+                      No groups yet. Tap "Add New Group" to create one.
+                    </Text>
+                  </View>
+                }
+              />
+            )}
           </View>
 
           {/* Add Group Modal */}
