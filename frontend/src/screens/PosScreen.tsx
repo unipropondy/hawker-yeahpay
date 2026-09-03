@@ -3117,117 +3117,6 @@ const handleOpenPriceItem = (item: any) => {
   });
 };
 
- const modalContent = useMemo(() => {
-    if (!priceModal.visible) return null;
-    
-    return (
-      <Modal
-        visible={true}  // Force visible when priceModal.visible is true
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setPriceModal({ visible: false, item: null, price: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.priceModalContent, { backgroundColor: currentTheme.card }]}>
-            
-            <View style={styles.priceModalHeader}>
-              <Text style={[styles.priceModalTitle, { color: currentTheme.text }]}>
-                Enter Price
-              </Text>
-              <TouchableOpacity 
-                onPress={() => setPriceModal({ visible: false, item: null, price: '' })}
-              >
-                <Ionicons name="close" size={24} color={currentTheme.text} />
-              </TouchableOpacity>
-            </View>
-
-            {priceModal.item && (
-              <View style={styles.itemInfoContainer}>
-                {priceModal.item.imageUri && (
-                  <Image 
-                    source={{ uri: getFullImageUrl(priceModal.item.imageUri) }}
-                    style={styles.modalItemImage} 
-                  />
-                )}
-                <Text style={[styles.modalItemName, { color: currentTheme.text }]}>
-                  {priceModal.item.name}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.priceInputContainer}>
-              <Text style={[styles.currencySymbol, { color: currentTheme.primary }]}>
-                {currencySymbol}
-              </Text>
-              <TextInput
-                style={[styles.priceInput, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.border
-                }]}
-                placeholder="0.00"
-                placeholderTextColor={currentTheme.textSecondary}
-                keyboardType="numeric"
-                value={priceModal.price}
-                onChangeText={(text) => setPriceModal({ ...priceModal, price: text })}
-                autoFocus={true}
-              />
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickAmountScroll}>
-              {[10, 20, 50, 100, 200].map(amount => (
-                <TouchableOpacity
-                  key={amount}
-                  style={[styles.quickAmountBtn, { 
-                    backgroundColor: currentTheme.surface,
-                    borderColor: currentTheme.border 
-                  }]}
-                  onPress={() => setPriceModal({ ...priceModal, price: amount.toString() })}
-                >
-                  <Text style={[styles.quickAmountText, { color: currentTheme.text }]}>
-                    {formatPrice(amount)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={styles.priceModalButtons}>
-              <TouchableOpacity
-                style={[styles.priceModalBtn, styles.cancelBtn, { 
-                  borderColor: currentTheme.border,
-                  backgroundColor: currentTheme.surface
-                }]}
-                onPress={() => setPriceModal({ visible: false, item: null, price: '' })}
-              >
-                <Text style={[styles.cancelBtnText, { color: currentTheme.text }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.priceModalBtn, styles.addBtn, { 
-                  backgroundColor: currentTheme.primary 
-                }]}
-                onPress={handlePriceSubmit}
-              >
-                <Text style={styles.addBtnText}>
-                  Add to Cart
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  }, [priceModal.visible, priceModal.item, priceModal.price, currentTheme]);
-// Also add this useEffect
-useEffect(() => {
-  console.log('📢 MenuGrid - onOpenPriceItem prop:', !!handleOpenPriceItem);
-}, []);
-
-
-// ✅ ADD THIS FUNCTION
-// In PosScreen.tsx - Update this function
 const handlePriceSubmit = () => {
   if (!priceModal.item) return;
   
@@ -3238,8 +3127,12 @@ const handlePriceSubmit = () => {
   }
   
   addToCart(priceModal.item, price);
-  setPriceModal({ visible: false, item: null, price: '' });  // ✅ Using priceModal
+  setPriceModal({ visible: false, item: null, price: '' });
 };
+
+useEffect(() => {
+  console.log('📢 MenuGrid - onOpenPriceItem prop:', !!handleOpenPriceItem);
+}, []);
 const calculateTotalWithoutDiscount = (): string => {
     return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0).toFixed(2);
 };
@@ -4180,7 +4073,7 @@ const renderCashModal = () => (
   transparent={true}
   onRequestClose={() => setMenuVisible(false)}
 >
-  <View style={styles.modalOverlay}>
+  <View style={styles.sideMenuOverlay}>
     <View 
       style={[styles.sideMenu, isMobile && styles.sideMenuMobile, { 
         backgroundColor: currentTheme.background, 
@@ -4949,11 +4842,18 @@ registerText: {
     fontWeight: '700',
     includeFontPadding: false,
   },
-  modalOverlay: { 
+  sideMenuOverlay: { 
     flex: 1, 
     backgroundColor: 'rgba(0, 0, 0, 0.5)', 
     justifyContent: 'flex-start',
     paddingTop: Platform.OS === 'ios' ? 50 : 0,
+  },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0, 0, 0, 0.5)', 
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   sideMenu: { 
     width: '85%', 
@@ -5923,8 +5823,7 @@ saleTotalContainer: {  // ✅ THIS IS THE MISSING STYLE
     fontSize: 15,
     includeFontPadding: false,
   },
-  // Add these to your styles object
-priceModalContent: {
+  priceModalContent: {
   width: '100%',
   maxWidth: 450,
   borderRadius: 20,
