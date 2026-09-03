@@ -252,9 +252,7 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
 
   const saveOrderToBackend = async (groups: DishGroup[]) => {
     try {
-      // ✅ Filter out dynamic groups from order saving? Or keep them at bottom
       const orderData = groups
-        .filter(g => g.name !== 'Favourites') // Favourites always at bottom?
         .map((group, index) => ({
           id: group.id,
           order: index
@@ -268,17 +266,8 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   };
 
   const handleDragEnd = async ({ data }: { data: DishGroup[] }) => {
-    // ✅ Ensure Favourites stays at bottom if it exists
-    const favourites = data.find(g => g.name === 'Favourites');
-    const otherGroups = data.filter(g => g.name !== 'Favourites');
-    
-    let finalData = otherGroups;
-    if (favourites && favourites.itemCount > 0) {
-      finalData = [...otherGroups, favourites];
-    }
-    
-    setDishGroups(finalData);
-    await saveOrderToBackend(finalData);
+    setDishGroups(data);
+    await saveOrderToBackend(data);
     setIsDragging(false);
     onGroupUpdate();
   };
@@ -296,14 +285,11 @@ export const DishGroupManagement: React.FC<DishGroupManagementProps> = ({
   };
 
   const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<DishGroup>) => {
-    // ✅ Disable drag for Favourites
-    const canDrag = item.name !== 'Favourites';
-    
     return (
       <ScaleDecorator>
         <TouchableOpacity
           activeOpacity={1}
-          onLongPress={!loading && canDrag ? drag : null}
+          onLongPress={!loading ? drag : null}
           delayLongPress={200}
           style={[
             styles.groupCard,
