@@ -459,7 +459,10 @@ const getSales = async (req, res) => {
                 cashPaid: sale.CashPaid,
                 change: sale.ChangeAmount,
                 status: sale.Status || 'COMPLETED',
-                dayEndId: sale.DayEndId
+                dayEndId: sale.DayEndId,
+                voidReason: sale.VoidReason || '',
+                voidedBy: sale.VoidedBy || '',
+                voidedAt: sale.VoidedAt || sale.SaleDate
             };
         });
         

@@ -2368,9 +2368,9 @@ const sendEmailReport = async (item: any, email: string) => {
                                             {item.voidedSales.map((v: any, vIdx: number) => {
                                                 const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || vIdx + 1}`;
                                                 const amt = v.TotalAmount || v.totalAmount || v.total || 0;
-                                                const reason = v.VoidReason || v.voidReason || 'N/A';
-                                                const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
-                                                const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+                                                const reason = v.VoidReason || v.voidReason || v.reason || 'N/A';
+                                                const byUser = v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || 'N/A';
+                                                const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
                                                 const timeStr = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
 
                                                 return (
@@ -2648,9 +2648,9 @@ const sendEmailReport = async (item: any, email: string) => {
                         {dayEndData.voidedSales.map((v: any, index: number) => {
                             const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || index + 1}`;
                             const amt = v.TotalAmount || v.totalAmount || v.total || 0;
-                            const reason = v.VoidReason || v.voidReason || 'N/A';
-                            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
-                            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+                            const reason = v.VoidReason || v.voidReason || v.reason || 'N/A';
+                            const byUser = v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || 'N/A';
+                            const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
                             const timeStr = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
 
                             return (
