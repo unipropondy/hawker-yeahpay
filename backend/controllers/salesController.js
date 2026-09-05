@@ -377,7 +377,7 @@ const getSales = async (req, res) => {
                    s.VoidReason, s.DayEndId,
                    u.Username as VoidedByName
             FROM Sales s WITH (NOLOCK) 
-            LEFT JOIN Users u ON s.VoidedBy = CAST(u.Id AS NVARCHAR(50)) OR s.VoidedBy = u.Username
+            LEFT JOIN Users u ON (TRY_CAST(s.VoidedBy as INT) IS NOT NULL AND u.Id = TRY_CAST(s.VoidedBy as INT)) OR s.VoidedBy = u.Username
             WHERE s.OutletId = @outletId
         `;
         
