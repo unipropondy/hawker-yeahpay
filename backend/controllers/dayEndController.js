@@ -372,12 +372,7 @@ const getDayEndHistory = async (req, res) => {
                     SELECT s.Id, s.Total, s.InvoiceNumber, 
                            CONVERT(varchar, s.SaleDate, 126) as SaleDateStr, 
                            CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr,
-                           s.VoidReason, s.VoidedBy,
-                           COALESCE(
-                               (SELECT TOP 1 u.Username FROM Users u WHERE ISNUMERIC(s.VoidedBy) = 1 AND u.Id = TRY_CAST(s.VoidedBy AS INT)),
-                               (SELECT TOP 1 u.Username FROM Users u WHERE u.Username = s.VoidedBy),
-                               s.VoidedBy
-                           ) as VoidedByName
+                           s.VoidReason, s.VoidedBy
                     FROM Sales s
                     WHERE s.DayEndId = @dayEndId AND s.Status = 'VOIDED'
                     ORDER BY s.SaleDate ASC
@@ -390,7 +385,7 @@ const getDayEndHistory = async (req, res) => {
                 date: v.SaleDateStr,
                 voidedAt: v.VoidedAtStr || v.SaleDateStr,
                 voidReason: v.VoidReason || 'N/A',
-                voidedBy: v.VoidedByName || v.VoidedBy || 'Staff'
+                voidedBy: v.VoidedBy || 'Staff'
             }));
 
             const totalVoidedAmount = voidedSales.reduce((s, v) => s + (v.total || 0), 0);

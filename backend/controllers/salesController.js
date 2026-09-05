@@ -374,12 +374,7 @@ const getSales = async (req, res) => {
                    s.DiscountType, s.DiscountValue, s.DiscountAmount,
                    s.Status, s.VoidedBy, 
                    CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr, 
-                   s.VoidReason, s.DayEndId,
-                   COALESCE(
-                       (SELECT TOP 1 u.Username FROM Users u WHERE ISNUMERIC(s.VoidedBy) = 1 AND u.Id = TRY_CAST(s.VoidedBy AS INT)),
-                       (SELECT TOP 1 u.Username FROM Users u WHERE u.Username = s.VoidedBy),
-                       s.VoidedBy
-                   ) as VoidedByName
+                   s.VoidReason, s.DayEndId
             FROM Sales s WITH (NOLOCK) 
             WHERE s.OutletId = @outletId
         `;
@@ -468,7 +463,7 @@ const getSales = async (req, res) => {
                 status: sale.Status || 'COMPLETED',
                 dayEndId: sale.DayEndId,
                 voidReason: sale.VoidReason || '',
-                voidedBy: sale.VoidedByName || sale.VoidedBy || '',
+                voidedBy: sale.VoidedBy || 'Staff',
                 voidedAt: sale.VoidedAtStr || sale.SaleDateStr
             };
         });
