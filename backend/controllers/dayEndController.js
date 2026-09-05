@@ -20,7 +20,15 @@ const getDayEndStatus = async (req, res) => {
                     (SELECT COUNT(*) FROM Sales 
                      WHERE OutletId = @outletId 
                        AND (DayEndId IS NULL OR DayEndId = 0)
-                       AND (Status IS NULL OR Status = 'COMPLETED')) as PendingSales
+                       AND (Status IS NULL OR Status = 'COMPLETED')) as PendingSales,
+                    (SELECT COUNT(*) FROM Sales 
+                     WHERE OutletId = @outletId 
+                       AND (DayEndId IS NULL OR DayEndId = 0)
+                       AND Status = 'VOIDED') as PendingVoidedSales,
+                    (SELECT ISNULL(SUM(Total), 0) FROM Sales 
+                     WHERE OutletId = @outletId 
+                       AND (DayEndId IS NULL OR DayEndId = 0)
+                       AND Status = 'VOIDED') as PendingVoidedAmount
                 FROM Outlets 
                 WHERE Id = @outletId
             `);
@@ -38,6 +46,7 @@ const getDayEndStatus = async (req, res) => {
             rawIsDayEnded: status.IsDayEnded,
             convertedIsDayEnded: isDayEnded,
             pendingSales: status.PendingSales,
+            pendingVoidedSales: status.PendingVoidedSales,
             lastDayEndId: status.LastDayEndId
         });
         
@@ -46,6 +55,8 @@ const getDayEndStatus = async (req, res) => {
             isDayEnded: isDayEnded,  // ✅ Returns true or false
             currentDayStart: status.CurrentDayStart,
             pendingSales: status.PendingSales || 0,
+            pendingVoidedSales: status.PendingVoidedSales || 0,
+            pendingVoidedAmount: parseFloat(status.PendingVoidedAmount) || 0,
             lastDayEnd: status.LastDayEndId || null
         });
         
@@ -87,10 +98,34 @@ const performDayEnd = async (req, res) => {
             `);
         
         const sales = salesResult.recordset;
+
+        // ✅ Get pending voided sales
+        const voidedSalesResult = await pool.request()
+            .input('outletId', sql.Int, outletId)
+            .query(`
+                SELECT 
+                    Id, Total, InvoiceNumber, VoidReason, VoidedBy,
+                    CONVERT(varchar, SaleDate, 126) as SaleDateStr
+                FROM Sales 
+                WHERE OutletId = @outletId 
+                  AND (DayEndId IS NULL OR DayEndId = 0)
+                  AND Status = 'VOIDED'
+                ORDER BY SaleDate ASC
+            `);
+
+        const pendingVoidedSales = (voidedSalesResult.recordset || []).map(v => ({
+            id: v.Id,
+            total: parseFloat(v.Total) || 0,
+            invoiceNumber: v.InvoiceNumber || '',
+            date: v.SaleDateStr,
+            voidReason: v.VoidReason || 'N/A',
+            voidedBy: v.VoidedBy || 'Staff'
+        }));
+        const totalVoidedAmount = pendingVoidedSales.reduce((s, v) => s + (v.total || 0), 0);
         
-        console.log(`📊 Found ${sales.length} pending sales`);
+        console.log(`📊 Found ${sales.length} pending completed sales, ${pendingVoidedSales.length} voided sales`);
         
-        if (sales.length === 0) {
+        if (sales.length === 0 && pendingVoidedSales.length === 0) {
             return res.status(400).json({ 
                 error: 'No pending sales',
                 message: 'No sales found to end day' 
@@ -173,7 +208,7 @@ const performDayEnd = async (req, res) => {
         })).sort((a, b) => b.totalRevenue - a.totalRevenue);
         
         // ✅✅✅ GET SINGAPORE TIME ✅✅✅
-const transaction = pool.transaction();
+        const transaction = pool.transaction();
         await transaction.begin();
         
         try {
@@ -206,7 +241,7 @@ const transaction = pool.transaction();
             
             const dayEndId = dayEndResult.recordset[0].Id;
             
-            // 2️⃣ Update ALL pending sales with DayEndId
+            // 2️⃣ Update ALL pending sales (both completed and voided) with DayEndId
             await transaction.request()
                 .input('outletId', sql.Int, outletId)
                 .input('dayEndId', sql.Int, dayEndId)
@@ -215,7 +250,6 @@ const transaction = pool.transaction();
                     SET DayEndId = @dayEndId 
                     WHERE OutletId = @outletId 
                       AND (DayEndId IS NULL OR DayEndId = 0)
-                      AND (Status IS NULL OR Status = 'COMPLETED')
                 `);
             
             // 3️⃣ Update Outlet
@@ -246,6 +280,9 @@ const transaction = pool.transaction();
                     paymentBreakdown,
                     categories: categoriesArray,
                     salesCount: sales.length,
+                    voidedSales: pendingVoidedSales,
+                    voidedCount: pendingVoidedSales.length,
+                    totalVoidedAmount: totalVoidedAmount,
                     startDate: sales[0]?.SaleDateStr || sales[0]?.SaleDate,
                     endDate: moment().tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss'),
                     closingDate: moment().tz('Asia/Singapore').format('YYYY-MM-DDTHH:mm:ss')
@@ -320,16 +357,36 @@ const getDayEndHistory = async (req, res) => {
                     d.Categories,
                     CONVERT(varchar, d.CreatedAt, 126) as CreatedAtStr,
                     u.Username as ClosedByName,
-                    (SELECT COUNT(*) FROM Sales WHERE DayEndId = d.Id) as SalesCount
+                    (SELECT COUNT(*) FROM Sales WHERE DayEndId = d.Id AND (Status IS NULL OR Status = 'COMPLETED')) as SalesCount
                 FROM DayEndLogs d
                 LEFT JOIN Users u ON d.ClosedBy = u.Id
                 WHERE d.OutletId = @outletId
                 ORDER BY d.Id DESC
             `);
         
-        res.json({
-            success: true,
-            history: result.recordset.map(row => ({
+        const historyList = [];
+        for (const row of result.recordset) {
+            const voidedRes = await pool.request()
+                .input('dayEndId', sql.Int, row.DayEndId)
+                .query(`
+                    SELECT Id, Total, InvoiceNumber, CONVERT(varchar, SaleDate, 126) as SaleDateStr, VoidReason, VoidedBy
+                    FROM Sales
+                    WHERE DayEndId = @dayEndId AND Status = 'VOIDED'
+                    ORDER BY SaleDate ASC
+                `);
+            
+            const voidedSales = (voidedRes.recordset || []).map(v => ({
+                id: v.Id,
+                total: parseFloat(v.Total) || 0,
+                invoiceNumber: v.InvoiceNumber || '',
+                date: v.SaleDateStr,
+                voidReason: v.VoidReason || 'N/A',
+                voidedBy: v.VoidedBy || 'Staff'
+            }));
+
+            const totalVoidedAmount = voidedSales.reduce((s, v) => s + (v.total || 0), 0);
+
+            historyList.push({
                 id: row.DayEndId,
                 openingDate: row.OpeningDateStr,
                 closingDate: row.ClosingDateStr,
@@ -341,8 +398,16 @@ const getDayEndHistory = async (req, res) => {
                 paymentBreakdown: JSON.parse(row.PaymentBreakdown || '{}'),
                 categories: JSON.parse(row.Categories || '[]'),
                 closedBy: row.ClosedByName,
-                createdAt: row.CreatedAtStr
-            }))
+                createdAt: row.CreatedAtStr,
+                voidedSales: voidedSales,
+                voidedCount: voidedSales.length,
+                totalVoidedAmount: totalVoidedAmount
+            });
+        }
+
+        res.json({
+            success: true,
+            history: historyList
         });
     } catch (err) {
         console.error('❌ Day end history error:', err);

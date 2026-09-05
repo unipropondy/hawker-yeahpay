@@ -282,34 +282,99 @@ class UniversalPrinter {
     }
   }
 
+  private static formatDateTime(dateVal: any): string {
+    if (!dateVal) return 'N/A';
+    try {
+      let dateString = typeof dateVal === 'string' ? dateVal : dateVal.toISOString();
+      const cleanDate = dateString.replace('Z', '');
+      const date = new Date(cleanDate);
+      if (isNaN(date.getTime())) {
+        return String(dateVal);
+      }
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      let hours = date.getHours();
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`;
+    } catch (e) {
+      return String(dateVal);
+    }
+  }
+
   private static generateCategoryDetailHTML(categoryName: string, items: any[], transactions: any[], company: any, options?: any): string {
     const symbol = company.currencySymbol || '$';
+    const isVoided = !!(options?.isVoided || options?.status === 'voided');
     const groupTransactions = (tx: any[]) => {
       const grouped: any = {};
-      tx.forEach(t => { if (!grouped[t.saleId]) grouped[t.saleId] = { id: t.saleId, date: t.saleDate, items: [], total: 0 }; grouped[t.saleId].items.push({ name: t.name, quantity: t.quantity, price: t.price }); grouped[t.saleId].total += t.price * t.quantity; });
+      tx.forEach(t => { 
+        const key = t.saleId || t.id || Math.random();
+        if (!grouped[key]) {
+          grouped[key] = { 
+            id: key, 
+            invoiceNumber: t.invoiceNumber || t.invoice_number || key,
+            date: t.saleDate || t.date, 
+            items: [], 
+            total: 0,
+            voidReason: t.voidReason || t.void_reason || null,
+            voidedBy: t.voidedBy || t.voided_by || null,
+            status: t.status || (isVoided ? 'VOIDED' : 'COMPLETED')
+          };
+        } 
+        grouped[key].items.push({ name: t.name || '', quantity: t.quantity || 1, price: t.price || 0 }); 
+        grouped[key].total += (t.price || 0) * (t.quantity || 1); 
+      });
       return Object.values(grouped).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     };
+    const totalQty = items.reduce((s, i) => s + (i.quantity || 0), 0);
+    const totalRev = items.reduce((s, i) => s + (i.revenue || 0), 0);
+
     return `<!DOCTYPE html><html><head><style>
-      body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
-      .header { text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px; }
-      .category-title { font-size: 22px; font-weight: bold; text-align: center; margin: 20px 0; }
-      .section-title { font-size: 18px; font-weight: bold; margin: 20px 0 10px; background: #f0f0f0; padding: 8px; }
+      body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
+      .header { text-align: center; border-bottom: 2px solid ${isVoided ? '#EF4444' : '#000'}; margin-bottom: 20px; padding-bottom: 10px; }
+      .company-name { font-size: 24px; font-weight: bold; }
+      .category-title { font-size: 22px; font-weight: bold; text-align: center; margin: 20px 0; color: ${isVoided ? '#DC2626' : '#1F2937'}; }
+      .void-badge { display: inline-block; background: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; margin-left: 8px; }
+      .section-title { font-size: 16px; font-weight: bold; margin: 20px 0 10px; background: ${isVoided ? '#FEE2E2' : '#f0f0f0'}; color: ${isVoided ? '#991B1B' : '#111827'}; padding: 8px; border-left: 4px solid ${isVoided ? '#DC2626' : '#FF7A00'}; }
       table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-      th, td { padding: 8px; border-bottom: 1px solid #eee; }
+      th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
       .amount { text-align: right; }
-      .transaction-card { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 15px; }
-      .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; }
+      .transaction-card { border: 1px solid ${isVoided ? '#FCA5A5' : '#ddd'}; background: ${isVoided ? '#FEF2F2' : '#fff'}; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
+      .footer { margin-top: 30px; text-align: center; font-size: 12px; border-top: 1px solid #ddd; padding-top: 10px; color: #6B7280; }
     </style></head><body>
-      <div class="header"><div class="company-name">${company.name || 'Store'}</div><div>${company.address || ''}</div><div>GST: ${company.gstNo || 'N/A'}</div></div>
-      <div class="category-title">📦 ${categoryName}</div>
-      <div style="display:flex;justify-content:space-around;margin:20px 0;padding:15px;background:#f9f9f9;border-radius:5px">
-        <div><div>Total Items</div><div style="font-size:18px;font-weight:bold">${items.length}</div></div>
-        <div><div>Quantity Sold</div><div style="font-size:18px;font-weight:bold">${items.reduce((s, i) => s + (i.quantity || 0), 0)}</div></div>
-        <div><div>Total Revenue</div><div style="font-size:18px;font-weight:bold">${symbol}${items.reduce((s, i) => s + (i.revenue || 0), 0).toFixed(2)}</div></div>
+      <div class="header">
+        <div class="company-name">${company.name || 'Store'}</div>
+        <div>${company.address || ''}</div>
+        <div>GST: ${company.gstNo || 'N/A'}</div>
       </div>
-      <div class="section-title">📋 Items Sold</div>${this.generateItemsTable(items, symbol)}
-      <div class="section-title">📄 Transaction History</div>${transactions.length ? groupTransactions(transactions).map((sale: any) => `<div class="transaction-card"><div><strong>#${sale.id}</strong> - ${symbol}${sale.total.toFixed(2)}</div><div>${new Date(sale.date).toLocaleString()}</div>${sale.items.map((item: any) => `<div>• ${item.name} x${item.quantity} - ${symbol}${(item.price * item.quantity).toFixed(2)}</div>`).join('')}</div>`).join('') : '<p>No transactions</p>'}
-      <div class="footer"><p>End of Report</p></div>
+      <div class="category-title">
+        📦 ${categoryName} ${isVoided ? '<span class="void-badge">🚫 VOIDED REPORT</span>' : ''}
+      </div>
+      <div style="display:flex;justify-content:space-around;margin:20px 0;padding:15px;background:${isVoided ? '#FEF2F2' : '#f9f9f9'};border-radius:6px;border:1px solid ${isVoided ? '#FCA5A5' : '#e5e7eb'}">
+        <div><div>${isVoided ? 'Voided Items' : 'Total Items'}</div><div style="font-size:18px;font-weight:bold">${items.length}</div></div>
+        <div><div>${isVoided ? 'Voided Quantity' : 'Quantity Sold'}</div><div style="font-size:18px;font-weight:bold">${totalQty}</div></div>
+        <div><div>${isVoided ? 'Total Voided Amount' : 'Total Revenue'}</div><div style="font-size:18px;font-weight:bold;color:${isVoided ? '#DC2626' : '#111827'}">${symbol}${totalRev.toFixed(2)}</div></div>
+      </div>
+      <div class="section-title">📋 ${isVoided ? 'Voided Items List' : 'Items Sold'}</div>
+      ${this.generateItemsTable(items, symbol)}
+      <div class="section-title">📄 ${isVoided ? 'Voided Transactions History' : 'Transaction History'}</div>
+      ${transactions.length ? groupTransactions(transactions).map((sale: any) => `
+        <div class="transaction-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><strong>#${sale.invoiceNumber || sale.id}</strong> ${isVoided ? '<span class="void-badge">VOIDED</span>' : ''}</div>
+            <div style="font-size:16px;font-weight:bold;color:${isVoided ? '#DC2626' : '#111827'}">${symbol}${sale.total.toFixed(2)}</div>
+          </div>
+          <div style="font-size:11px;color:#6B7280;margin:4px 0;">${sale.date ? this.formatDateTime(sale.date) : ''}</div>
+          ${sale.voidReason ? `<div style="font-size:12px;color:#DC2626;margin:4px 0;"><strong>Void Reason:</strong> ${sale.voidReason}</div>` : ''}
+          ${sale.voidedBy ? `<div style="font-size:12px;color:#4B5563;margin:2px 0;"><strong>Voided By:</strong> ${sale.voidedBy}</div>` : ''}
+          <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd;">
+            ${sale.items.map((item: any) => `<div>• ${item.name} x${item.quantity} - ${symbol}${(item.price * item.quantity).toFixed(2)}</div>`).join('')}
+          </div>
+        </div>
+      `).join('') : '<p>No transactions found</p>'}
+      <div class="footer"><p>End of Category Report</p></div>
     </body></html>`;
   }
 
@@ -960,8 +1025,8 @@ class UniversalPrinter {
           <div class="header-divider"></div>
         </td>
         <td class="header-title-cell">
-          <h1 class="report-title">SALES ANALYTICS REPORT</h1>
-          <div class="report-subtitle">Real-time business intelligence dashboard</div>
+          <h1 class="report-title" style="${options?.isVoided ? 'color: #DC2626;' : ''}">${options?.isVoided ? '🚫 VOIDED CATEGORY SALES REPORT' : 'CATEGORY SALES ANALYTICS REPORT'}</h1>
+          <div class="report-subtitle">${options?.isVoided ? 'Audit report of voided transactions and item cancellations' : 'Real-time business intelligence dashboard'}</div>
         </td>
         <td class="header-meta-cell">
           <div class="meta-item"><span class="meta-label">Date Range:</span> <span class="meta-value">${dateRangeStr}</span></div>
@@ -1338,6 +1403,45 @@ class UniversalPrinter {
         <tr class="total-row">
           <td>NET COLLECTIONS (TOTAL)</td>
           <td class="text-right" style="color: #FF7A00;">${symbol}${netCollections.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Void Details Section -->
+    <div class="table-section-title" style="color: #DC2626; border-bottom: 2px solid #FCA5A5; margin-top: 25px;">
+      🚫 Void Details & Void Summary
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr style="background: #DC2626;">
+          <th style="width: 5%; background: #DC2626;">#</th>
+          <th style="width: 22%; background: #DC2626;">Bill / Invoice #</th>
+          <th style="width: 20%; background: #DC2626;">Date & Time</th>
+          <th style="width: 23%; background: #DC2626;">Void Reason</th>
+          <th style="width: 15%; background: #DC2626;">Voided By</th>
+          <th class="text-right" style="width: 15%; background: #DC2626;">Void Amount (${symbol})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(options?.voidedSales && options.voidedSales.length > 0) ? options.voidedSales.map((vSale: any, idx: number) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td style="font-weight: 600; color: #DC2626;">#${vSale.invoiceNumber || vSale.id}</td>
+            <td>${this.formatDateTime(vSale.date || vSale.voidedAt)}</td>
+            <td style="color: #4B5563;">${vSale.voidReason || 'N/A'}</td>
+            <td>${vSale.voidedBy || 'Staff'}</td>
+            <td class="text-right" style="font-weight: 700; color: #DC2626;">${symbol}${(vSale.total || 0).toFixed(2)}</td>
+          </tr>
+        `).join('') : `
+          <tr>
+            <td colspan="6" class="text-center" style="color: #6B7280; padding: 12px;">No voided sales recorded for this period</td>
+          </tr>
+        `}
+        <tr class="total-row" style="background: #FEF2F2; border-top: 1.5px solid #FCA5A5; border-bottom: 2px solid #FCA5A5;">
+          <td colspan="5" style="font-weight: 800; color: #DC2626;">TOTAL VOIDED SALES</td>
+          <td class="text-right" style="font-weight: 800; color: #DC2626;">
+            ${symbol}${(options?.voidedSales || []).reduce((sum: number, v: any) => sum + (v.total || 0), 0).toFixed(2)}
+          </td>
         </tr>
       </tbody>
     </table>
@@ -1812,6 +1916,31 @@ class UniversalPrinter {
         }
       }
 
+      // ========== VOID DETAILS & VOID SUMMARY (THERMAL) ==========
+      const voidedSalesList = reportData?.voidedSales || [];
+      if (voidedSalesList.length > 0) {
+        text += '\n' + '-'.repeat(width) + '\n';
+        text += this.centerText('🚫 VOID DETAILS & SUMMARY', width) + '\n';
+        text += '-'.repeat(width) + '\n';
+
+        let totalVoidedAmt = 0;
+        for (const vSale of voidedSalesList) {
+          const vAmt = (vSale.total || 0);
+          totalVoidedAmt += vAmt;
+          const inv = vSale.invoiceNumber || vSale.id || '';
+          const timeStr = this.formatDateTime(vSale.date || vSale.voidedAt);
+          const reason = vSale.voidReason || 'N/A';
+          const by = vSale.voidedBy || 'Staff';
+
+          text += `#${inv} - ${symbol}${vAmt.toFixed(2)}\n`;
+          text += ` Time: ${timeStr}\n`;
+          text += ` Reason: ${reason}\n`;
+          text += ` By: ${by}\n`;
+          text += '-'.repeat(width) + '\n';
+        }
+        text += this.twoColumns('TOTAL VOIDED SALES:', `${symbol}${totalVoidedAmt.toFixed(2)}`, width) + '\n';
+      }
+
       text += '\n' + '='.repeat(width) + '\n';
       text += this.centerText('END OF REPORT', width) + '\n';
       text += '='.repeat(width) + '\n\n';
@@ -1995,6 +2124,35 @@ class UniversalPrinter {
           if (cat.valueCardAmount > 0) {
             text += `  Value Card: ${symbol}${cat.valueCardAmount.toFixed(2)}\n`;
           }
+        }
+      }
+
+      // ========== VOID DETAILS & VOID SUMMARY (THERMAL) ==========
+      const voidedSalesList = options?.voidedSales || [];
+      if (options?.isVoided || voidedSalesList.length > 0) {
+        text += '\n' + '-'.repeat(width) + '\n';
+        text += this.centerText('🚫 VOID DETAILS & SUMMARY', width) + '\n';
+        text += '-'.repeat(width) + '\n';
+
+        if (voidedSalesList.length > 0) {
+          let totalVoidedAmt = 0;
+          for (const vSale of voidedSalesList) {
+            const vAmt = (vSale.total || 0);
+            totalVoidedAmt += vAmt;
+            const inv = vSale.invoiceNumber || vSale.id || '';
+            const timeStr = this.formatDateTime(vSale.date || vSale.voidedAt);
+            const reason = vSale.voidReason || 'N/A';
+            const by = vSale.voidedBy || 'Staff';
+
+            text += `#${inv} - ${symbol}${vAmt.toFixed(2)}\n`;
+            text += ` Time: ${timeStr}\n`;
+            text += ` Reason: ${reason}\n`;
+            text += ` By: ${by}\n`;
+            text += '-'.repeat(width) + '\n';
+          }
+          text += this.twoColumns('TOTAL VOIDED SALES:', `${symbol}${totalVoidedAmt.toFixed(2)}`, width) + '\n';
+        } else {
+          text += this.centerText('No voided sales recorded', width) + '\n';
         }
       }
 

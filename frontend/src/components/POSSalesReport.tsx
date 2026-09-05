@@ -736,6 +736,49 @@ const handleFilterChange = (filter: string) => {
 
   const printReport = async () => {
     try {
+        // ✅ Ensure voided sales are fetched for the selected filter period
+        let currentVoidedSales = voidedSales;
+        if (!currentVoidedSales || currentVoidedSales.length === 0) {
+            try {
+                const filterValue = selectedFilter?.toLowerCase() || 'today';
+                const voidParams = new URLSearchParams();
+                voidParams.append('filter', filterValue);
+                voidParams.append('status', 'voided');
+                voidParams.append('outletId', outletInfo?.id?.toString() || '');
+                voidParams.append('showAll', 'true');
+                
+                if (filterValue === 'custom') {
+                    const start = startDate.toISOString().split('T')[0];
+                    const end = endDate.toISOString().split('T')[0];
+                    voidParams.append('startDate', start);
+                    voidParams.append('endDate', end);
+                    voidParams.append('startTime', startTime || savedStartTime || '00:00');
+                    voidParams.append('endTime', endTime || savedEndTime || '23:59');
+                }
+                
+                const voidRes = await API.get(`/sales?${voidParams.toString()}`);
+                if (voidRes.data && Array.isArray(voidRes.data)) {
+                    currentVoidedSales = voidRes.data.map((sale: any) => ({
+                        id: sale.id || sale.Id,
+                        total: sale.total || sale.Total || 0,
+                        paymentMethod: sale.paymentMethod || sale.PaymentMethod || '',
+                        date: sale.date || sale.SaleDate || new Date(),
+                        invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber || '',
+                        items: sale.items || sale.ItemsJson || [],
+                        status: sale.status || sale.Status,
+                        voidReason: sale.voidReason,
+                        voidedAt: sale.voidedAt,
+                        voidedBy: sale.voidedBy,
+                        discount: sale.discount || null,
+                        dayEndId: sale.dayEndId || sale.DayEndId || null
+                    }));
+                    setVoidedSales(currentVoidedSales);
+                }
+            } catch (err) {
+                console.log('⚠️ Error fetching voided sales for report:', err);
+            }
+        }
+
         // ✅ Create report options with time
         const reportOptions = {
             filter: selectedFilter,
@@ -769,7 +812,9 @@ const handleFilterChange = (filter: string) => {
                             totalDiscount: categorySummary.totalDiscount,
                             discountedTransactions: categorySummary.discountedTransactions,
                             paymentBreakdown: categorySummary.paymentBreakdown
-                        }
+                        },
+                        isVoided: showVoidedCategoriesTab,
+                        voidedSales: currentVoidedSales
                     }
                 );
                if (printed) {
@@ -796,7 +841,9 @@ const handleFilterChange = (filter: string) => {
                                 totalDiscount: categorySummary.totalDiscount,
                                 discountedTransactions: categorySummary.discountedTransactions,
                                 paymentBreakdown: categorySummary.paymentBreakdown
-                            }
+                            },
+                            isVoided: showVoidedCategoriesTab,
+                            voidedSales: currentVoidedSales
                         }
                     );
                     
@@ -828,7 +875,9 @@ const handleFilterChange = (filter: string) => {
                             totalDiscount: categorySummary.totalDiscount,
                             discountedTransactions: categorySummary.discountedTransactions,
                             paymentBreakdown: paymentBreakdown
-                        }
+                        },
+                        isVoided: showVoidedCategoriesTab,
+                        voidedSales: currentVoidedSales
                     }
                 );
                 if (printed) {
@@ -854,7 +903,9 @@ const handleFilterChange = (filter: string) => {
                                 totalDiscount: categorySummary.totalDiscount,
                                 discountedTransactions: categorySummary.discountedTransactions,
                                 paymentBreakdown: paymentBreakdown
-                            }
+                            },
+                            isVoided: showVoidedCategoriesTab,
+                            voidedSales: currentVoidedSales
                         }
                     );
                     
@@ -872,6 +923,7 @@ const handleFilterChange = (filter: string) => {
                 },
                 paymentBreakdown: summary.paymentBreakdown,
                 salesHistory: salesHistory,
+                voidedSales: currentVoidedSales,
                 period: selectedFilter === 'custom' 
                     ? `${formatDate(startDate)} to ${formatDate(endDate)}`
                     : selectedFilter,
@@ -1618,7 +1670,7 @@ const formatDateTime = (dateString: string) => {
       {/* Show who voided and when */}
       {showVoidedTab && sale.voidedAt && (
         <Text style={[styles.voidedByText, { color: theme.textSecondary }]}>
-          Voided: {new Date(sale.voidedAt).toLocaleString()}
+          Voided: {formatDateTime(sale.voidedAt).date} {formatDateTime(sale.voidedAt).time}
         </Text>
       )}
 

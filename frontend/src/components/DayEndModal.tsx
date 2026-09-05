@@ -130,11 +130,12 @@ const loadSavedEmail = async () => {
                 hours: hour,
                 minutes: minute,
                 dateStr: `${day}/${month}/${yearStr} ${hour}:${minute}`,
+                dateTimeStr: `${day}/${month}/${yearStr} ${hour}:${minute}`,
                 monthName
             };
         } catch (e) {
             console.log('Error parsing date to SG time in DayEndModal:', e);
-            return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', monthName: 'Jan' };
+            return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', dateTimeStr: '00/00/0000 00:00', monthName: 'Jan' };
         }
     };
 
@@ -163,8 +164,12 @@ const loadSavedEmail = async () => {
                 console.log(`📊 Found ${pendingSales} pending sales - LOADING SUMMARY`);
                 setIsDayEnded(false);
                 
-                const salesRes = await API.get('/sales?status=completed');
+                const [salesRes, voidedRes] = await Promise.all([
+                    API.get('/sales?status=completed'),
+                    API.get('/sales?status=voided')
+                ]);
                 const sales = salesRes.data || [];
+                const voidedSales = voidedRes.data || [];
                 
                 let totalSales = 0;
                 let totalDiscount = 0;
@@ -222,6 +227,9 @@ const loadSavedEmail = async () => {
                         revenue: categoryMap[catName].items[itemName].revenue
                     })).sort((a, b) => b.revenue - a.revenue)
                 })).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+                const voidedCount = voidedSales.length;
+                const totalVoidedAmount = voidedSales.reduce((acc: number, s: any) => acc + (s.total || s.TotalAmount || 0), 0);
                 
                 setDayEndData({
                     totalSales,
@@ -230,7 +238,10 @@ const loadSavedEmail = async () => {
                     netSales: totalSales - totalDiscount,
                     paymentBreakdown,
                     salesCount: sales.length,
-                    categories: categories
+                    categories: categories,
+                    voidedSales: voidedSales,
+                    voidedCount: voidedCount,
+                    totalVoidedAmount: totalVoidedAmount
                 });
                 
                 setLoading(false);
@@ -247,7 +258,10 @@ const loadSavedEmail = async () => {
                     netSales: 0,
                     paymentBreakdown: {},
                     salesCount: 0,
-                    categories: []
+                    categories: [],
+                    voidedSales: [],
+                    voidedCount: 0,
+                    totalVoidedAmount: 0
                 });
                 setLoading(false);
                 return;
@@ -255,8 +269,12 @@ const loadSavedEmail = async () => {
             
             setIsDayEnded(false);
             
-            const salesRes = await API.get('/sales?status=completed');
+            const [salesRes, voidedRes] = await Promise.all([
+                API.get('/sales?status=completed'),
+                API.get('/sales?status=voided')
+            ]);
             const sales = salesRes.data || [];
+            const voidedSales = voidedRes.data || [];
             
             let totalSales = 0;
             let totalDiscount = 0;
@@ -314,6 +332,9 @@ const loadSavedEmail = async () => {
                     revenue: categoryMap[catName].items[itemName].revenue
                 })).sort((a, b) => b.revenue - a.revenue)
             })).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+            const voidedCount = voidedSales.length;
+            const totalVoidedAmount = voidedSales.reduce((acc: number, s: any) => acc + (s.total || s.TotalAmount || 0), 0);
             
             setDayEndData({
                 totalSales,
@@ -322,7 +343,10 @@ const loadSavedEmail = async () => {
                 netSales: totalSales - totalDiscount,
                 paymentBreakdown,
                 salesCount: sales.length,
-                categories: categories
+                categories: categories,
+                voidedSales: voidedSales,
+                voidedCount: voidedCount,
+                totalVoidedAmount: totalVoidedAmount
             });
             
         } catch (error) {
@@ -430,6 +454,36 @@ const loadSavedEmail = async () => {
         text += dash + '\n\n';
     }
     
+    // 🚫 VOID DETAILS & SUMMARY
+    const voidedSales = data.voidedSales || [];
+    const voidedCount = data.voidedCount || voidedSales.length || 0;
+    const totalVoidedAmount = data.totalVoidedAmount || voidedSales.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0);
+    
+    text += centerText('VOID SUMMARY', 32) + '\n';
+    text += dash + '\n';
+    text += twoColumns('Total Voided Count:', `${voidedCount}`, 32) + '\n';
+    text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount.toFixed(2)}`, 32) + '\n';
+    text += dash + '\n\n';
+
+    if (voidedSales.length > 0) {
+        text += centerText('VOIDED TRANSACTIONS', 32) + '\n';
+        text += dash + '\n';
+        voidedSales.forEach((v: any, idx: number) => {
+            const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+            const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
+            const reason = v.VoidReason || v.voidReason || 'N/A';
+            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
+            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+            const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+            text += `${idx + 1}. #${invNum} - ${symbol}${amt}\n`;
+            text += `   Time: ${timeFormatted}\n`;
+            text += `   Reason: ${reason}\n`;
+            text += `   Voided By: ${byUser}\n\n`;
+        });
+        text += dash + '\n\n';
+    }
+    
     text += centerText('END OF REPORT', 32) + '\n';
     text += line + '\n';
     text += centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
@@ -495,6 +549,34 @@ const buildDayEndReportText80mm = (data: any, outletName: string) => {
                 });
             }
             text += '\n';
+        });
+        text += dash + '\n\n';
+    }
+    
+    // 🚫 VOID DETAILS & SUMMARY
+    const voidedSales80 = data.voidedSales || [];
+    const voidedCount80 = data.voidedCount || voidedSales80.length || 0;
+    const totalVoidedAmount80 = data.totalVoidedAmount || voidedSales80.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0);
+    
+    text += centerText('VOID SUMMARY', 48) + '\n';
+    text += dash + '\n';
+    text += twoColumns('Total Voided Count:', `${voidedCount80}`, 48) + '\n';
+    text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount80.toFixed(2)}`, 48) + '\n';
+    text += dash + '\n\n';
+
+    if (voidedSales80.length > 0) {
+        text += centerText('VOIDED TRANSACTIONS', 48) + '\n';
+        text += dash + '\n';
+        voidedSales80.forEach((v: any, idx: number) => {
+            const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+            const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
+            const reason = v.VoidReason || v.voidReason || 'N/A';
+            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
+            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+            const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+            text += `${idx + 1}. #${invNum} - ${symbol}${amt}\n`;
+            text += `   Time: ${timeFormatted} | Reason: ${reason} | Voided By: ${byUser}\n\n`;
         });
         text += dash + '\n\n';
     }
@@ -1481,6 +1563,52 @@ const generateDayEndHTML = (data: any, outletName: string) => {
       </tbody>
     </table>
 
+    <!-- 🚫 Void Details & Void Summary Section -->
+    <div class="table-section-title" style="color: #EF4444; border-bottom-color: #EF4444;">🚫 Void Details & Summary</div>
+    <table class="data-table">
+      <thead>
+        <tr style="background: #EF4444;">
+          <th style="width: 5%; background: #EF4444;">#</th>
+          <th style="width: 25%; background: #EF4444;">Invoice #</th>
+          <th style="width: 20%; background: #EF4444;">Void Time</th>
+          <th style="width: 25%; background: #EF4444;">Reason</th>
+          <th style="width: 13%; background: #EF4444;">Voided By</th>
+          <th class="text-right" style="width: 12%; background: #EF4444;">Amount (${symbol})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(data.voidedSales && data.voidedSales.length > 0) ? data.voidedSales.map((v: any, idx: number) => {
+          const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+          const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
+          const reason = v.VoidReason || v.voidReason || 'N/A';
+          const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
+          const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+          const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+          return `
+            <tr>
+              <td>${idx + 1}</td>
+              <td style="font-weight: 600; color: #EF4444;">#${invNum}</td>
+              <td>${timeFormatted}</td>
+              <td>${reason}</td>
+              <td>${byUser}</td>
+              <td class="text-right" style="font-weight: 700; color: #EF4444;">${symbol}${amt}</td>
+            </tr>
+          `;
+        }).join('') : `
+          <tr>
+            <td colspan="6" class="text-center" style="color: #9CA3AF; padding: 10px;">No voided sales recorded for this shift</td>
+          </tr>
+        `}
+        <tr class="total-row" style="background: #FEF2F2; border-top-color: #EF4444; border-bottom-color: #EF4444;">
+          <td colspan="4">TOTAL VOIDED SALES (${data.voidedCount || (data.voidedSales ? data.voidedSales.length : 0)} Transactions)</td>
+          <td colspan="2" class="text-right" style="color: #EF4444; font-size: 10px; font-weight: 800;">
+            ${symbol}${(data.totalVoidedAmount || (data.voidedSales ? data.voidedSales.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0) : 0)).toFixed(2)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
     <!-- Bottom notes -->
     <div style="display: flex; justify-content: space-between; font-size: 8px; color: #9CA3AF; margin-top: 30px; border-top: 1px solid #E5E7EB; padding-top: 8px;">
       <div>Thank you for using TECHPRO POS System</div>
@@ -2223,6 +2351,45 @@ const sendEmailReport = async (item: any, email: string) => {
                                             -{formatPrice(item.totalDiscount || 0)}
                                         </Text>
                                     </View>
+                                    <View style={styles.historyDetailRow}>
+                                        <Text style={[styles.historyDetailLabel, { color: theme.danger }]}>
+                                            🚫 Voided Sales:
+                                        </Text>
+                                        <Text style={[styles.historyDetailValue, { color: theme.danger }]}>
+                                            {item.voidedCount || (item.voidedSales ? item.voidedSales.length : 0)} ({formatPrice(item.totalVoidedAmount || (item.voidedSales ? item.voidedSales.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0) : 0))})
+                                        </Text>
+                                    </View>
+
+                                    {item.voidedSales && item.voidedSales.length > 0 && (
+                                        <View style={[styles.historyCategoriesCard, { borderColor: theme.danger, borderWidth: 1 }]}>
+                                            <Text style={[styles.historyCategoriesTitle, { color: theme.danger }]}>
+                                                🚫 Voided Transactions Breakdown
+                                            </Text>
+                                            {item.voidedSales.map((v: any, vIdx: number) => {
+                                                const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || vIdx + 1}`;
+                                                const amt = v.TotalAmount || v.totalAmount || v.total || 0;
+                                                const reason = v.VoidReason || v.voidReason || 'N/A';
+                                                const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
+                                                const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+                                                const timeStr = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+                                                return (
+                                                    <View key={`void-hist-${vIdx}`} style={{ paddingVertical: 6, borderBottomWidth: vIdx < item.voidedSales.length - 1 ? 1 : 0, borderBottomColor: theme.border }}>
+                                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                                                            <Text style={{ fontWeight: 'bold', color: theme.text }}>#{invNum}</Text>
+                                                            <Text style={{ fontWeight: 'bold', color: theme.danger }}>{formatPrice(amt)}</Text>
+                                                        </View>
+                                                        <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
+                                                            Time: {timeStr} | By: {byUser}
+                                                        </Text>
+                                                        <Text style={{ fontSize: 12, color: theme.danger, marginTop: 1 }}>
+                                                            Reason: {reason}
+                                                        </Text>
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    )}
 
                                     {hasCategories && (
                                         <View style={styles.historyCategoriesCard}>
@@ -2457,6 +2624,10 @@ const sendEmailReport = async (item: any, email: string) => {
                         <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Transactions</Text>
                         <Text style={[styles.summaryValue, { color: theme.text }]}>{dayEndData.salesCount}</Text>
                     </View>
+                    <View style={styles.summaryRow}>
+                        <Text style={[styles.summaryLabel, { color: theme.danger }]}>🚫 Voided Sales</Text>
+                        <Text style={[styles.summaryValue, { color: theme.danger }]}>{dayEndData.voidedCount || 0} ({formatPrice(dayEndData.totalVoidedAmount || 0)})</Text>
+                    </View>
                 </View>
 
                 {Object.keys(dayEndData.paymentBreakdown).length > 0 && (
@@ -2468,6 +2639,35 @@ const sendEmailReport = async (item: any, email: string) => {
                                 <Text style={[styles.breakdownAmount, { color: theme.primary }]}>{formatPrice(amount as number)}</Text>
                             </View>
                         ))}
+                    </View>
+                )}
+
+                {dayEndData.voidedSales && dayEndData.voidedSales.length > 0 && (
+                    <View style={[styles.breakdownCard, { backgroundColor: theme.surface, borderColor: theme.danger, borderWidth: 1 }]}>
+                        <Text style={[styles.breakdownTitle, { color: theme.danger }]}>🚫 Voided Transactions Breakdown</Text>
+                        {dayEndData.voidedSales.map((v: any, index: number) => {
+                            const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || index + 1}`;
+                            const amt = v.TotalAmount || v.totalAmount || v.total || 0;
+                            const reason = v.VoidReason || v.voidReason || 'N/A';
+                            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
+                            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+                            const timeStr = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+                            return (
+                                <View key={`void-pending-${index}`} style={[styles.breakdownRow, { flexDirection: 'column', alignItems: 'flex-start', paddingVertical: 6, borderBottomWidth: index < dayEndData.voidedSales.length - 1 ? 1 : 0, borderBottomColor: theme.border }]}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                                        <Text style={{ fontWeight: 'bold', color: theme.text }}>#{invNum}</Text>
+                                        <Text style={{ fontWeight: 'bold', color: theme.danger }}>{formatPrice(amt)}</Text>
+                                    </View>
+                                    <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
+                                        Time: {timeStr} | By: {byUser}
+                                    </Text>
+                                    <Text style={{ fontSize: 12, color: theme.danger, marginTop: 1 }}>
+                                        Reason: {reason}
+                                    </Text>
+                                </View>
+                            );
+                        })}
                     </View>
                 )}
 

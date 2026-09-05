@@ -16,6 +16,7 @@ export const themes: Record<string, ThemeType> = {
     success: '#4CAF50',
     warning: '#FFC107',
     danger: '#FF4444',
+    info: '#2196F3',
     inactive: '#999999',
   },
   night: {
@@ -32,6 +33,7 @@ export const themes: Record<string, ThemeType> = {
     success: '#66BB66',
     warning: '#FFB74D',
     danger: '#FF6666',
+    info: '#64B5F6',
     inactive: '#666666',
   },
   blue: {
@@ -48,6 +50,7 @@ export const themes: Record<string, ThemeType> = {
     success: '#4CAF50',
     warning: '#FFC107',
     danger: '#F44336',
+    info: '#2196F3',
     inactive: '#9E9E9E',
   },
   green: {
@@ -64,6 +67,7 @@ export const themes: Record<string, ThemeType> = {
     success: '#4CAF50',
     warning: '#FFC107',
     danger: '#F44336',
+    info: '#2196F3',
     inactive: '#9E9E9E',
   },
   purple: {
@@ -80,6 +84,7 @@ export const themes: Record<string, ThemeType> = {
     success: '#4CAF50',
     warning: '#FFC107',
     danger: '#F44336',
+    info: '#2196F3',
     inactive: '#9E9E9E',
   },
 };
