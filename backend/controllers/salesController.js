@@ -376,7 +376,7 @@ const getSales = async (req, res) => {
                    CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr, 
                    s.VoidReason, s.DayEndId,
                    COALESCE(
-                       (SELECT TOP 1 u.Username FROM Users u WHERE CAST(u.Id AS NVARCHAR(50)) = s.VoidedBy),
+                       (SELECT TOP 1 u.Username FROM Users u WHERE ISNUMERIC(s.VoidedBy) = 1 AND u.Id = TRY_CAST(s.VoidedBy AS INT)),
                        (SELECT TOP 1 u.Username FROM Users u WHERE u.Username = s.VoidedBy),
                        s.VoidedBy
                    ) as VoidedByName
