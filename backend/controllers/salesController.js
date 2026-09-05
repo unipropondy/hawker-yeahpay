@@ -375,9 +375,12 @@ const getSales = async (req, res) => {
                    s.Status, s.VoidedBy, 
                    CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr, 
                    s.VoidReason, s.DayEndId,
-                   u.Username as VoidedByName
+                   COALESCE(
+                       (SELECT TOP 1 u.Username FROM Users u WHERE CAST(u.Id AS NVARCHAR(50)) = s.VoidedBy),
+                       (SELECT TOP 1 u.Username FROM Users u WHERE u.Username = s.VoidedBy),
+                       s.VoidedBy
+                   ) as VoidedByName
             FROM Sales s WITH (NOLOCK) 
-            LEFT JOIN Users u ON (TRY_CAST(s.VoidedBy as INT) IS NOT NULL AND u.Id = TRY_CAST(s.VoidedBy as INT)) OR s.VoidedBy = u.Username
             WHERE s.OutletId = @outletId
         `;
         

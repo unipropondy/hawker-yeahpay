@@ -372,9 +372,13 @@ const getDayEndHistory = async (req, res) => {
                     SELECT s.Id, s.Total, s.InvoiceNumber, 
                            CONVERT(varchar, s.SaleDate, 126) as SaleDateStr, 
                            CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr,
-                           s.VoidReason, s.VoidedBy, u.Username as VoidedByName
+                           s.VoidReason, s.VoidedBy,
+                           COALESCE(
+                               (SELECT TOP 1 u.Username FROM Users u WHERE CAST(u.Id AS NVARCHAR(50)) = s.VoidedBy),
+                               (SELECT TOP 1 u.Username FROM Users u WHERE u.Username = s.VoidedBy),
+                               s.VoidedBy
+                           ) as VoidedByName
                     FROM Sales s
-                    LEFT JOIN Users u ON (TRY_CAST(s.VoidedBy as INT) IS NOT NULL AND u.Id = TRY_CAST(s.VoidedBy as INT)) OR s.VoidedBy = u.Username
                     WHERE s.DayEndId = @dayEndId AND s.Status = 'VOIDED'
                     ORDER BY s.SaleDate ASC
                 `);
