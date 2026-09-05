@@ -369,10 +369,14 @@ const getDayEndHistory = async (req, res) => {
             const voidedRes = await pool.request()
                 .input('dayEndId', sql.Int, row.DayEndId)
                 .query(`
-                    SELECT Id, Total, InvoiceNumber, CONVERT(varchar, SaleDate, 126) as SaleDateStr, VoidReason, VoidedBy
-                    FROM Sales
-                    WHERE DayEndId = @dayEndId AND Status = 'VOIDED'
-                    ORDER BY SaleDate ASC
+                    SELECT s.Id, s.Total, s.InvoiceNumber, 
+                           CONVERT(varchar, s.SaleDate, 126) as SaleDateStr, 
+                           CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr,
+                           s.VoidReason, s.VoidedBy, u.Username as VoidedByName
+                    FROM Sales s
+                    LEFT JOIN Users u ON s.VoidedBy = CAST(u.Id AS NVARCHAR(50)) OR s.VoidedBy = u.Username
+                    WHERE s.DayEndId = @dayEndId AND s.Status = 'VOIDED'
+                    ORDER BY s.SaleDate ASC
                 `);
             
             const voidedSales = (voidedRes.recordset || []).map(v => ({
@@ -380,8 +384,9 @@ const getDayEndHistory = async (req, res) => {
                 total: parseFloat(v.Total) || 0,
                 invoiceNumber: v.InvoiceNumber || '',
                 date: v.SaleDateStr,
+                voidedAt: v.VoidedAtStr || v.SaleDateStr,
                 voidReason: v.VoidReason || 'N/A',
-                voidedBy: v.VoidedBy || 'Staff'
+                voidedBy: v.VoidedByName || v.VoidedBy || 'Staff'
             }));
 
             const totalVoidedAmount = voidedSales.reduce((s, v) => s + (v.total || 0), 0);

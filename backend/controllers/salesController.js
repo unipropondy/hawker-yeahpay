@@ -367,14 +367,18 @@ const getSales = async (req, res) => {
         const pool = getPool();
         
         let query = `
-            SELECT Id, Total, PaymentMethod, SaleDate, 
-                   CAST(ItemsJson AS NVARCHAR(MAX)) as ItemsJson,
-                   CashPaid, ChangeAmount, InvoiceNumber,
-                   DiscountType, DiscountValue, DiscountAmount,
-                   Status, VoidedBy, VoidedAt, VoidReason,
-                   DayEndId
-            FROM Sales WITH (NOLOCK) 
-            WHERE OutletId = @outletId
+            SELECT s.Id, s.Total, s.PaymentMethod, 
+                   CONVERT(varchar, s.SaleDate, 126) as SaleDateStr, 
+                   CAST(s.ItemsJson AS NVARCHAR(MAX)) as ItemsJson,
+                   s.CashPaid, s.ChangeAmount, s.InvoiceNumber,
+                   s.DiscountType, s.DiscountValue, s.DiscountAmount,
+                   s.Status, s.VoidedBy, 
+                   CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr, 
+                   s.VoidReason, s.DayEndId,
+                   u.Username as VoidedByName
+            FROM Sales s WITH (NOLOCK) 
+            LEFT JOIN Users u ON s.VoidedBy = CAST(u.Id AS NVARCHAR(50)) OR s.VoidedBy = u.Username
+            WHERE s.OutletId = @outletId
         `;
         
         const request = pool.request();
@@ -386,7 +390,7 @@ const getSales = async (req, res) => {
             // No DayEndId filter - shows all sales
         } else {
             console.log('📊 Day End: Showing ONLY pending sales');
-            query += " AND (DayEndId IS NULL OR DayEndId = 0)";
+            query += " AND (s.DayEndId IS NULL OR s.DayEndId = 0)";
         }
         
         // ✅ Use UTC time from database
@@ -399,7 +403,7 @@ const getSales = async (req, res) => {
         console.log('📅 Today UTC:', todayUTC);
         
         if (filter === 'today') {
-            query += " AND CAST(SaleDate AS DATE) = @todayDate";
+            query += " AND CAST(s.SaleDate AS DATE) = @todayDate";
             request.input('todayDate', sql.Date, todayUTC);
             
         } else if (filter === 'week') {
@@ -407,7 +411,7 @@ const getSales = async (req, res) => {
             weekStart.setDate(weekStart.getDate() - 7);
             weekStart.setHours(0, 0, 0, 0);
             
-            query += " AND SaleDate >= @weekStart";
+            query += " AND s.SaleDate >= @weekStart";
             request.input('weekStart', sql.DateTime, weekStart);
             
         } else if (filter === 'month') {
@@ -415,7 +419,7 @@ const getSales = async (req, res) => {
             monthStart.setDate(monthStart.getDate() - 30);
             monthStart.setHours(0, 0, 0, 0);
             
-            query += " AND SaleDate >= @monthStart";
+            query += " AND s.SaleDate >= @monthStart";
             request.input('monthStart', sql.DateTime, monthStart);
             
         } else if (filter === 'custom' && startDate && endDate) {
@@ -425,18 +429,18 @@ const getSales = async (req, res) => {
             console.log('📅 Custom start (UTC):', start.toISOString());
             console.log('📅 Custom end (UTC):', end.toISOString());
             
-            query += " AND SaleDate >= @startDate AND SaleDate <= @endDate";
+            query += " AND s.SaleDate >= @startDate AND s.SaleDate <= @endDate";
             request.input('startDate', sql.DateTime, start);
             request.input('endDate', sql.DateTime, end);
         }
         
         if (status === 'voided') {
-            query += " AND Status = 'VOIDED'";
+            query += " AND s.Status = 'VOIDED'";
         } else {
-            query += " AND (Status IS NULL OR Status = 'COMPLETED' OR Status != 'VOIDED')";
+            query += " AND (s.Status IS NULL OR s.Status = 'COMPLETED' OR s.Status != 'VOIDED')";
         }
         
-        query += " ORDER BY SaleDate DESC";
+        query += " ORDER BY s.SaleDate DESC";
         
         console.log("📊 Executing sales query with showAll:", showAll);
         const result = await request.query(query);
@@ -453,7 +457,7 @@ const getSales = async (req, res) => {
                 id: sale.Id,
                 total: sale.Total,
                 paymentMethod: sale.PaymentMethod,
-                date: sale.SaleDate,
+                date: sale.SaleDateStr,
                 invoiceNumber: sale.InvoiceNumber || '',
                 items: items,
                 cashPaid: sale.CashPaid,
@@ -461,8 +465,8 @@ const getSales = async (req, res) => {
                 status: sale.Status || 'COMPLETED',
                 dayEndId: sale.DayEndId,
                 voidReason: sale.VoidReason || '',
-                voidedBy: sale.VoidedBy || '',
-                voidedAt: sale.VoidedAt || sale.SaleDate
+                voidedBy: sale.VoidedByName || sale.VoidedBy || '',
+                voidedAt: sale.VoidedAtStr || sale.SaleDateStr
             };
         });
         
