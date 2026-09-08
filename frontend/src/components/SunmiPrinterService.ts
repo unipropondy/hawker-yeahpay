@@ -52,13 +52,13 @@ const cutPaper = async () => {
 
 
 class SunmiPrinterService {
-  
+
   static async init(): Promise<boolean> {
     if (Platform.OS !== 'android') {
       console.log('Not Android - cannot use Sunmi printer');
       return false;
     }
-    
+
     try {
       await initPrinter();
       console.log('✅ Sunmi printer initialized');
@@ -68,13 +68,13 @@ class SunmiPrinterService {
       return false;
     }
   }
-  
+
   // Convert any image URL to Base64
   private static async urlToBase64(url: string): Promise<string> {
     console.log('🔄 Converting URL to Base64:', url);
     const response = await fetch(url);
     const blob = await response.blob();
-    
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -88,12 +88,12 @@ class SunmiPrinterService {
       reader.readAsDataURL(blob);
     });
   }
-  
+
   // Print logos
   private static async printLogos(companySettings: any): Promise<void> {
     const hasCompanyLogo = companySettings.showCompanyLogo && companySettings.companyLogo;
     const hasHalalLogo = companySettings.showHalalLogo && companySettings.halalLogo;
-    
+
     if (hasCompanyLogo) {
       try {
         let logoUrl = companySettings.companyLogo;
@@ -108,7 +108,7 @@ class SunmiPrinterService {
         console.log('❌ Company logo failed:', e);
       }
     }
-    
+
     if (hasHalalLogo) {
       try {
         let halalUrl = companySettings.halalLogo;
@@ -124,9 +124,9 @@ class SunmiPrinterService {
       }
     }
   }
-  
+
   // Center text (full width 32 chars)
-private static async center(text: string): Promise<void> {
+  private static async center(text: string): Promise<void> {
     const maxWidth = 32;
     let displayText = text;
     if (displayText.length > maxWidth) {
@@ -136,22 +136,22 @@ private static async center(text: string): Promise<void> {
     const centeredText = ' '.repeat(padding) + displayText;
     await printText(centeredText);
   }
-  
-   // Left aligned
+
+  // Left aligned
   private static async left(text: string): Promise<void> {
     await printText(text);
   }
-  
+
   // Divider line (full width 32 chars)
   private static async divider(char: string = '-'): Promise<void> {
     await printText(char.repeat(32));
   }
-  
+
   // Double divider
   private static async doubleDivider(char: string = '='): Promise<void> {
     await printText(char.repeat(32));
   }
-  
+
   // Two columns (for totals)
   private static async twoCols(left: string, right: string): Promise<void> {
     const leftWidth = 20;
@@ -159,74 +159,75 @@ private static async center(text: string): Promise<void> {
     line += right.substring(0, 12).padStart(12, ' ');
     await printText(line);
   }
-  
+
   // Four columns for items (ITEM, QTY, PRICE, TOTAL)
- private static async itemRow(name: string, qty: string, price: string, total: string): Promise<void> {
+  private static async itemRow(name: string, qty: string, price: string, total: string): Promise<void> {
     const nameWidth = 12;
     const qtyWidth = 3;      // ✅ 5 chars for QTY (including space)
     const priceWidth = 6;     // ✅ 6 chars for PRICE
     const totalWidth = 8;     // ✅ 8 chars for TOTAL
-    
+
     let line = name.substring(0, nameWidth).padEnd(nameWidth, ' ');
     line += qty.substring(0, qtyWidth).padStart(qtyWidth, ' ');
-    line += ' '; 
+    line += ' ';
     line += price.substring(0, priceWidth).padStart(priceWidth, ' ');
     line += total.substring(0, totalWidth).padStart(totalWidth, ' ');
     await printText(line);
-}
-  
+  }
+
   // Item header
- private static async itemHeader(): Promise<void> {
+  private static async itemHeader(): Promise<void> {
     let line = 'ITEM'.padEnd(12, ' ');
     line += 'QTY'.padStart(3, ' ');   // ✅ 5 chars
     line += 'PRICE'.padStart(6, ' ');
     line += 'TOTAL'.padStart(8, ' ');
     await printText(line);
-}
+  }
   // Add this method to SunmiPrinterService class
-// Add this method to SunmiPrinterService class
-static async printRawText(text: string): Promise<boolean> {
+  // Add this method to SunmiPrinterService class
+  static async printRawText(text: string): Promise<boolean> {
     try {
-        await this.init();
-        const lines = text.split('\n');
-        for (const line of lines) {
-            if (line.trim() || line === '') {
-                await printText(line);
-            }
+      await this.init();
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (line.trim() || line === '') {
+          await printText(line);
         }
-        return true;
+      }
+      return true;
     } catch (error) {
-        console.log('Raw text print error:', error);
-        return false;
+      console.log('Raw text print error:', error);
+      return false;
     }
-}
+  }
 
-static async cutPaper(): Promise<boolean> {
+  static async cutPaper(): Promise<boolean> {
     try {
-        await this.init();
-        await cutPaper();
-        return true;
+      await this.init();
+      await lineWrap(5);
+      await cutPaper();
+      return true;
     } catch (error) {
-        console.log('Cut paper error:', error);
-        return false;
+      console.log('Cut paper error:', error);
+      return false;
     }
-}
+  }
   // ✅✅✅ FIXED: printReceipt with Date Format + QTY Alignment ✅✅✅
   static async printReceipt(saleData: any, companySettings: any): Promise<boolean> {
     try {
       await this.init();
-      
+
       const symbol = companySettings.currencySymbol || '$';
-      
+
       // ============ HEADER SECTION ============
       await this.doubleDivider('=');
       await lineWrap(1);
-      
+
       await this.printLogos(companySettings);
-      
+
       await this.center(companySettings.name || 'YOUR STORE');
       await lineWrap(1);
-      
+
       if (companySettings.address) {
         const addressLines = companySettings.address.split('\n');
         for (const line of addressLines) {
@@ -235,22 +236,22 @@ static async cutPaper(): Promise<boolean> {
           }
         }
       }
-      
+
       if (companySettings.phone) {
         await this.center(`📞 ${companySettings.phone}`);
       }
-      
+
       if (companySettings.email) {
         await this.center(`📧 ${companySettings.email}`);
       }
-      
+
       if (companySettings.gstNo) {
         await this.center(`GST: ${companySettings.gstNo}`);
       }
-      
+
       await this.doubleDivider('=');
       await lineWrap(1);
-      
+
       // ============ BILL DETAILS ============
       // ✅✅✅ FIXED: Date Format - DD/MM/YYYY ✅✅✅
       let dateStr = '';
@@ -296,34 +297,34 @@ static async cutPaper(): Promise<boolean> {
         const minutes = String(now.getMinutes()).padStart(2, '0');
         dateStr = `${day}/${month}/${year} ${hours}:${minutes}`;
       }
-      
+
       await this.left(`INVOICE NO: ${saleData.invoiceNumber || saleData.id}`);
       await this.left(`DATE: ${dateStr}`);  // ✅ DD/MM/YYYY
       await this.left(`CASHIER: ${saleData.cashier || companySettings.cashierName || 'Staff'}`);
       await this.divider('-');
-      
+
       // ============ ITEMS SECTION ============
       await this.itemHeader();  // ✅ FIXED HEADER
       await this.divider('-');
-      
+
       for (const item of saleData.items || []) {
         const itemName = (item.name || '').substring(0, 12);
         const qty = (item.quantity || 1).toString();
         const price = `${symbol}${item.price.toFixed(2)}`;
         const total = `${symbol}${(item.price * item.quantity).toFixed(2)}`;
-        
+
         await this.itemRow(itemName, qty, price, total);  // ✅ FIXED ALIGNMENT
-        
+
         if (item.quantity > 10) {
           await this.left(`    @ ${symbol}${item.price.toFixed(2)} ea`);
         }
       }
-      
+
       await this.divider('-');
-      
+
       // ============ SUBTOTAL & DISCOUNT ============
       let subtotal = saleData.total;
-      
+
       if (saleData.discountAmount && saleData.discountAmount > 0) {
         const originalTotal = saleData.total + saleData.discountAmount;
         await this.twoCols('Sub Total:', `${symbol}${originalTotal.toFixed(2)}`);
@@ -337,7 +338,7 @@ static async cutPaper(): Promise<boolean> {
         await this.twoCols('Sub Total:', `${symbol}${subtotal.toFixed(2)}`);
         await this.divider('-');
       }
-      
+
       // ============ GST ============
       if (companySettings.gstPercentage > 0) {
         const gstAmount = subtotal * (companySettings.gstPercentage / (100 + companySettings.gstPercentage));
@@ -346,37 +347,37 @@ static async cutPaper(): Promise<boolean> {
         await this.twoCols(`GST (${companySettings.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`);
         await this.divider('-');
       }
-      
+
       // ============ GRAND TOTAL ============
       await this.twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`);
       await this.doubleDivider('=');
-      
+
       // ============ PAYMENT ============
       await this.twoCols('PAYMENT:', saleData.paymentMethod || 'Cash');
-      
+
       if (saleData.cashPaid && saleData.cashPaid > 0) {
         await this.twoCols('PAID:', `${symbol}${saleData.cashPaid.toFixed(2)}`);
         if (saleData.change && saleData.change > 0) {
           await this.twoCols('CHANGE:', `${symbol}${saleData.change.toFixed(2)}`);
         }
       }
-      
+
       await lineWrap(1);
-      
+
       // ============ FOOTER ============
       await this.center('THANK YOU! COME AGAIN!');
       await lineWrap(1);
       await this.center('SMARTHAWKER BY UNIPROSG');
-      
+
       if (companySettings.gstPercentage > 0) {
         await this.center(`* Prices include ${companySettings.gstPercentage}% GST`);
       }
-      
+
       await lineWrap(3);
       await cutPaper();
-      
+
       return true;
-      
+
     } catch (error) {
       console.log('❌ Print error:', error);
       return false;

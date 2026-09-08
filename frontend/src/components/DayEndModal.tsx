@@ -52,13 +52,13 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
     const [selectedHistory, setSelectedHistory] = useState<any>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
     const [expandedHistoryCategory, setExpandedHistoryCategory] = useState<string | null>(null);
-    
+
     // ✅ Email State
     const [showEmailModal, setShowEmailModal] = useState(false);
     const [emailAddress, setEmailAddress] = useState('');
     const [emailLoading, setEmailLoading] = useState(false);
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<any>(null);
-const [savedEmail, setSavedEmail] = useState('');
+    const [savedEmail, setSavedEmail] = useState('');
     useEffect(() => {
         if (visible) {
             console.log('📅 DayEndModal opened');
@@ -66,25 +66,25 @@ const [savedEmail, setSavedEmail] = useState('');
             loadSavedEmail();
         }
     }, [visible]);
-// ✅ Load saved email from AsyncStorage
-const loadSavedEmail = async () => {
-    try {
-        const email = await AsyncStorage.getItem('lastEmailAddress');
-        console.log('📧 Loading saved email from storage:', email);
-        if (email) {
-            setSavedEmail(email);
-            setEmailAddress(email);  // ✅ Auto-fill the input
-            console.log('✅ Email auto-filled:', email);
-        } else {
-            console.log('⚠️ No saved email found');
+    // ✅ Load saved email from AsyncStorage
+    const loadSavedEmail = async () => {
+        try {
+            const email = await AsyncStorage.getItem('lastEmailAddress');
+            console.log('📧 Loading saved email from storage:', email);
+            if (email) {
+                setSavedEmail(email);
+                setEmailAddress(email);  // ✅ Auto-fill the input
+                console.log('✅ Email auto-filled:', email);
+            } else {
+                console.log('⚠️ No saved email found');
+            }
+        } catch (error) {
+            console.log('❌ Error loading saved email:', error);
         }
-    } catch (error) {
-        console.log('❌ Error loading saved email:', error);
-    }
-};
+    };
     const parseRawDateTime = (dateInput: any) => {
         if (!dateInput) return { day: '00', month: '00', year: '0000', hours: '00', minutes: '00', dateStr: '00/00/0000 00:00', monthName: 'Jan' };
-        
+
         try {
             let date: Date;
             if (dateInput instanceof Date) {
@@ -100,7 +100,7 @@ const loadSavedEmail = async () => {
                 }
                 date = new Date(str);
             }
-            
+
             // Format to Singapore timezone
             const options: Intl.DateTimeFormatOptions = {
                 timeZone: 'Asia/Singapore',
@@ -118,11 +118,11 @@ const loadSavedEmail = async () => {
             const yearStr = parts.find(p => p.type === 'year')?.value || '0000';
             const hour = parts.find(p => p.type === 'hour')?.value || '00';
             const minute = parts.find(p => p.type === 'minute')?.value || '00';
-            
+
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const mIdx = parseInt(month, 10) - 1;
             const monthName = monthNames[mIdx] || 'Jan';
-            
+
             return {
                 day,
                 month,
@@ -152,38 +152,38 @@ const loadSavedEmail = async () => {
         try {
             const statusRes = await API.get('/dayend/status');
             console.log('📊 Status response:', statusRes.data);
-            
+
             setDayEndStatus(statusRes.data);
-            
+
             const pendingSales = statusRes.data.pendingSales || 0;
             const isDayEnded = statusRes.data.isDayEnded === true || statusRes.data.isDayEnded === 1;
-            
+
             console.log(`🔍 isDayEnded: ${isDayEnded}, pendingSales: ${pendingSales}`);
-            
+
             if (pendingSales > 0) {
                 console.log(`📊 Found ${pendingSales} pending sales - LOADING SUMMARY`);
                 setIsDayEnded(false);
-                
+
                 const [salesRes, voidedRes] = await Promise.all([
                     API.get('/sales?status=completed'),
                     API.get('/sales?status=voided')
                 ]);
                 const sales = salesRes.data || [];
                 const voidedSales = voidedRes.data || [];
-                
+
                 let totalSales = 0;
                 let totalDiscount = 0;
                 let totalItems = 0;
                 const paymentBreakdown: Record<string, number> = {};
                 const categoryMap: Record<string, { items: Record<string, { quantity: number, revenue: number }>, totalRevenue: number, totalQuantity: number }> = {};
-                
+
                 sales.forEach((sale: any) => {
                     totalSales += sale.total || 0;
                     totalDiscount += sale.discountAmount || 0;
-                    
+
                     const method = sale.paymentMethod || 'Unknown';
                     paymentBreakdown[method] = (paymentBreakdown[method] || 0) + (sale.total || 0);
-                    
+
                     if (sale.items) {
                         sale.items.forEach((item: any) => {
                             const category = item.displayCategory || item.category || 'Uncategorized';
@@ -191,9 +191,9 @@ const loadSavedEmail = async () => {
                             const quantity = item.quantity || 1;
                             const price = item.price || 0;
                             const revenue = price * quantity;
-                            
+
                             totalItems += quantity;
-                            
+
                             if (!categoryMap[category]) {
                                 categoryMap[category] = {
                                     items: {},
@@ -201,14 +201,14 @@ const loadSavedEmail = async () => {
                                     totalQuantity: 0
                                 };
                             }
-                            
+
                             if (!categoryMap[category].items[itemName]) {
                                 categoryMap[category].items[itemName] = {
                                     quantity: 0,
                                     revenue: 0
                                 };
                             }
-                            
+
                             categoryMap[category].items[itemName].quantity += quantity;
                             categoryMap[category].items[itemName].revenue += revenue;
                             categoryMap[category].totalRevenue += revenue;
@@ -216,7 +216,7 @@ const loadSavedEmail = async () => {
                         });
                     }
                 });
-                
+
                 const categories = Object.keys(categoryMap).map(catName => ({
                     name: catName,
                     totalRevenue: categoryMap[catName].totalRevenue,
@@ -230,7 +230,7 @@ const loadSavedEmail = async () => {
 
                 const voidedCount = voidedSales.length;
                 const totalVoidedAmount = voidedSales.reduce((acc: number, s: any) => acc + (s.total || s.TotalAmount || 0), 0);
-                
+
                 setDayEndData({
                     totalSales,
                     totalDiscount,
@@ -243,11 +243,11 @@ const loadSavedEmail = async () => {
                     voidedCount: voidedCount,
                     totalVoidedAmount: totalVoidedAmount
                 });
-                
+
                 setLoading(false);
                 return;
             }
-            
+
             if (isDayEnded && pendingSales === 0) {
                 console.log('✅ No pending sales - SHOWING RESET STATE');
                 setIsDayEnded(true);
@@ -266,29 +266,29 @@ const loadSavedEmail = async () => {
                 setLoading(false);
                 return;
             }
-            
+
             setIsDayEnded(false);
-            
+
             const [salesRes, voidedRes] = await Promise.all([
                 API.get('/sales?status=completed'),
                 API.get('/sales?status=voided')
             ]);
             const sales = salesRes.data || [];
             const voidedSales = voidedRes.data || [];
-            
+
             let totalSales = 0;
             let totalDiscount = 0;
             let totalItems = 0;
             const paymentBreakdown: Record<string, number> = {};
             const categoryMap: Record<string, { items: Record<string, { quantity: number, revenue: number }>, totalRevenue: number, totalQuantity: number }> = {};
-            
+
             sales.forEach((sale: any) => {
                 totalSales += sale.total || 0;
                 totalDiscount += sale.discountAmount || 0;
-                
+
                 const method = sale.paymentMethod || 'Unknown';
                 paymentBreakdown[method] = (paymentBreakdown[method] || 0) + (sale.total || 0);
-                
+
                 if (sale.items) {
                     sale.items.forEach((item: any) => {
                         const category = item.displayCategory || item.category || 'Uncategorized';
@@ -296,9 +296,9 @@ const loadSavedEmail = async () => {
                         const quantity = item.quantity || 1;
                         const price = item.price || 0;
                         const revenue = price * quantity;
-                        
+
                         totalItems += quantity;
-                        
+
                         if (!categoryMap[category]) {
                             categoryMap[category] = {
                                 items: {},
@@ -306,14 +306,14 @@ const loadSavedEmail = async () => {
                                 totalQuantity: 0
                             };
                         }
-                        
+
                         if (!categoryMap[category].items[itemName]) {
                             categoryMap[category].items[itemName] = {
                                 quantity: 0,
                                 revenue: 0
                             };
                         }
-                        
+
                         categoryMap[category].items[itemName].quantity += quantity;
                         categoryMap[category].items[itemName].revenue += revenue;
                         categoryMap[category].totalRevenue += revenue;
@@ -321,7 +321,7 @@ const loadSavedEmail = async () => {
                     });
                 }
             });
-            
+
             const categories = Object.keys(categoryMap).map(catName => ({
                 name: catName,
                 totalRevenue: categoryMap[catName].totalRevenue,
@@ -335,7 +335,7 @@ const loadSavedEmail = async () => {
 
             const voidedCount = voidedSales.length;
             const totalVoidedAmount = voidedSales.reduce((acc: number, s: any) => acc + (s.total || s.TotalAmount || 0), 0);
-            
+
             setDayEndData({
                 totalSales,
                 totalDiscount,
@@ -348,7 +348,7 @@ const loadSavedEmail = async () => {
                 voidedCount: voidedCount,
                 totalVoidedAmount: totalVoidedAmount
             });
-            
+
         } catch (error) {
             console.log('❌ Error loading day end data:', error);
             Alert.alert('Error', 'Failed to load day end data');
@@ -362,7 +362,7 @@ const loadSavedEmail = async () => {
         try {
             const response = await API.get('/dayend/history?limit=50');
             console.log('📊 History response:', response.data);
-            
+
             if (response.data.success) {
                 setDayEndHistory(response.data.history || []);
             }
@@ -391,342 +391,347 @@ const loadSavedEmail = async () => {
         return leftText + rightText;
     };
 
-  const buildDayEndReportText = (data: any, outletName: string) => {
-    const symbol = '$';
-    const line = '='.repeat(32);
-    const dash = '-'.repeat(32);
-    
-    // ✅ ORIGINAL Day End Date - USE data.closingDate
-    const parsedOriginal = parseRawDateTime(data.closingDate);
-    const origDateStr = parsedOriginal.dateStr;
-    
-    // ✅ CURRENT Date (Generated on)
-    const now = new Date();
-    const nowDay = String(now.getDate()).padStart(2, '0');
-    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const nowYear = now.getFullYear();
-    const nowHours = String(now.getHours()).padStart(2, '0');
-    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
-    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
-    
-    console.log('📅 buildDayEndReportText - Original:', origDateStr);
-    console.log('📅 buildDayEndReportText - Generated:', nowDateStr);
-    
-    let text = '\n\n';
-    text += line + '\n';
-    text += centerText('DAY END REPORT', 32) + '\n';
-    text += line + '\n';
-    
-    text += `Outlet: ${outletName}\n`;
-    text += `Date: ${origDateStr}\n`;  // ✅ Original Day End
-    text += dash + '\n\n';
-    
-    text += centerText('SUMMARY', 32) + '\n';
-    text += dash + '\n';
-    text += twoColumns('Total Sales:', `${symbol}${(data.totalSales || 0).toFixed(2)}`, 32) + '\n';
-    text += twoColumns('Total Discount:', `-${symbol}${(data.totalDiscount || 0).toFixed(2)}`, 32) + '\n';
-    text += twoColumns('Net Sales:', `${symbol}${(data.netSales || 0).toFixed(2)}`, 32) + '\n';
-    text += twoColumns('Total Items:', `${data.totalItems || 0}`, 32) + '\n';
-    text += twoColumns('Transactions:', `${data.salesCount || 0}`, 32) + '\n';
-    text += dash + '\n\n';
-    
-    text += centerText('PAYMENT BREAKDOWN', 32) + '\n';
-    text += dash + '\n';
-    if (data.paymentBreakdown) {
-        Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
-            text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
-        });
-    }
-    text += dash + '\n\n';
-    
-    if (data.categories && data.categories.length > 0) {
-        text += centerText('CATEGORY BREAKDOWN', 32) + '\n';
-        text += dash + '\n';
-        data.categories.forEach((cat: any) => {
-            text += `${cat.name}: ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)\n`;
-            if (cat.items && cat.items.length > 0) {
-                cat.items.forEach((item: any) => {
-                    text += `  ${item.name || 'Unknown'} x${item.quantity || 0} = ${symbol}${(item.revenue || 0).toFixed(2)}\n`;
-                });
-            }
-            text += '\n';
-        });
+    const buildDayEndReportText = (data: any, outletName: string) => {
+        const symbol = '$';
+        const line = '='.repeat(32);
+        const dash = '-'.repeat(32);
+
+        // ✅ ORIGINAL Day End Date - USE data.closingDate
+        const parsedOriginal = parseRawDateTime(data.closingDate);
+        const origDateStr = parsedOriginal.dateStr;
+
+        // ✅ CURRENT Date (Generated on)
+        const now = new Date();
+        const nowDay = String(now.getDate()).padStart(2, '0');
+        const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const nowYear = now.getFullYear();
+        const nowHours = String(now.getHours()).padStart(2, '0');
+        const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+        const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+
+        console.log('📅 buildDayEndReportText - Original:', origDateStr);
+        console.log('📅 buildDayEndReportText - Generated:', nowDateStr);
+
+        let text = '\n\n';
+        text += line + '\n';
+        text += centerText('DAY END REPORT', 32) + '\n';
+        text += line + '\n';
+
+        text += `Outlet: ${outletName}\n`;
+        text += `Date: ${origDateStr}\n`;  // ✅ Original Day End
         text += dash + '\n\n';
-    }
-    
-    // 🚫 VOID DETAILS & SUMMARY
-    const voidedSales = data.voidedSales || [];
-    const voidedCount = data.voidedCount || voidedSales.length || 0;
-    const totalVoidedAmount = data.totalVoidedAmount || voidedSales.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0);
-    
-    text += centerText('VOID SUMMARY', 32) + '\n';
-    text += dash + '\n';
-    text += twoColumns('Total Voided Count:', `${voidedCount}`, 32) + '\n';
-    text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount.toFixed(2)}`, 32) + '\n';
-    text += dash + '\n\n';
 
-    if (voidedSales.length > 0) {
-        text += centerText('VOIDED TRANSACTIONS', 32) + '\n';
+        text += centerText('SUMMARY', 32) + '\n';
         text += dash + '\n';
-        voidedSales.forEach((v: any, idx: number) => {
-            const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
-            const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
-            const reason = v.VoidReason || v.voidReason || 'N/A';
-            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
-            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
-            const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
-
-            text += `${idx + 1}. #${invNum} - ${symbol}${amt}\n`;
-            text += `   Time: ${timeFormatted}\n`;
-            text += `   Reason: ${reason}\n`;
-            text += `   Voided By: ${byUser}\n\n`;
-        });
+        text += twoColumns('Total Sales:', `${symbol}${(data.totalSales || 0).toFixed(2)}`, 32) + '\n';
+        text += twoColumns('Total Discount:', `-${symbol}${(data.totalDiscount || 0).toFixed(2)}`, 32) + '\n';
+        text += twoColumns('Net Sales:', `${symbol}${(data.netSales || 0).toFixed(2)}`, 32) + '\n';
+        text += twoColumns('Total Items:', `${data.totalItems || 0}`, 32) + '\n';
+        text += twoColumns('Transactions:', `${data.salesCount || 0}`, 32) + '\n';
         text += dash + '\n\n';
-    }
-    
-    text += centerText('END OF REPORT', 32) + '\n';
-    text += line + '\n';
-    text += centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
-    text += centerText(`Generated: ${nowDateStr}`, 32) + '\n';  // ✅ Current Time
-    text += '\n\n\n';
-    
-    return text;
-};
 
-const buildDayEndReportText80mm = (data: any, outletName: string) => {
-    const symbol = '$';
-    const line = '='.repeat(48);
-    const dash = '-'.repeat(48);
-    
-    // ✅ ORIGINAL Day End Date - USE data.closingDate
-    const parsedOriginal = parseRawDateTime(data.closingDate);
-    const origDateStr = parsedOriginal.dateStr;
-    
-    // ✅ CURRENT Date (Generated on)
-    const now = new Date();
-    const nowDay = String(now.getDate()).padStart(2, '0');
-    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const nowYear = now.getFullYear();
-    const nowHours = String(now.getHours()).padStart(2, '0');
-    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
-    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
-    
-    let text = '\n\n';
-    text += line + '\n';
-    text += centerText('DAY END REPORT', 48) + '\n';
-    text += line + '\n';
-    
-    text += `Outlet: ${outletName}\n`;
-    text += `Date: ${origDateStr}\n`;  // ✅ Original Day End
-    text += dash + '\n\n';
-    
-    text += centerText('SUMMARY', 48) + '\n';
-    text += dash + '\n';
-    text += twoColumns('Total Sales:', `${symbol}${(data.totalSales || 0).toFixed(2)}`, 48) + '\n';
-    text += twoColumns('Total Discount:', `-${symbol}${(data.totalDiscount || 0).toFixed(2)}`, 48) + '\n';
-    text += twoColumns('Net Sales:', `${symbol}${(data.netSales || 0).toFixed(2)}`, 48) + '\n';
-    text += twoColumns('Total Items:', `${data.totalItems || 0}`, 48) + '\n';
-    text += twoColumns('Transactions:', `${data.salesCount || 0}`, 48) + '\n';
-    text += dash + '\n\n';
-    
-    text += centerText('PAYMENT BREAKDOWN', 48) + '\n';
-    text += dash + '\n';
-    if (data.paymentBreakdown) {
-        Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
-            text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 48) + '\n';
-        });
-    }
-    text += dash + '\n\n';
-    
-    if (data.categories && data.categories.length > 0) {
-        text += centerText('CATEGORY BREAKDOWN', 48) + '\n';
+        text += centerText('PAYMENT BREAKDOWN', 32) + '\n';
         text += dash + '\n';
-        data.categories.forEach((cat: any) => {
-            text += `${cat.name}: ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)\n`;
-            if (cat.items && cat.items.length > 0) {
-                cat.items.forEach((item: any) => {
-                    text += `  ${item.name || 'Unknown'} x${item.quantity || 0} = ${symbol}${(item.revenue || 0).toFixed(2)}\n`;
-                });
-            }
-            text += '\n';
-        });
-        text += dash + '\n\n';
-    }
-    
-    // 🚫 VOID DETAILS & SUMMARY
-    const voidedSales80 = data.voidedSales || [];
-    const voidedCount80 = data.voidedCount || voidedSales80.length || 0;
-    const totalVoidedAmount80 = data.totalVoidedAmount || voidedSales80.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0);
-    
-    text += centerText('VOID SUMMARY', 48) + '\n';
-    text += dash + '\n';
-    text += twoColumns('Total Voided Count:', `${voidedCount80}`, 48) + '\n';
-    text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount80.toFixed(2)}`, 48) + '\n';
-    text += dash + '\n\n';
-
-    if (voidedSales80.length > 0) {
-        text += centerText('VOIDED TRANSACTIONS', 48) + '\n';
-        text += dash + '\n';
-        voidedSales80.forEach((v: any, idx: number) => {
-            const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
-            const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
-            const reason = v.VoidReason || v.voidReason || 'N/A';
-            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
-            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
-            const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
-
-            text += `${idx + 1}. #${invNum} - ${symbol}${amt}\n`;
-            text += `   Time: ${timeFormatted} | Reason: ${reason} | Voided By: ${byUser}\n\n`;
-        });
-        text += dash + '\n\n';
-    }
-    
-    text += centerText('END OF REPORT', 48) + '\n';
-    text += line + '\n';
-    text += centerText('SMARTHAWKER BY UNIPROSG', 48) + '\n';
-    text += centerText(`Generated: ${nowDateStr}`, 48) + '\n';  // ✅ Current Time
-    text += '\n\n\n';
-    
-    return text;
-};
-
-const generateDayEndHTML = (data: any, outletName: string) => {
-    const symbol = '$';
-    const parsedOriginal = parseRawDateTime(data.closingDate);
-    const origDateStr = parsedOriginal.dateStr;
-    
-    const printTimeStr = new Date().toLocaleString('en-SG', { 
-      timeZone: 'Asia/Singapore',
-      dateStyle: 'medium',
-      timeStyle: 'medium'
-    });
-    
-    // 2. Aggregate all items from categories to get "TOP SELLING PRODUCTS"
-    const aggregatedItemsMap = new Map();
-    const categories = data.categories || [];
-    categories.forEach((cat: any) => {
-      const catItems = cat.items || [];
-      catItems.forEach((item: any) => {
-        const key = item.name;
-        if (!aggregatedItemsMap.has(key)) {
-          aggregatedItemsMap.set(key, {
-            name: item.name,
-            category: cat.name || 'Uncategorized',
-            quantity: 0,
-            revenue: 0,
-            price: item.price || 0
-          });
+        if (data.paymentBreakdown) {
+            Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
+                text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 32) + '\n';
+            });
         }
-        const current = aggregatedItemsMap.get(key);
-        current.quantity += (item.quantity || 0);
-        current.revenue += (item.revenue || 0);
-        if (item.price) current.price = item.price;
-      });
-    });
-    
-    const sortedItems = Array.from(aggregatedItemsMap.values())
-      .sort((a: any, b: any) => b.revenue - a.revenue);
-      
-    const top10Products = sortedItems.slice(0, 10);
-    const overallRevenue = data.totalSales || categories.reduce((sum: number, cat: any) => sum + (cat.totalRevenue || 0), 0);
-    
-    // 3. Category Contribution Analysis
-    const categoryContribution = categories.map((cat: any) => {
-      const contributionPercent = overallRevenue > 0 ? (cat.totalRevenue / overallRevenue) * 100 : 0;
-      return {
-        name: cat.name || 'Uncategorized',
-        qtySold: cat.totalQuantity || 0,
-        revenue: cat.totalRevenue || 0,
-        contribution: contributionPercent
-      };
-    }).sort((a: any, b: any) => b.revenue - a.revenue);
-    
-    const catContributionTotalQty = categoryContribution.reduce((sum: number, c: any) => sum + c.qtySold, 0);
-    const catContributionTotalRev = categoryContribution.reduce((sum: number, c: any) => sum + c.revenue, 0);
-    
-    // 4. Payment breakdown mapping
-    const rawPayment = data.paymentBreakdown || {};
-    const standardPaymentMethods = ['CASH', 'NETS', 'PAYNOW', 'CREDIT', 'CARD', 'FOC', 'CASH BOX ENTRY'];
-    
-    const normalizedPayment: Record<string, number> = {};
-    Object.entries(rawPayment).forEach(([method, val]) => {
-      const normalizedKey = method.toUpperCase().replace('_', ' ');
-      normalizedPayment[normalizedKey] = (normalizedPayment[normalizedKey] || 0) + (val as number);
-    });
-    
-    const paymentList: any[] = [];
-    Object.entries(normalizedPayment).forEach(([method, val]) => {
-      if (val > 0) {
-        const percentage = overallRevenue > 0 ? (val / overallRevenue) * 100 : 0;
-        paymentList.push({
-          name: method,
-          amount: val,
-          percentage
-        });
-      }
-    });
-    paymentList.sort((a, b) => b.amount - a.amount);
-    const totalPaymentsSum = paymentList.reduce((sum, p) => sum + p.amount, 0);
-    
-    // 5. Calculations for Cards
-    const totalSales = data.salesCount || data.transactions || 0;
-    const totalOrders = totalSales;
-    const avgOrderValue = totalOrders > 0 ? overallRevenue / totalOrders : 0;
-    const totalDiscount = data.totalDiscount || 0;
-    const netSales = data.netSales || (overallRevenue - totalDiscount);
-    
-    // 7. SVG Donut chart calculation
-    const colors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
-    const radius = 20;
-    const circumference = 2 * Math.PI * radius; // ≈ 125.66
-    const strokeWidth = 10;
-    let accumulatedPercentage = 0;
-    let svgCircles = '';
-    
-    paymentList.forEach((p, idx) => {
-      const percentage = p.percentage;
-      if (percentage > 0) {
-        const color = colors[idx % colors.length];
-        const dashArray = `${(percentage * circumference / 100).toFixed(2)} ${circumference.toFixed(2)}`;
-        const dashOffset = (-((accumulatedPercentage * circumference / 100))).toFixed(2);
-        
-        svgCircles += `<circle cx="25" cy="25" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 25 25)" />`;
-        
-        accumulatedPercentage += percentage;
-      }
-    });
+        text += dash + '\n\n';
 
-    const donutSvgMarkup = accumulatedPercentage > 0
-      ? `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
+        if (data.categories && data.categories.length > 0) {
+            text += centerText('CATEGORY BREAKDOWN', 32) + '\n';
+            text += dash + '\n';
+            data.categories.forEach((cat: any) => {
+                text += `${cat.name}: ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)\n`;
+                if (cat.items && cat.items.length > 0) {
+                    cat.items.forEach((item: any) => {
+                        text += `  ${item.name || 'Unknown'} x${item.quantity || 0} = ${symbol}${(item.revenue || 0).toFixed(2)}\n`;
+                    });
+                }
+                text += '\n';
+            });
+            text += dash + '\n\n';
+        }
+
+        // 🚫 VOID DETAILS & SUMMARY
+        const voidedSales = data.voidedSales || [];
+        const voidedCount = data.voidedCount || voidedSales.length || 0;
+        const totalVoidedAmount = data.totalVoidedAmount || voidedSales.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0);
+
+        text += centerText('VOID SUMMARY', 32) + '\n';
+        text += dash + '\n';
+        text += twoColumns('Total Voided Count:', `${voidedCount}`, 32) + '\n';
+        text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount.toFixed(2)}`, 32) + '\n';
+        text += dash + '\n\n';
+
+        if (voidedSales.length > 0) {
+            text += centerText('VOIDED TRANSACTIONS', 32) + '\n';
+            text += dash + '\n';
+            voidedSales.forEach((v: any, idx: number) => {
+                const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+                const amt = (v.TotalAmount || v.totalAmount || v.total || 0).toFixed(2);
+                const rawUser = String(v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || '').trim();
+                let byUser = rawUser;
+                if (!rawUser || rawUser === 'N/A' || /^\d+$/.test(rawUser)) {
+                    byUser = 'Staff';
+                }
+                const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
+                const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+                text += `${idx + 1}. #${invNum} - ${symbol}${amt}\n`;
+                text += `   Time: ${timeFormatted}\n`;
+                text += `   Voided By: ${byUser}\n\n`;
+            });
+            text += dash + '\n\n';
+        }
+
+        text += centerText('END OF REPORT', 32) + '\n';
+        text += line + '\n';
+        text += centerText('SMARTHAWKER BY UNIPROSG', 32) + '\n';
+        text += centerText(`Generated: ${nowDateStr}`, 32) + '\n';  // ✅ Current Time
+        text += '\n\n\n';
+
+        return text;
+    };
+
+    const buildDayEndReportText80mm = (data: any, outletName: string) => {
+        const symbol = '$';
+        const line = '='.repeat(48);
+        const dash = '-'.repeat(48);
+
+        // ✅ ORIGINAL Day End Date - USE data.closingDate
+        const parsedOriginal = parseRawDateTime(data.closingDate);
+        const origDateStr = parsedOriginal.dateStr;
+
+        // ✅ CURRENT Date (Generated on)
+        const now = new Date();
+        const nowDay = String(now.getDate()).padStart(2, '0');
+        const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const nowYear = now.getFullYear();
+        const nowHours = String(now.getHours()).padStart(2, '0');
+        const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+        const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+
+        let text = '\n\n';
+        text += line + '\n';
+        text += centerText('DAY END REPORT', 48) + '\n';
+        text += line + '\n';
+
+        text += `Outlet: ${outletName}\n`;
+        text += `Date: ${origDateStr}\n`;  // ✅ Original Day End
+        text += dash + '\n\n';
+
+        text += centerText('SUMMARY', 48) + '\n';
+        text += dash + '\n';
+        text += twoColumns('Total Sales:', `${symbol}${(data.totalSales || 0).toFixed(2)}`, 48) + '\n';
+        text += twoColumns('Total Discount:', `-${symbol}${(data.totalDiscount || 0).toFixed(2)}`, 48) + '\n';
+        text += twoColumns('Net Sales:', `${symbol}${(data.netSales || 0).toFixed(2)}`, 48) + '\n';
+        text += twoColumns('Total Items:', `${data.totalItems || 0}`, 48) + '\n';
+        text += twoColumns('Transactions:', `${data.salesCount || 0}`, 48) + '\n';
+        text += dash + '\n\n';
+
+        text += centerText('PAYMENT BREAKDOWN', 48) + '\n';
+        text += dash + '\n';
+        if (data.paymentBreakdown) {
+            Object.entries(data.paymentBreakdown).forEach(([method, amount]) => {
+                text += twoColumns(method, `${symbol}${(amount as number).toFixed(2)}`, 48) + '\n';
+            });
+        }
+        text += dash + '\n\n';
+
+        if (data.categories && data.categories.length > 0) {
+            text += centerText('CATEGORY BREAKDOWN', 48) + '\n';
+            text += dash + '\n';
+            data.categories.forEach((cat: any) => {
+                text += `${cat.name}: ${symbol}${(cat.totalRevenue || 0).toFixed(2)} (${cat.totalQuantity || 0} items)\n`;
+                if (cat.items && cat.items.length > 0) {
+                    cat.items.forEach((item: any) => {
+                        text += `  ${item.name || 'Unknown'} x${item.quantity || 0} = ${symbol}${(item.revenue || 0).toFixed(2)}\n`;
+                    });
+                }
+                text += '\n';
+            });
+            text += dash + '\n\n';
+        }
+
+        // 🚫 VOID DETAILS & SUMMARY
+        const voidedSales80 = data.voidedSales || [];
+        const voidedCount80 = data.voidedCount || voidedSales80.length || 0;
+        const totalVoidedAmount80 = data.totalVoidedAmount || voidedSales80.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || 0), 0);
+
+        text += centerText('VOID SUMMARY', 48) + '\n';
+        text += dash + '\n';
+        text += twoColumns('Total Voided Count:', `${voidedCount80}`, 48) + '\n';
+        text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount80.toFixed(2)}`, 48) + '\n';
+        text += dash + '\n\n';
+
+        if (voidedSales80.length > 0) {
+            text += centerText('VOIDED TRANSACTIONS', 48) + '\n';
+            text += dash + '\n';
+            voidedSales80.forEach((v: any, idx: number) => {
+                const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+                const amt = (v.TotalAmount || v.totalAmount || v.total || 0).toFixed(2);
+                const rawUser = String(v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || '').trim();
+                let byUser = rawUser;
+                if (!rawUser || rawUser === 'N/A' || /^\d+$/.test(rawUser)) {
+                    byUser = 'Staff';
+                }
+                const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
+                const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+                text += `${idx + 1}. #${invNum} - ${symbol}${amt}\n`;
+                text += `   Time: ${timeFormatted} | Voided By: ${byUser}\n\n`;
+            });
+            text += dash + '\n\n';
+        }
+
+        text += centerText('END OF REPORT', 48) + '\n';
+        text += line + '\n';
+        text += centerText('SMARTHAWKER BY UNIPROSG', 48) + '\n';
+        text += centerText(`Generated: ${nowDateStr}`, 48) + '\n';  // ✅ Current Time
+        text += '\n\n\n';
+
+        return text;
+    };
+
+    const generateDayEndHTML = (data: any, outletName: string) => {
+        const symbol = '$';
+        const parsedOriginal = parseRawDateTime(data.closingDate);
+        const origDateStr = parsedOriginal.dateStr;
+
+        const printTimeStr = new Date().toLocaleString('en-SG', {
+            timeZone: 'Asia/Singapore',
+            dateStyle: 'medium',
+            timeStyle: 'medium'
+        });
+
+        // 2. Aggregate all items from categories to get "TOP SELLING PRODUCTS"
+        const aggregatedItemsMap = new Map();
+        const categories = data.categories || [];
+        categories.forEach((cat: any) => {
+            const catItems = cat.items || [];
+            catItems.forEach((item: any) => {
+                const key = item.name;
+                if (!aggregatedItemsMap.has(key)) {
+                    aggregatedItemsMap.set(key, {
+                        name: item.name,
+                        category: cat.name || 'Uncategorized',
+                        quantity: 0,
+                        revenue: 0,
+                        price: item.price || 0
+                    });
+                }
+                const current = aggregatedItemsMap.get(key);
+                current.quantity += (item.quantity || 0);
+                current.revenue += (item.revenue || 0);
+                if (item.price) current.price = item.price;
+            });
+        });
+
+        const sortedItems = Array.from(aggregatedItemsMap.values())
+            .sort((a: any, b: any) => b.revenue - a.revenue);
+
+        const top10Products = sortedItems.slice(0, 10);
+        const overallRevenue = data.totalSales || categories.reduce((sum: number, cat: any) => sum + (cat.totalRevenue || 0), 0);
+
+        // 3. Category Contribution Analysis
+        const categoryContribution = categories.map((cat: any) => {
+            const contributionPercent = overallRevenue > 0 ? (cat.totalRevenue / overallRevenue) * 100 : 0;
+            return {
+                name: cat.name || 'Uncategorized',
+                qtySold: cat.totalQuantity || 0,
+                revenue: cat.totalRevenue || 0,
+                contribution: contributionPercent
+            };
+        }).sort((a: any, b: any) => b.revenue - a.revenue);
+
+        const catContributionTotalQty = categoryContribution.reduce((sum: number, c: any) => sum + c.qtySold, 0);
+        const catContributionTotalRev = categoryContribution.reduce((sum: number, c: any) => sum + c.revenue, 0);
+
+        // 4. Payment breakdown mapping
+        const rawPayment = data.paymentBreakdown || {};
+        const standardPaymentMethods = ['CASH', 'NETS', 'PAYNOW', 'CREDIT', 'CARD', 'FOC', 'CASH BOX ENTRY'];
+
+        const normalizedPayment: Record<string, number> = {};
+        Object.entries(rawPayment).forEach(([method, val]) => {
+            const normalizedKey = method.toUpperCase().replace('_', ' ');
+            normalizedPayment[normalizedKey] = (normalizedPayment[normalizedKey] || 0) + (val as number);
+        });
+
+        const paymentList: any[] = [];
+        Object.entries(normalizedPayment).forEach(([method, val]) => {
+            if (val > 0) {
+                const percentage = overallRevenue > 0 ? (val / overallRevenue) * 100 : 0;
+                paymentList.push({
+                    name: method,
+                    amount: val,
+                    percentage
+                });
+            }
+        });
+        paymentList.sort((a, b) => b.amount - a.amount);
+        const totalPaymentsSum = paymentList.reduce((sum, p) => sum + p.amount, 0);
+
+        // 5. Calculations for Cards
+        const totalSales = data.salesCount || data.transactions || 0;
+        const totalOrders = totalSales;
+        const avgOrderValue = totalOrders > 0 ? overallRevenue / totalOrders : 0;
+        const totalDiscount = data.totalDiscount || 0;
+        const netSales = data.netSales || (overallRevenue - totalDiscount);
+
+        // 7. SVG Donut chart calculation
+        const colors = ['#FF7A00', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
+        const radius = 20;
+        const circumference = 2 * Math.PI * radius; // ≈ 125.66
+        const strokeWidth = 10;
+        let accumulatedPercentage = 0;
+        let svgCircles = '';
+
+        paymentList.forEach((p, idx) => {
+            const percentage = p.percentage;
+            if (percentage > 0) {
+                const color = colors[idx % colors.length];
+                const dashArray = `${(percentage * circumference / 100).toFixed(2)} ${circumference.toFixed(2)}`;
+                const dashOffset = (-((accumulatedPercentage * circumference / 100))).toFixed(2);
+
+                svgCircles += `<circle cx="25" cy="25" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 25 25)" />`;
+
+                accumulatedPercentage += percentage;
+            }
+        });
+
+        const donutSvgMarkup = accumulatedPercentage > 0
+            ? `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
            ${svgCircles}
            <circle cx="25" cy="25" r="13" fill="white" />
          </svg>`
-      : `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
+            : `<svg width="90" height="90" viewBox="0 0 50 50" style="display: block;">
            <circle cx="25" cy="25" r="${radius}" fill="none" stroke="#e2e8f0" stroke-width="${strokeWidth}" />
            <circle cx="25" cy="25" r="13" fill="white" />
          </svg>`;
-      
-    // 8. Executive Insights Calculations
-    const topCategoryName = categoryContribution[0]?.name || 'N/A';
-    const topCategoryRev = categoryContribution[0]?.revenue || 0;
-    const topCategoryPercent = overallRevenue > 0 ? ((topCategoryRev / overallRevenue) * 100).toFixed(1) : '0';
-    
-    const topProductName = top10Products[0]?.name || 'N/A';
-    const topProductQty = top10Products[0]?.quantity || 0;
-    const topProductRev = top10Products[0]?.revenue || 0;
-    
-    const sortedPayments = [...paymentList].sort((a, b) => b.amount - a.amount);
-    const prefPaymentName = sortedPayments[0]?.name || 'N/A';
-    const prefPaymentAmount = sortedPayments[0]?.amount || 0;
-    const prefPaymentPercent = overallRevenue > 0 ? ((prefPaymentAmount / overallRevenue) * 100).toFixed(1) : '0';
-    
-    const avgDishPrice = catContributionTotalQty > 0 ? (overallRevenue / catContributionTotalQty) : 0;
-    const avgItemsPerBill = totalSales > 0 ? (catContributionTotalQty / totalSales) : 0;
-    const generatedBy = data.closedBy || 'Admin';
-    
-    const maxCatRevenue = Math.max(...categoryContribution.map((c: any) => c.revenue), 1);
-    
-    return `<!DOCTYPE html>
+
+        // 8. Executive Insights Calculations
+        const topCategoryName = categoryContribution[0]?.name || 'N/A';
+        const topCategoryRev = categoryContribution[0]?.revenue || 0;
+        const topCategoryPercent = overallRevenue > 0 ? ((topCategoryRev / overallRevenue) * 100).toFixed(1) : '0';
+
+        const topProductName = top10Products[0]?.name || 'N/A';
+        const topProductQty = top10Products[0]?.quantity || 0;
+        const topProductRev = top10Products[0]?.revenue || 0;
+
+        const sortedPayments = [...paymentList].sort((a, b) => b.amount - a.amount);
+        const prefPaymentName = sortedPayments[0]?.name || 'N/A';
+        const prefPaymentAmount = sortedPayments[0]?.amount || 0;
+        const prefPaymentPercent = overallRevenue > 0 ? ((prefPaymentAmount / overallRevenue) * 100).toFixed(1) : '0';
+
+        const avgDishPrice = catContributionTotalQty > 0 ? (overallRevenue / catContributionTotalQty) : 0;
+        const avgItemsPerBill = totalSales > 0 ? (catContributionTotalQty / totalSales) : 0;
+        const generatedBy = data.closedBy || 'Admin';
+
+        const maxCatRevenue = Math.max(...categoryContribution.map((c: any) => c.revenue), 1);
+
+        return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -1299,7 +1304,7 @@ const generateDayEndHTML = (data: any, outletName: string) => {
                 <div class="trend-bar-label" title="${cat.name}">${cat.name}</div>
               </div>
             `;
-          }).join('')}
+        }).join('')}
         </div>
       </div>
       
@@ -1314,8 +1319,8 @@ const generateDayEndHTML = (data: any, outletName: string) => {
           <table class="payment-table">
             <tbody>
               ${paymentList.map((p, idx) => {
-                const color = colors[idx % colors.length];
-                return `
+            const color = colors[idx % colors.length];
+            return `
                   <tr>
                     <td>
                       <span class="payment-bullet" style="background: ${color};"></span>
@@ -1325,7 +1330,7 @@ const generateDayEndHTML = (data: any, outletName: string) => {
                     <td class="text-right" style="color: #6B7280; font-weight: 500;">${p.percentage.toFixed(1)}%</td>
                   </tr>
                 `;
-              }).join('')}
+        }).join('')}
               <tr style="border-top: 1.5px solid #E5E7EB; font-weight: 800; color: #111827;">
                 <td style="padding-top: 6px;">Total</td>
                 <td class="text-right" style="padding-top: 6px;">${symbol}${totalPaymentsSum.toFixed(2)}</td>
@@ -1355,7 +1360,7 @@ const generateDayEndHTML = (data: any, outletName: string) => {
                 <div class="cat-bar-value">${symbol}${cat.revenue.toFixed(2)}</div>
               </div>
             `;
-          }).join('')}
+        }).join('')}
         </div>
       </div>
       
@@ -1473,8 +1478,8 @@ const generateDayEndHTML = (data: any, outletName: string) => {
       </thead>
       <tbody>
         ${top10Products.map((item, idx) => {
-          const percentOfTotal = overallRevenue > 0 ? (item.revenue / overallRevenue) * 100 : 0;
-          return `
+            const percentOfTotal = overallRevenue > 0 ? (item.revenue / overallRevenue) * 100 : 0;
+            return `
             <tr>
               <td>${idx + 1}</td>
               <td style="font-weight: 600;">${item.name}</td>
@@ -1510,7 +1515,7 @@ const generateDayEndHTML = (data: any, outletName: string) => {
       </thead>
       <tbody>
         ${categoryContribution.map(cat => {
-          return `
+            return `
             <tr>
               <td style="font-weight: 600;">${cat.name}</td>
               <td class="text-center">${cat.qtySold}</td>
@@ -1549,7 +1554,7 @@ const generateDayEndHTML = (data: any, outletName: string) => {
       </thead>
       <tbody>
         ${paymentList.map(p => {
-          return `
+            return `
             <tr>
               <td style="font-weight: 500;">${p.name} Sales</td>
               <td class="text-right" style="font-weight: 600;">${symbol}${p.amount.toFixed(2)}</td>
@@ -1578,14 +1583,14 @@ const generateDayEndHTML = (data: any, outletName: string) => {
       </thead>
       <tbody>
         ${(data.voidedSales && data.voidedSales.length > 0) ? data.voidedSales.map((v: any, idx: number) => {
-          const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
-          const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
-          const reason = v.VoidReason || v.voidReason || 'N/A';
-          const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
-          const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
-          const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+            const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+            const amt = (v.TotalAmount || v.totalAmount || 0).toFixed(2);
+            const reason = v.VoidReason || v.voidReason || 'N/A';
+            const byUser = v.VoidedByName || v.voidedByName || v.UserName || v.userName || 'N/A';
+            const rawTime = v.VoidedAt || v.voidedAt || v.CreatedAt || v.createdAt;
+            const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
 
-          return `
+            return `
             <tr>
               <td>${idx + 1}</td>
               <td style="font-weight: 600; color: #EF4444;">#${invNum}</td>
@@ -1627,590 +1632,635 @@ const generateDayEndHTML = (data: any, outletName: string) => {
 </body>
 </html>
 `;
-};
-const printDayEndReport = async (dayEndData: any) => {
-    try {
-        console.log('🖨️ Printing Day End Report...');
-        console.log('📅 dayEndData received:', JSON.stringify(dayEndData, null, 2));
-        
-        const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
-        
-        let username = 'Admin';
+    };
+    const printDayEndReport = async (dayEndData: any) => {
         try {
-            const userStr = await AsyncStorage.getItem('user');
-            if (userStr) {
-                const userObj = JSON.parse(userStr);
-                if (userObj && userObj.username) {
-                    username = userObj.username;
-                }
-            }
-        } catch (err) {
-            console.log('Error getting username:', err);
-        }
-        
-        // ✅ Build report data with ALL fields
-        const reportData = {
-            totalSales: dayEndData.totalSales || 0,
-            totalDiscount: dayEndData.totalDiscount || 0,
-            totalItems: dayEndData.totalItems || 0,
-            netSales: dayEndData.netSales || 0,
-            salesCount: dayEndData.salesCount || 0,
-            paymentBreakdown: dayEndData.paymentBreakdown || {},
-            categories: dayEndData.categories || [],
-            closingDate: dayEndData.closingDate || dayEndData.endDate || new Date(),
-            closedBy: dayEndData.closedBy || username
-        };
-        
-        if (Platform.OS === 'web') {
-            console.log('🌐 Web platform detected, downloading report PDF');
-            const html = generateDayEndHTML(reportData, outletName);
+            console.log('🖨️ Printing Day End Report...');
+            console.log('📅 dayEndData received:', JSON.stringify(dayEndData, null, 2));
+
+            const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
+
+            let username = 'Admin';
             try {
-                // Load html2pdf from CDN
-                await new Promise<void>((resolve, reject) => {
-                    const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-                    if (document.querySelector(`script[src="${src}"]`)) {
-                        resolve();
-                        return;
+                const userStr = await AsyncStorage.getItem('user');
+                if (userStr) {
+                    const userObj = JSON.parse(userStr);
+                    if (userObj && userObj.username) {
+                        username = userObj.username;
                     }
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = () => resolve();
-                    script.onerror = (e) => reject(e);
-                    document.head.appendChild(script);
-                });
-
-                const opt = {
-                    margin: 0,
-                    filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}.pdf`,
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 1.5, useCORS: true },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
-
-                await (window as any).html2pdf().from(html).set(opt).save();
-            } catch (err) {
-                console.log('Error downloading PDF file:', err);
-            }
-            return;
-        }
-        
-        console.log('📅 Report closingDate:', reportData.closingDate);
-        
-        const reportText = buildDayEndReportText(reportData, outletName);
-        
-        // 1. Try Network Printer first if enabled
-        try {
-            const company = await BillPDFGenerator.loadSettings(outletId);
-            if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
-                console.log('📡 Route DayEnd report to Network Printer IP:', company.networkPrinterIP);
-                try {
-                    const ThermalPrinter = require('react-native-thermal-printer');
-                    const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-                    const { NativeModules } = require('react-native');
-                    const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
-
-                    if (!ThermalPrinterModule || !hasNativeModule) {
-                        throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
-                    }
-                    const reportText80mm = buildDayEndReportText80mm(reportData, outletName);
-                    await ThermalPrinterModule.printTcp({
-                        ip: company.networkPrinterIP,
-                        port: 9100,
-                        payload: reportText80mm,
-                        autoCut: true,
-                        openCashbox: false,
-                    });
-                    console.log('✅ Day End Report printed on Network Printer');
-                    return;
-                } catch (netErr) {
-                    console.log('⚠️ Network Printer printing failed:', netErr);
                 }
-                
-                // Fallback to PDF directly if network printer fails
-                console.log('⚠️ Network printer failed, opening print preview');
+            } catch (err) {
+                console.log('Error getting username:', err);
+            }
+
+            // ✅ Build report data with ALL fields
+            const reportData = {
+                totalSales: dayEndData.totalSales || 0,
+                totalDiscount: dayEndData.totalDiscount || 0,
+                totalItems: dayEndData.totalItems || 0,
+                netSales: dayEndData.netSales || 0,
+                salesCount: dayEndData.salesCount || 0,
+                paymentBreakdown: dayEndData.paymentBreakdown || {},
+                categories: dayEndData.categories || [],
+                voidedSales: dayEndData.voidedSales || [],
+                voidedCount: dayEndData.voidedCount || 0,
+                totalVoidedAmount: dayEndData.totalVoidedAmount || 0,
+                closingDate: dayEndData.closingDate || dayEndData.endDate || new Date(),
+                closedBy: dayEndData.closedBy || username
+            };
+
+            if (Platform.OS === 'web') {
+                console.log('🌐 Web platform detected, downloading report PDF');
                 const html = generateDayEndHTML(reportData, outletName);
-                await Print.printAsync({ html });
+                try {
+                    // Load html2pdf from CDN
+                    await new Promise<void>((resolve, reject) => {
+                        const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                        if (document.querySelector(`script[src="${src}"]`)) {
+                            resolve();
+                            return;
+                        }
+                        const script = document.createElement('script');
+                        script.src = src;
+                        script.onload = () => resolve();
+                        script.onerror = (e) => reject(e);
+                        document.head.appendChild(script);
+                    });
+
+                    const opt = {
+                        margin: 0,
+                        filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 1.5, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+
+                    await (window as any).html2pdf().from(html).set(opt).save();
+                } catch (err) {
+                    console.log('Error downloading PDF file:', err);
+                }
                 return;
             }
-        } catch (loadErr) {
-            console.log('⚠️ Error loading settings for network printer check:', loadErr);
-        }
 
-        // 2. Try Sunmi printer if network is disabled
-        const sunmiReady = await SunmiPrinterService.init();
-        if (sunmiReady) {
-            await SunmiPrinterService.printRawText(reportText);
-            await SunmiPrinterService.cutPaper();
-            console.log('✅ Day End Report printed on Sunmi');
-            return;
+            console.log('📅 Report closingDate:', reportData.closingDate);
+
+            const reportText = buildDayEndReportText(reportData, outletName);
+
+            // 1. Try Network Printer first if enabled
+            try {
+                const company = await BillPDFGenerator.loadSettings(outletId);
+                if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+                    console.log('📡 Route DayEnd report to Network Printer IP:', company.networkPrinterIP);
+                    try {
+                        const ThermalPrinter = require('react-native-thermal-printer');
+                        const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+                        const { NativeModules } = require('react-native');
+                        const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+                        if (!ThermalPrinterModule || !hasNativeModule) {
+                            throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                        }
+                        const reportText80mm = buildDayEndReportText80mm(reportData, outletName);
+                        const formattedPayload = reportText80mm.split('\n').map(l => (!l ? '[L] ' : (l.startsWith('[L]') || l.startsWith('[C]') || l.startsWith('[R]')) ? l : `[L]${l}`)).join('\n') + '\n[L] \n[L] \n[L] \n';
+                        await ThermalPrinterModule.printTcp({
+                            ip: company.networkPrinterIP,
+                            port: 9100,
+                            payload: formattedPayload,
+                            autoCut: true,
+                            openCashbox: false,
+                            mmFeedPaper: 20,
+                            printerNbrCharactersPerLine: 48,
+                        });
+                        console.log('✅ Day End Report printed on Network Printer');
+                        return;
+                    } catch (netErr) {
+                        console.log('⚠️ Network Printer printing failed:', netErr);
+                    }
+
+                    // Fallback to PDF directly if network printer fails
+                    console.log('⚠️ Network printer failed, opening print preview');
+                    const html = generateDayEndHTML(reportData, outletName);
+                    await Print.printAsync({ html });
+                    return;
+                }
+            } catch (loadErr) {
+                console.log('⚠️ Error loading settings for network printer check:', loadErr);
+            }
+
+            // 2. Try Sunmi printer if network is disabled
+            const sunmiReady = await SunmiPrinterService.init();
+            if (sunmiReady) {
+                await SunmiPrinterService.printRawText(reportText);
+                await SunmiPrinterService.cutPaper();
+                console.log('✅ Day End Report printed on Sunmi');
+                return;
+            }
+
+            console.log('⚠️ No physical printer available, opening print preview');
+            const html = generateDayEndHTML(reportData, outletName);
+            await Print.printAsync({ html });
+
+        } catch (error) {
+            console.log('❌ Print error:', error);
         }
-        
-        console.log('⚠️ No physical printer available, opening print preview');
-        const html = generateDayEndHTML(reportData, outletName);
-        await Print.printAsync({ html });
-        
-    } catch (error) {
-        console.log('❌ Print error:', error);
-    }
-};
+    };
     // ==================== REPRINT FUNCTION ====================
 
     const reprintDayEndReport = async (item: any) => {
-    try {
-        console.log('🖨️ Reprinting Day End Report...');
-        
-        const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
-        
-        let username = 'Admin';
         try {
-            const userStr = await AsyncStorage.getItem('user');
-            if (userStr) {
-                const userObj = JSON.parse(userStr);
-                if (userObj && userObj.username) {
-                    username = userObj.username;
-                }
-            }
-        } catch (err) {
-            console.log('Error getting username:', err);
-        }
-        
-        // ✅ Pass ALL data including salesCount and closingDate
-        const reportData = {
-            totalSales: item.totalSales || 0,
-            totalDiscount: item.totalDiscount || 0,
-            totalItems: item.totalItems || 0,
-            netSales: item.netSales || 0,
-            salesCount: item.salesCount || 0,  // ✅ FIX: Transactions
-            paymentBreakdown: item.paymentBreakdown || {},
-            categories: item.categories || [],
-            closingDate: item.closingDate,  // ✅ FIX: Original day end date
-            closedBy: item.closedBy || username
-        };
-        
-        if (Platform.OS === 'web') {
-            console.log('🌐 Web platform detected, downloading report reprint PDF');
-            const html = generateDayEndHTML(reportData, outletName);
+            console.log('🖨️ Reprinting Day End Report...');
+
+            const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
+
+            let username = 'Admin';
             try {
-                // Load html2pdf from CDN
-                await new Promise<void>((resolve, reject) => {
-                    const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-                    if (document.querySelector(`script[src="${src}"]`)) {
-                        resolve();
-                        return;
+                const userStr = await AsyncStorage.getItem('user');
+                if (userStr) {
+                    const userObj = JSON.parse(userStr);
+                    if (userObj && userObj.username) {
+                        username = userObj.username;
                     }
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = () => resolve();
-                    script.onerror = (e) => reject(e);
-                    document.head.appendChild(script);
-                });
-
-                const opt = {
-                    margin: 0,
-                    filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}_Reprint.pdf`,
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 1.5, useCORS: true },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
-
-                await (window as any).html2pdf().from(html).set(opt).save();
-            } catch (err) {
-                console.log('Error downloading PDF file:', err);
-            }
-            return;
-        }
-        
-        const reportText = buildDayEndReportText(reportData, outletName);
-        
-        const reprintText = '='.repeat(32) + '\n' +
-                           centerText('REPRINT', 32) + '\n' +
-                           '='.repeat(32) + '\n\n' +
-                           reportText;
-        
-        // 1. Try Network Printer first if enabled
-        try {
-            const company = await BillPDFGenerator.loadSettings(outletId);
-            if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
-                console.log('📡 Route DayEnd reprint to Network Printer IP:', company.networkPrinterIP);
-                try {
-                    const ThermalPrinter = require('react-native-thermal-printer');
-                    const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
-                    
-                    const { NativeModules } = require('react-native');
-                    const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
-
-                    if (!ThermalPrinterModule || !hasNativeModule) {
-                        throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
-                    }
-                    const reprintText80mm = '='.repeat(48) + '\n' +
-                                       centerText('REPRINT', 48) + '\n' +
-                                       '='.repeat(48) + '\n\n' +
-                                       buildDayEndReportText80mm(reportData, outletName);
-                    await ThermalPrinterModule.printTcp({
-                        ip: company.networkPrinterIP,
-                        port: 9100,
-                        payload: reprintText80mm,
-                        autoCut: true,
-                        openCashbox: false,
-                    });
-                    console.log('✅ Day End Report reprinted on Network Printer');
-                    Alert.alert('🖨️ Success', 'Report reprinted successfully!');
-                    return;
-                } catch (netErr) {
-                    console.log('⚠️ Network Printer reprinting failed:', netErr);
                 }
-                
-                // Fallback to PDF directly if network printer fails
-                console.log('⚠️ Network printer failed, opening print preview');
+            } catch (err) {
+                console.log('Error getting username:', err);
+            }
+
+            // ✅ Pass ALL data including salesCount and closingDate
+            const reportData = {
+                totalSales: item.totalSales || 0,
+                totalDiscount: item.totalDiscount || 0,
+                totalItems: item.totalItems || 0,
+                netSales: item.netSales || 0,
+                salesCount: item.salesCount || 0,  // ✅ FIX: Transactions
+                paymentBreakdown: item.paymentBreakdown || {},
+                categories: item.categories || [],
+                voidedSales: item.voidedSales || [],
+                voidedCount: item.voidedCount || 0,
+                totalVoidedAmount: item.totalVoidedAmount || 0,
+                closingDate: item.closingDate,  // ✅ FIX: Original day end date
+                closedBy: item.closedBy || username
+            };
+
+            if (Platform.OS === 'web') {
+                console.log('🌐 Web platform detected, downloading report reprint PDF');
                 const html = generateDayEndHTML(reportData, outletName);
-                await Print.printAsync({ html });
+                try {
+                    // Load html2pdf from CDN
+                    await new Promise<void>((resolve, reject) => {
+                        const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                        if (document.querySelector(`script[src="${src}"]`)) {
+                            resolve();
+                            return;
+                        }
+                        const script = document.createElement('script');
+                        script.src = src;
+                        script.onload = () => resolve();
+                        script.onerror = (e) => reject(e);
+                        document.head.appendChild(script);
+                    });
+
+                    const opt = {
+                        margin: 0,
+                        filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}_Reprint.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 1.5, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+
+                    await (window as any).html2pdf().from(html).set(opt).save();
+                } catch (err) {
+                    console.log('Error downloading PDF file:', err);
+                }
                 return;
             }
-        } catch (loadErr) {
-            console.log('⚠️ Error loading settings for network printer reprint check:', loadErr);
-        }
 
-        // 2. Try Sunmi printer if network is disabled
-        const sunmiReady = await SunmiPrinterService.init();
-        if (sunmiReady) {
-            await SunmiPrinterService.printRawText(reprintText);
-            await SunmiPrinterService.cutPaper();
-            console.log('✅ Day End Report reprinted on Sunmi');
-            Alert.alert('🖨️ Success', 'Report reprinted successfully!');
-            return;
+            const reportText = buildDayEndReportText(reportData, outletName);
+
+            const reprintText = '='.repeat(32) + '\n' +
+                centerText('REPRINT', 32) + '\n' +
+                '='.repeat(32) + '\n\n' +
+                reportText;
+
+            // 1. Try Network Printer first if enabled
+            try {
+                const company = await BillPDFGenerator.loadSettings(outletId);
+                if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
+                    console.log('📡 Route DayEnd reprint to Network Printer IP:', company.networkPrinterIP);
+                    try {
+                        const ThermalPrinter = require('react-native-thermal-printer');
+                        const ThermalPrinterModule = ThermalPrinter ? (ThermalPrinter.default || ThermalPrinter) : null;
+
+                        const { NativeModules } = require('react-native');
+                        const hasNativeModule = !!(NativeModules.ThermalPrinter || NativeModules.ThermalPrinterModule);
+
+                        if (!ThermalPrinterModule || !hasNativeModule) {
+                            throw new Error('react-native-thermal-printer native module not available (e.g. running in Expo Go)');
+                        }
+                        const reprintText80mm = '='.repeat(48) + '\n' +
+                            centerText('REPRINT', 48) + '\n' +
+                            '='.repeat(48) + '\n\n' +
+                            buildDayEndReportText80mm(reportData, outletName);
+                        const formattedReprintPayload = reprintText80mm.split('\n').map(l => (!l ? '[L] ' : (l.startsWith('[L]') || l.startsWith('[C]') || l.startsWith('[R]')) ? l : `[L]${l}`)).join('\n') + '\n[L] \n[L] \n[L] \n';
+                        await ThermalPrinterModule.printTcp({
+                            ip: company.networkPrinterIP,
+                            port: 9100,
+                            payload: formattedReprintPayload,
+                            autoCut: true,
+                            openCashbox: false,
+                            mmFeedPaper: 20,
+                            printerNbrCharactersPerLine: 48,
+                        });
+                        console.log('✅ Day End Report reprinted on Network Printer');
+                        Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+                        return;
+                    } catch (netErr) {
+                        console.log('⚠️ Network Printer reprinting failed:', netErr);
+                    }
+
+                    // Fallback to PDF directly if network printer fails
+                    console.log('⚠️ Network printer failed, opening print preview');
+                    const html = generateDayEndHTML(reportData, outletName);
+                    await Print.printAsync({ html });
+                    return;
+                }
+            } catch (loadErr) {
+                console.log('⚠️ Error loading settings for network printer reprint check:', loadErr);
+            }
+
+            // 2. Try Sunmi printer if network is disabled
+            const sunmiReady = await SunmiPrinterService.init();
+            if (sunmiReady) {
+                await SunmiPrinterService.printRawText(reprintText);
+                await SunmiPrinterService.cutPaper();
+                console.log('✅ Day End Report reprinted on Sunmi');
+                Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+                return;
+            }
+
+            console.log('⚠️ No physical printer available, opening print preview');
+            const html = generateDayEndHTML(reportData, outletName);
+            await Print.printAsync({ html });
+
+        } catch (error) {
+            console.log('❌ Reprint error:', error);
+            Alert.alert('Error', 'Failed to reprint');
         }
-        
-        console.log('⚠️ No physical printer available, opening print preview');
-        const html = generateDayEndHTML(reportData, outletName);
-        await Print.printAsync({ html });
-        
-    } catch (error) {
-        console.log('❌ Reprint error:', error);
-        Alert.alert('Error', 'Failed to reprint');
-    }
-};
+    };
 
     // ==================== EMAIL FUNCTIONS ====================
 
-  const generateCSVData = (item: any, outletName?: string) => {
-    // ✅ ORIGINAL Day End Date
-    const parsedOriginal = parseRawDateTime(item.closingDate);
-    const origDateStr = parsedOriginal.dateStr;
-    
-    // ✅ CURRENT Date (Generated on)
-    const now = new Date();
-    const nowDay = String(now.getDate()).padStart(2, '0');
-    const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const nowYear = now.getFullYear();
-    const nowHours = String(now.getHours()).padStart(2, '0');
-    const nowMinutes = String(now.getMinutes()).padStart(2, '0');
-    const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
-    
-    // ✅ Use passed outletName or fallback
-    const name = outletName || item.outletName || 'Outlet';
-    const symbol = '$';
-    
-    let csv = '';
-    
-    // ============ HEADER ============
-    csv += 'DAY END REPORT\n';
-    csv += `Outlet,${name}\n`;  // ✅ Now shows "GOA"
-    csv += `Date,${origDateStr}\n`;
-    csv += '\n';
-    
-    // ============ SUMMARY ============
-    csv += 'SUMMARY\n';
-    csv += `Total Sales,${symbol}${(item.totalSales || 0).toFixed(2)}\n`;
-    csv += `Total Discount,-${symbol}${(item.totalDiscount || 0).toFixed(2)}\n`;
-    csv += `Net Sales,${symbol}${(item.netSales || 0).toFixed(2)}\n`;
-    csv += `Total Items,${item.totalItems || 0}\n`;
-    csv += `Transactions,${item.salesCount || 0}\n`;
-    csv += '\n';
-    
-    // ============ PAYMENT BREAKDOWN ============
-    csv += 'PAYMENT BREAKDOWN\n';
-    if (item.paymentBreakdown && Object.keys(item.paymentBreakdown).length > 0) {
-        Object.entries(item.paymentBreakdown).forEach(([method, amount]) => {
-            csv += `${method},${symbol}${(amount as number).toFixed(2)}\n`;
-        });
-    } else {
-        csv += 'No payment data,$0.00\n';
-    }
-    csv += '\n';
-    
-    // ============ CATEGORY BREAKDOWN ============
-    csv += 'CATEGORY BREAKDOWN\n';
-    if (item.categories && item.categories.length > 0) {
-        item.categories.forEach((cat: any) => {
-            // Category header
-            csv += `${cat.name || 'Uncategorized'},${symbol}${(cat.totalRevenue || 0).toFixed(2)},${cat.totalQuantity || 0} items\n`;
-            
-            // Category items
-            if (cat.items && cat.items.length > 0) {
-                cat.items.forEach((item: any) => {
-                    csv += `  ${item.name || 'Unknown Item'},x${item.quantity || 0},${symbol}${(item.revenue || 0).toFixed(2)}\n`;
-                });
-            } else {
-                csv += `  No items in this category\n`;
-            }
-        });
-    } else {
-        csv += 'No category data\n';
-    }
-    csv += '\n';
-    
-    // ============ FOOTER ============
-    csv += `SMARTHAWKER BY UNIPROSG\n`;
-    csv += `Generated on,${nowDateStr}\n`;
-    
-    return csv;
-};
+    const generateCSVData = (item: any, outletName?: string) => {
+        // ✅ ORIGINAL Day End Date
+        const parsedOriginal = parseRawDateTime(item.closingDate);
+        const origDateStr = parsedOriginal.dateStr;
+
+        // ✅ CURRENT Date (Generated on)
+        const now = new Date();
+        const nowDay = String(now.getDate()).padStart(2, '0');
+        const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const nowYear = now.getFullYear();
+        const nowHours = String(now.getHours()).padStart(2, '0');
+        const nowMinutes = String(now.getMinutes()).padStart(2, '0');
+        const nowDateStr = `${nowDay}/${nowMonth}/${nowYear} ${nowHours}:${nowMinutes}`;
+
+        // ✅ Use passed outletName or fallback
+        const name = outletName || item.outletName || 'Outlet';
+        const symbol = '$';
+
+        let csv = '';
+
+        // ============ HEADER ============
+        csv += 'DAY END REPORT\n';
+        csv += `Outlet,${name}\n`;  // ✅ Now shows "GOA"
+        csv += `Date,${origDateStr}\n`;
+        csv += '\n';
+
+        // ============ SUMMARY ============
+        csv += 'SUMMARY\n';
+        csv += `Total Sales,${symbol}${(item.totalSales || 0).toFixed(2)}\n`;
+        csv += `Total Discount,-${symbol}${(item.totalDiscount || 0).toFixed(2)}\n`;
+        csv += `Net Sales,${symbol}${(item.netSales || 0).toFixed(2)}\n`;
+        csv += `Total Items,${item.totalItems || 0}\n`;
+        csv += `Transactions,${item.salesCount || 0}\n`;
+        csv += '\n';
+
+        // ============ PAYMENT BREAKDOWN ============
+        csv += 'PAYMENT BREAKDOWN\n';
+        if (item.paymentBreakdown && Object.keys(item.paymentBreakdown).length > 0) {
+            Object.entries(item.paymentBreakdown).forEach(([method, amount]) => {
+                csv += `${method},${symbol}${(amount as number).toFixed(2)}\n`;
+            });
+        } else {
+            csv += 'No payment data,$0.00\n';
+        }
+        csv += '\n';
+
+        // ============ CATEGORY BREAKDOWN ============
+        csv += 'CATEGORY BREAKDOWN\n';
+        if (item.categories && item.categories.length > 0) {
+            item.categories.forEach((cat: any) => {
+                // Category header
+                csv += `${cat.name || 'Uncategorized'},${symbol}${(cat.totalRevenue || 0).toFixed(2)},${cat.totalQuantity || 0} items\n`;
+
+                // Category items
+                if (cat.items && cat.items.length > 0) {
+                    cat.items.forEach((item: any) => {
+                        csv += `  ${item.name || 'Unknown Item'},x${item.quantity || 0},${symbol}${(item.revenue || 0).toFixed(2)}\n`;
+                    });
+                } else {
+                    csv += `  No items in this category\n`;
+                }
+            });
+        } else {
+            csv += 'No category data\n';
+        }
+        csv += '\n';
+
+        // ============ VOID DETAILS & SUMMARY ============
+        const voidedSalesCSV = item.voidedSales || [];
+        const voidedCountCSV = item.voidedCount || voidedSalesCSV.length || 0;
+        const totalVoidedAmountCSV = item.totalVoidedAmount || voidedSalesCSV.reduce((acc: number, s: any) => acc + (s.TotalAmount || s.totalAmount || s.total || 0), 0);
+
+        csv += 'VOID SUMMARY\n';
+        csv += `Total Voided Count,${voidedCountCSV}\n`;
+        csv += `Total Voided Amount,${symbol}${totalVoidedAmountCSV.toFixed(2)}\n`;
+        csv += '\n';
+
+        if (voidedSalesCSV.length > 0) {
+            csv += 'VOIDED TRANSACTIONS\n';
+            csv += 'Invoice Number,Void Time,Void Reason,Voided By,Amount\n';
+            voidedSalesCSV.forEach((v: any, idx: number) => {
+                const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || idx + 1}`;
+                const amt = (v.TotalAmount || v.totalAmount || v.total || 0).toFixed(2);
+                const reason = v.VoidReason || v.voidReason || v.reason || 'N/A';
+                const rawUser = String(v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || '').trim();
+                let byUser = rawUser;
+                if (!rawUser || rawUser === 'N/A' || /^\d+$/.test(rawUser)) {
+                    byUser = 'Staff';
+                }
+                const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
+                const timeFormatted = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
+
+                csv += `"#${invNum}","${timeFormatted}","${reason}","${byUser}","${symbol}${amt}"\n`;
+            });
+            csv += '\n';
+        }
+
+        // ============ FOOTER ============
+        csv += `SMARTHAWKER BY UNIPROSG\n`;
+        csv += `Generated on,${nowDateStr}\n`;
+
+        return csv;
+    };
 
     // ✅ Send Email via Backend API
-const sendEmailReport = async (item: any, email: string) => {
-    try {
-        setEmailLoading(true);
-          await AsyncStorage.setItem('lastEmailAddress', email);
-        setSavedEmail(email);
-        console.log('💾 Email saved to storage:', email);
-        const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
-        const dateStr = new Date(item.closingDate).toLocaleDateString();
-        
-        let username = 'Admin';
+    const sendEmailReport = async (item: any, email: string) => {
         try {
-            const userStr = await AsyncStorage.getItem('user');
-            if (userStr) {
-                const userObj = JSON.parse(userStr);
-                if (userObj && userObj.username) {
-                    username = userObj.username;
-                }
-            }
-        } catch (err) {
-            console.log('Error getting username:', err);
-        }
-        
-        const cashierName = item.closedBy || username;
-        
-        const reportData = {
-            totalSales: item.totalSales || 0,
-            totalDiscount: item.totalDiscount || 0,
-            totalItems: item.totalItems || 0,
-            netSales: item.netSales || 0,
-            salesCount: item.salesCount || 0,
-            paymentBreakdown: item.paymentBreakdown || {},
-            categories: item.categories || [],
-            closingDate: item.closingDate,
-            outletName: outletName,
-            closedBy: cashierName
-        };
-        
-        // ✅ Generate PDF
-        const html = generateDayEndHTML(reportData, outletName);
-        let pdfBase64 = '';
-        
-        if (Platform.OS === 'web') {
+            setEmailLoading(true);
+            await AsyncStorage.setItem('lastEmailAddress', email);
+            setSavedEmail(email);
+            console.log('💾 Email saved to storage:', email);
+            const outletName = await AsyncStorage.getItem('selectedOutletName') || 'Outlet';
+            const dateStr = new Date(item.closingDate).toLocaleDateString();
+
+            let username = 'Admin';
             try {
-                // Load html2pdf from CDN
-                await new Promise<void>((resolve, reject) => {
-                    const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-                    if (document.querySelector(`script[src="${src}"]`)) {
-                        resolve();
-                        return;
+                const userStr = await AsyncStorage.getItem('user');
+                if (userStr) {
+                    const userObj = JSON.parse(userStr);
+                    if (userObj && userObj.username) {
+                        username = userObj.username;
                     }
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = () => resolve();
-                    script.onerror = (e) => reject(e);
-                    document.head.appendChild(script);
-                });
-                
-                const opt = {
-                    margin: 0,
-                    filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}.pdf`,
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 1.5, useCORS: true },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
-                
-                const dataUri = await (window as any).html2pdf().from(html).set(opt).output('datauristring');
-                pdfBase64 = dataUri.split(',')[1];
-            } catch (webErr) {
-                console.log('Error generating PDF on web:', webErr);
+                }
+            } catch (err) {
+                console.log('Error getting username:', err);
             }
-        } else {
-            const pdfUri = await Print.printToFileAsync({ html });
-            // ✅ Read PDF as base64
-            const response = await fetch(pdfUri.uri);
-            const blob = await response.blob();
-            pdfBase64 = await new Promise<string>((resolve) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const result = reader.result as string;
-                    const base64 = result.split(',')[1];
-                    resolve(base64);
-                };
-                reader.readAsDataURL(blob);
+
+            const cashierName = item.closedBy || username;
+
+            const reportData = {
+                totalSales: item.totalSales || 0,
+                totalDiscount: item.totalDiscount || 0,
+                totalItems: item.totalItems || 0,
+                netSales: item.netSales || 0,
+                salesCount: item.salesCount || 0,
+                paymentBreakdown: item.paymentBreakdown || {},
+                categories: item.categories || [],
+                voidedSales: item.voidedSales || [],
+                voidedCount: item.voidedCount || 0,
+                totalVoidedAmount: item.totalVoidedAmount || 0,
+                closingDate: item.closingDate,
+                outletName: outletName,
+                closedBy: cashierName
+            };
+
+            // ✅ Generate PDF
+            const html = generateDayEndHTML(reportData, outletName);
+            let pdfBase64 = '';
+
+            if (Platform.OS === 'web') {
+                try {
+                    // Load html2pdf from CDN
+                    await new Promise<void>((resolve, reject) => {
+                        const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                        if (document.querySelector(`script[src="${src}"]`)) {
+                            resolve();
+                            return;
+                        }
+                        const script = document.createElement('script');
+                        script.src = src;
+                        script.onload = () => resolve();
+                        script.onerror = (e) => reject(e);
+                        document.head.appendChild(script);
+                    });
+
+                    const opt = {
+                        margin: 0,
+                        filename: `Day_End_Report_${new Date(reportData.closingDate).toISOString().split('T')[0]}.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 1.5, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+
+                    const dataUri = await (window as any).html2pdf().from(html).set(opt).output('datauristring');
+                    pdfBase64 = dataUri.split(',')[1];
+                } catch (webErr) {
+                    console.log('Error generating PDF on web:', webErr);
+                }
+            } else {
+                const pdfUri = await Print.printToFileAsync({ html });
+                // ✅ Read PDF as base64
+                const response = await fetch(pdfUri.uri);
+                const blob = await response.blob();
+                pdfBase64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const result = reader.result as string;
+                        const base64 = result.split(',')[1];
+                        resolve(base64);
+                    };
+                    reader.readAsDataURL(blob);
+                });
+            }
+
+            // ✅ Generate CSV
+            const csvData = generateCSVData(reportData, outletName);
+
+            // ✅ Send via Backend API
+            const apiResponse = await API.post('/email/send-settlement-email', {
+                to: email,
+                subject: `Day End Report - ${outletName} - ${dateStr}`,
+                pdfBase64: pdfBase64,
+                csvData: csvData,
+                outletName: outletName,
+                cashierName: cashierName,
+                date: dateStr
             });
+
+            if (apiResponse.data.success) {
+                Alert.alert('✅ Success', 'Email sent successfully!');
+            }
+
+        } catch (error: any) {
+            console.log('❌ Email error:', error);
+            Alert.alert('❌ Error', error.response?.data?.error || 'Failed to send email');
+        } finally {
+            setEmailLoading(false);
+            setShowEmailModal(false);
+            setEmailAddress('');
+            setSelectedHistoryItem(null);
         }
-        
-        // ✅ Generate CSV
-        const csvData = generateCSVData(reportData, outletName);
-        
-        // ✅ Send via Backend API
-        const apiResponse = await API.post('/email/send-settlement-email', {
-            to: email,
-            subject: `Day End Report - ${outletName} - ${dateStr}`,
-            pdfBase64: pdfBase64,
-            csvData: csvData,
-            outletName: outletName,
-            cashierName: cashierName,
-            date: dateStr
-        });
-        
-        if (apiResponse.data.success) {
-            Alert.alert('✅ Success', 'Email sent successfully!');
-        }
-        
-    } catch (error: any) {
-        console.log('❌ Email error:', error);
-        Alert.alert('❌ Error', error.response?.data?.error || 'Failed to send email');
-    } finally {
-        setEmailLoading(false);
-        setShowEmailModal(false);
-        setEmailAddress('');
-        setSelectedHistoryItem(null);
-    }
-};
+    };
     // ==================== RENDER EMAIL MODAL ====================
 
     const renderEmailModal = () => {
-    return (
-        <Modal
-            visible={showEmailModal}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => {
-                setShowEmailModal(false);
-                // ✅ Don't clear emailAddress - keep it for next time
-                setSelectedHistoryItem(null);
-            }}
-        >
-            <View style={styles.emailModalOverlay}>
-                <View style={[styles.emailModalContent, { backgroundColor: theme.card }]}>
-                    
-                    <View style={styles.emailModalHeader}>
-                        <Ionicons name="mail-outline" size={28} color={theme.primary} />
-                        <Text style={[styles.emailModalTitle, { color: theme.text }]}>
-                            Send Report via Email
+        return (
+            <Modal
+                visible={showEmailModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => {
+                    setShowEmailModal(false);
+                    // ✅ Don't clear emailAddress - keep it for next time
+                    setSelectedHistoryItem(null);
+                }}
+            >
+                <View style={styles.emailModalOverlay}>
+                    <View style={[styles.emailModalContent, { backgroundColor: theme.card }]}>
+
+                        <View style={styles.emailModalHeader}>
+                            <Ionicons name="mail-outline" size={28} color={theme.primary} />
+                            <Text style={[styles.emailModalTitle, { color: theme.text }]}>
+                                Send Report via Email
+                            </Text>
+                        </View>
+
+                        <View style={[styles.emailModalInfo, { backgroundColor: theme.surface }]}>
+                            <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
+                                📁 {selectedHistoryItem?.totalSales || 0} sales
+                            </Text>
+                            <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
+                                📅 {selectedHistoryItem?.closingDate ? new Date(selectedHistoryItem.closingDate).toLocaleDateString() : ''}
+                            </Text>
+                        </View>
+
+                        <Text style={[styles.emailModalLabel, { color: theme.textSecondary }]}>
+                            Recipient Email Address *
                         </Text>
-                    </View>
-                    
-                    <View style={[styles.emailModalInfo, { backgroundColor: theme.surface }]}>
-                        <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
-                            📁 {selectedHistoryItem?.totalSales || 0} sales
+                        <TextInput
+                            style={[styles.emailModalInput, {
+                                backgroundColor: theme.surface,
+                                color: theme.text,
+                                borderColor: theme.border
+                            }]}
+                            placeholder="Enter email address"
+                            placeholderTextColor={theme.textSecondary}
+                            value={emailAddress}  // ✅ Auto-filled from savedEmail
+                            onChangeText={setEmailAddress}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+
+                        {/* ✅ Show saved email hint */}
+                        {savedEmail && emailAddress === savedEmail && (
+                            <Text style={[styles.emailModalHint, { color: theme.primary }]}>
+                                📌 Using previously used email: {savedEmail}
+                            </Text>
+                        )}
+
+                        <Text style={[styles.emailModalHint, { color: theme.textSecondary }]}>
+                            📎 PDF and Excel files will be attached
                         </Text>
-                        <Text style={[styles.emailModalInfoText, { color: theme.textSecondary }]}>
-                            📅 {selectedHistoryItem?.closingDate ? new Date(selectedHistoryItem.closingDate).toLocaleDateString() : ''}
-                        </Text>
-                    </View>
-                    
-                    <Text style={[styles.emailModalLabel, { color: theme.textSecondary }]}>
-                        Recipient Email Address *
-                    </Text>
-                    <TextInput
-                        style={[styles.emailModalInput, { 
-                            backgroundColor: theme.surface,
-                            color: theme.text,
-                            borderColor: theme.border
-                        }]}
-                        placeholder="Enter email address"
-                        placeholderTextColor={theme.textSecondary}
-                        value={emailAddress}  // ✅ Auto-filled from savedEmail
-                        onChangeText={setEmailAddress}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                    
-                    {/* ✅ Show saved email hint */}
-                    {savedEmail && emailAddress === savedEmail && (
-                        <Text style={[styles.emailModalHint, { color: theme.primary }]}>
-                            📌 Using previously used email: {savedEmail}
-                        </Text>
-                    )}
-                    
-                    <Text style={[styles.emailModalHint, { color: theme.textSecondary }]}>
-                        📎 PDF and Excel files will be attached
-                    </Text>
-                    
-                    <View style={styles.emailModalButtons}>
-                        <TouchableOpacity
-                            style={[styles.emailModalBtn, styles.emailModalCancel, { borderColor: theme.border }]}
-                            onPress={() => {
-                                setShowEmailModal(false);
-                                // ✅ Don't clear email
-                                setSelectedHistoryItem(null);
-                            }}
-                            disabled={emailLoading}
-                        >
-                            <Text style={[styles.emailModalBtnText, { color: theme.text }]}>Cancel</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity
-                            style={[
-                                styles.emailModalBtn, 
-                                styles.emailModalSend, 
-                                { 
-                                    backgroundColor: theme.primary,
-                                    opacity: (!emailAddress.trim() || !emailAddress.includes('@')) ? 0.5 : 1
-                                }
-                            ]}
-                            onPress={() => {
-                                if (!emailAddress.trim()) {
-                                    Alert.alert('Error', 'Please enter email address');
-                                    return;
-                                }
-                                if (!emailAddress.includes('@')) {
-                                    Alert.alert('Error', 'Please enter a valid email address');
-                                    return;
-                                }
-                                sendEmailReport(selectedHistoryItem, emailAddress);
-                            }}
-                            disabled={emailLoading || !emailAddress.trim() || !emailAddress.includes('@')}
-                        >
-                            {emailLoading ? (
-                                <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                                <>
-                                    <Ionicons name="send-outline" size={18} color="#fff" />
-                                    <Text style={styles.emailModalSendText}>Send</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
+
+                        <View style={styles.emailModalButtons}>
+                            <TouchableOpacity
+                                style={[styles.emailModalBtn, styles.emailModalCancel, { borderColor: theme.border }]}
+                                onPress={() => {
+                                    setShowEmailModal(false);
+                                    // ✅ Don't clear email
+                                    setSelectedHistoryItem(null);
+                                }}
+                                disabled={emailLoading}
+                            >
+                                <Text style={[styles.emailModalBtnText, { color: theme.text }]}>Cancel</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[
+                                    styles.emailModalBtn,
+                                    styles.emailModalSend,
+                                    {
+                                        backgroundColor: theme.primary,
+                                        opacity: (!emailAddress.trim() || !emailAddress.includes('@')) ? 0.5 : 1
+                                    }
+                                ]}
+                                onPress={() => {
+                                    if (!emailAddress.trim()) {
+                                        Alert.alert('Error', 'Please enter email address');
+                                        return;
+                                    }
+                                    if (!emailAddress.includes('@')) {
+                                        Alert.alert('Error', 'Please enter a valid email address');
+                                        return;
+                                    }
+                                    sendEmailReport(selectedHistoryItem, emailAddress);
+                                }}
+                                disabled={emailLoading || !emailAddress.trim() || !emailAddress.includes('@')}
+                            >
+                                {emailLoading ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="send-outline" size={18} color="#fff" />
+                                        <Text style={styles.emailModalSendText}>Send</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
-            </View>
-        </Modal>
-    );
-};
+            </Modal>
+        );
+    };
     // ==================== PERFORM DAY END ====================
 
     const performDayEnd = async () => {
         setProcessing(true);
         try {
             const response = await API.post('/dayend/end', {});
-            
+
             if (response.data.success) {
                 const dayEndData = response.data.dayEnd;
-                
+
                 Alert.alert(
                     '✅ Day End Complete',
                     `Total: ${formatPrice(dayEndData.totalSales)}\n` +
                     `Net: ${formatPrice(dayEndData.netSales)}`
                 );
-                
+
                 await printDayEndReport(dayEndData);
-                
+
                 setIsDayEnded(true);
                 setDayEndData({
                     totalSales: 0,
@@ -2221,11 +2271,11 @@ const sendEmailReport = async (item: any, email: string) => {
                     salesCount: 0,
                     categories: []
                 });
-                
+
                 await loadDayEndHistory();
                 onDayEndComplete();
             }
-            
+
         } catch (error: any) {
             Alert.alert('Error', 'Failed to end day');
         } finally {
@@ -2272,7 +2322,7 @@ const sendEmailReport = async (item: any, email: string) => {
                     const opening = formatUTCTime(item.openingDate);
                     const createdAt = formatUTCTime(item.createdAt);
                     const hasCategories = item.categories && item.categories.length > 0;
-                    
+
                     return (
                         <TouchableOpacity
                             style={[styles.historyCard, { backgroundColor: theme.surface }]}
@@ -2322,7 +2372,7 @@ const sendEmailReport = async (item: any, email: string) => {
                             </View>
 
                             <Text style={[styles.historyClosedBy, { color: theme.textSecondary }]}>
-                                Closed at: {createdAt.date} 
+                                Closed at: {createdAt.date}
                             </Text>
 
                             {selectedHistory?.id === item.id && (
@@ -2369,7 +2419,11 @@ const sendEmailReport = async (item: any, email: string) => {
                                                 const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || vIdx + 1}`;
                                                 const amt = v.TotalAmount || v.totalAmount || v.total || 0;
                                                 const reason = v.VoidReason || v.voidReason || v.reason || 'N/A';
-                                                const byUser = v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || 'N/A';
+                                                const rawUser = String(v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || '').trim();
+                                                let byUser = rawUser;
+                                                if (!rawUser || rawUser === 'N/A' || /^\d+$/.test(rawUser)) {
+                                                    byUser = 'Staff';
+                                                }
                                                 const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
                                                 const timeStr = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
 
@@ -2396,14 +2450,14 @@ const sendEmailReport = async (item: any, email: string) => {
                                             <Text style={[styles.historyCategoriesTitle, { color: theme.text }]}>
                                                 🏷️ Category Breakdown
                                             </Text>
-                                            
+
                                             {item.categories.map((category: any, catIndex: number) => (
                                                 <View key={`history-cat-${catIndex}`} style={styles.historyCategoryItem}>
                                                     <TouchableOpacity
                                                         style={styles.historyCategoryHeader}
                                                         onPress={() => setExpandedHistoryCategory(
-                                                            expandedHistoryCategory === `${item.id}-${category.name}` 
-                                                                ? null 
+                                                            expandedHistoryCategory === `${item.id}-${category.name}`
+                                                                ? null
                                                                 : `${item.id}-${category.name}`
                                                         )}
                                                         activeOpacity={0.7}
@@ -2422,14 +2476,14 @@ const sendEmailReport = async (item: any, email: string) => {
                                                             <Text style={[styles.historyCategoryTotal, { color: theme.primary }]}>
                                                                 {formatPrice(category.totalRevenue)}
                                                             </Text>
-                                                            <Ionicons 
-                                                                name={expandedHistoryCategory === `${item.id}-${category.name}` ? "chevron-up" : "chevron-down"} 
-                                                                size={18} 
-                                                                color={theme.textSecondary} 
+                                                            <Ionicons
+                                                                name={expandedHistoryCategory === `${item.id}-${category.name}` ? "chevron-up" : "chevron-down"}
+                                                                size={18}
+                                                                color={theme.textSecondary}
                                                             />
                                                         </View>
                                                     </TouchableOpacity>
-                                                    
+
                                                     {expandedHistoryCategory === `${item.id}-${category.name}` && (
                                                         <View style={styles.historyCategoryItemsList}>
                                                             {category.items.map((catItem: any, idx: number) => (
@@ -2484,7 +2538,7 @@ const sendEmailReport = async (item: any, email: string) => {
                                             <Ionicons name="print-outline" size={18} color="#fff" />
                                             <Text style={styles.historyActionBtnText}>Reprint</Text>
                                         </TouchableOpacity>
-                                        
+
                                         <TouchableOpacity
                                             style={[styles.historyActionBtn, styles.emailBtn]}
                                             onPress={() => {
@@ -2517,7 +2571,7 @@ const sendEmailReport = async (item: any, email: string) => {
                 <Text style={[styles.categoriesTitle, { color: theme.text }]}>
                     🏷️ Category Breakdown
                 </Text>
-                
+
                 {dayEndData.categories.map((category: any, index: number) => (
                     <View key={`cat-${index}`} style={styles.categoryItem}>
                         <TouchableOpacity
@@ -2539,14 +2593,14 @@ const sendEmailReport = async (item: any, email: string) => {
                                 <Text style={[styles.categoryTotal, { color: theme.primary }]}>
                                     {formatPrice(category.totalRevenue)}
                                 </Text>
-                                <Ionicons 
-                                    name={expandedCategory === category.name ? "chevron-up" : "chevron-down"} 
-                                    size={20} 
-                                    color={theme.textSecondary} 
+                                <Ionicons
+                                    name={expandedCategory === category.name ? "chevron-up" : "chevron-down"}
+                                    size={20}
+                                    color={theme.textSecondary}
                                 />
                             </View>
                         </TouchableOpacity>
-                        
+
                         {expandedCategory === category.name && (
                             <View style={styles.categoryItemsList}>
                                 {category.items.map((item: any, idx: number) => (
@@ -2649,7 +2703,11 @@ const sendEmailReport = async (item: any, email: string) => {
                             const invNum = v.InvoiceNumber || v.invoiceNumber || `VOID-${v.Id || index + 1}`;
                             const amt = v.TotalAmount || v.totalAmount || v.total || 0;
                             const reason = v.VoidReason || v.voidReason || v.reason || 'N/A';
-                            const byUser = v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || 'N/A';
+                            const rawUser = String(v.VoidedByName || v.voidedByName || v.VoidedBy || v.voidedBy || v.UserName || v.userName || '').trim();
+                            let byUser = rawUser;
+                            if (!rawUser || rawUser === 'N/A' || /^\d+$/.test(rawUser)) {
+                                byUser = 'Staff';
+                            }
                             const rawTime = v.VoidedAt || v.voidedAt || v.SaleDate || v.saleDate || v.date || v.CreatedAt || v.createdAt;
                             const timeStr = rawTime ? parseRawDateTime(rawTime).dateTimeStr : 'N/A';
 
@@ -2701,7 +2759,7 @@ const sendEmailReport = async (item: any, email: string) => {
         >
             <SafeAreaView style={[styles.fullScreenContainer, { backgroundColor: theme.background }]}>
                 <StatusBar barStyle={theme === 'night' ? 'light-content' : 'dark-content'} />
-                
+
                 <View style={[styles.fullScreenHeader, { backgroundColor: theme.primary }]}>
                     <Text style={styles.fullScreenTitle}>{t.dayEnd}</Text>
                     <TouchableOpacity onPress={onClose} style={styles.fullScreenClose}>
@@ -2717,8 +2775,8 @@ const sendEmailReport = async (item: any, email: string) => {
                             loadDayEndData();
                         }}
                     >
-                        <Text style={[styles.tabText, { 
-                            color: activeTab === 'pending' ? theme.primary : theme.textSecondary 
+                        <Text style={[styles.tabText, {
+                            color: activeTab === 'pending' ? theme.primary : theme.textSecondary
                         }]}>
                             📊 Pending
                         </Text>
@@ -2730,8 +2788,8 @@ const sendEmailReport = async (item: any, email: string) => {
                             loadDayEndHistory();
                         }}
                     >
-                        <Text style={[styles.tabText, { 
-                            color: activeTab === 'history' ? theme.primary : theme.textSecondary 
+                        <Text style={[styles.tabText, {
+                            color: activeTab === 'history' ? theme.primary : theme.textSecondary
                         }]}>
                             📋 History ({dayEndHistory.length})
                         </Text>
@@ -2743,7 +2801,7 @@ const sendEmailReport = async (item: any, email: string) => {
                         <ActivityIndicator size="large" color={theme.primary} />
                     </View>
                 ) : activeTab === 'pending' ? (
-                    <ScrollView 
+                    <ScrollView
                         showsVerticalScrollIndicator={true}
                         contentContainerStyle={styles.scrollContent}
                         style={{ flex: 1 }}
@@ -2755,7 +2813,7 @@ const sendEmailReport = async (item: any, email: string) => {
                         {renderHistoryTab()}
                     </View>
                 )}
-                
+
                 {renderEmailModal()}
             </SafeAreaView>
         </Modal>

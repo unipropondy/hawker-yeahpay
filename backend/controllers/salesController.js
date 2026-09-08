@@ -374,8 +374,10 @@ const getSales = async (req, res) => {
                    s.DiscountType, s.DiscountValue, s.DiscountAmount,
                    s.Status, s.VoidedBy, 
                    CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr, 
-                   s.VoidReason, s.DayEndId
+                   s.VoidReason, s.DayEndId,
+                   COALESCE(u.FullName, u.Username) as VoidedByName
             FROM Sales s WITH (NOLOCK) 
+            LEFT JOIN Users u WITH (NOLOCK) ON s.VoidedBy = u.Id
             WHERE s.OutletId = @outletId
         `;
         
@@ -463,7 +465,7 @@ const getSales = async (req, res) => {
                 status: sale.Status || 'COMPLETED',
                 dayEndId: sale.DayEndId,
                 voidReason: sale.VoidReason || '',
-                voidedBy: sale.VoidedBy || 'Staff',
+                voidedBy: sale.VoidedByName || (sale.VoidedBy && !/^\d+$/.test(String(sale.VoidedBy)) ? String(sale.VoidedBy) : 'Staff'),
                 voidedAt: sale.VoidedAtStr || sale.SaleDateStr
             };
         });

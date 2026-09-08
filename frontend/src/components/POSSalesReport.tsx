@@ -375,9 +375,9 @@ const loadOverviewData = useCallback(async () => {
                 invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber || '',
                 items: sale.items || sale.ItemsJson || [],
                 status: sale.status || sale.Status,
-                voidReason: sale.voidReason,
-                voidedAt: sale.voidedAt,
-                voidedBy: sale.voidedBy,
+                voidReason: sale.voidReason || sale.VoidReason,
+                voidedAt: sale.voidedAt || sale.VoidedAt || sale.date || sale.SaleDate,
+                voidedBy: sale.voidedBy || sale.VoidedBy,
                 discount: sale.discount || null,
                 dayEndId: sale.dayEndId || sale.DayEndId || null
             }));
@@ -766,9 +766,9 @@ const handleFilterChange = (filter: string) => {
                         invoiceNumber: sale.invoiceNumber || sale.InvoiceNumber || '',
                         items: sale.items || sale.ItemsJson || [],
                         status: sale.status || sale.Status,
-                        voidReason: sale.voidReason,
-                        voidedAt: sale.voidedAt,
-                        voidedBy: sale.voidedBy,
+                        voidReason: sale.voidReason || sale.VoidReason,
+                        voidedAt: sale.voidedAt || sale.VoidedAt || sale.date || sale.SaleDate,
+                        voidedBy: sale.voidedBy || sale.VoidedBy,
                         discount: sale.discount || null,
                         dayEndId: sale.dayEndId || sale.DayEndId || null
                     }));

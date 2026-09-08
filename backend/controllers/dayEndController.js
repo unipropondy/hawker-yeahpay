@@ -104,13 +104,15 @@ const performDayEnd = async (req, res) => {
             .input('outletId', sql.Int, outletId)
             .query(`
                 SELECT 
-                    Id, Total, InvoiceNumber, VoidReason, VoidedBy,
-                    CONVERT(varchar, SaleDate, 126) as SaleDateStr
-                FROM Sales 
-                WHERE OutletId = @outletId 
-                  AND (DayEndId IS NULL OR DayEndId = 0)
-                  AND Status = 'VOIDED'
-                ORDER BY SaleDate ASC
+                    s.Id, s.Total, s.InvoiceNumber, s.VoidReason, s.VoidedBy,
+                    CONVERT(varchar, s.SaleDate, 126) as SaleDateStr,
+                    COALESCE(u.FullName, u.Username) as VoidedByName
+                FROM Sales s WITH (NOLOCK)
+                LEFT JOIN Users u WITH (NOLOCK) ON s.VoidedBy = u.Id
+                WHERE s.OutletId = @outletId 
+                  AND (s.DayEndId IS NULL OR s.DayEndId = 0)
+                  AND s.Status = 'VOIDED'
+                ORDER BY s.SaleDate ASC
             `);
 
         const pendingVoidedSales = (voidedSalesResult.recordset || []).map(v => ({
@@ -119,7 +121,7 @@ const performDayEnd = async (req, res) => {
             invoiceNumber: v.InvoiceNumber || '',
             date: v.SaleDateStr,
             voidReason: v.VoidReason || 'N/A',
-            voidedBy: v.VoidedBy || 'Staff'
+            voidedBy: v.VoidedByName || (v.VoidedBy && !/^\d+$/.test(String(v.VoidedBy)) ? String(v.VoidedBy) : 'Staff')
         }));
         const totalVoidedAmount = pendingVoidedSales.reduce((s, v) => s + (v.total || 0), 0);
         
@@ -372,8 +374,10 @@ const getDayEndHistory = async (req, res) => {
                     SELECT s.Id, s.Total, s.InvoiceNumber, 
                            CONVERT(varchar, s.SaleDate, 126) as SaleDateStr, 
                            CONVERT(varchar, s.VoidedAt, 126) as VoidedAtStr,
-                           s.VoidReason, s.VoidedBy
-                    FROM Sales s
+                           s.VoidReason, s.VoidedBy,
+                           COALESCE(u.FullName, u.Username) as VoidedByName
+                    FROM Sales s WITH (NOLOCK)
+                    LEFT JOIN Users u WITH (NOLOCK) ON s.VoidedBy = u.Id
                     WHERE s.DayEndId = @dayEndId AND s.Status = 'VOIDED'
                     ORDER BY s.SaleDate ASC
                 `);
@@ -385,7 +389,7 @@ const getDayEndHistory = async (req, res) => {
                 date: v.SaleDateStr,
                 voidedAt: v.VoidedAtStr || v.SaleDateStr,
                 voidReason: v.VoidReason || 'N/A',
-                voidedBy: v.VoidedBy || 'Staff'
+                voidedBy: v.VoidedByName || (v.VoidedBy && !/^\d+$/.test(String(v.VoidedBy)) ? String(v.VoidedBy) : 'Staff')
             }));
 
             const totalVoidedAmount = voidedSales.reduce((s, v) => s + (v.total || 0), 0);

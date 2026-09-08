@@ -165,10 +165,15 @@ class SunmiPrinterHelper {
 
   // Cut paper
   static async cutPaper(): Promise<void> {
-    if (!SunmiPrinter || !SunmiPrinter.cutPaper) return;
+    if (!SunmiPrinter) return;
 
     try {
-      await SunmiPrinter.cutPaper();
+      if (SunmiPrinter.lineWrap) {
+        await SunmiPrinter.lineWrap(5);
+      }
+      if (SunmiPrinter.cutPaper) {
+        await SunmiPrinter.cutPaper();
+      }
     } catch (error) {
       console.log('Cut paper failed:', error);
     }

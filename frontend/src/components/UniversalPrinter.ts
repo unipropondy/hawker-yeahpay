@@ -309,22 +309,22 @@ class UniversalPrinter {
     const isVoided = !!(options?.isVoided || options?.status === 'voided');
     const groupTransactions = (tx: any[]) => {
       const grouped: any = {};
-      tx.forEach(t => { 
+      tx.forEach(t => {
         const key = t.saleId || t.id || Math.random();
         if (!grouped[key]) {
-          grouped[key] = { 
-            id: key, 
+          grouped[key] = {
+            id: key,
             invoiceNumber: t.invoiceNumber || t.invoice_number || key,
-            date: t.saleDate || t.date, 
-            items: [], 
+            date: t.saleDate || t.date,
+            items: [],
             total: 0,
             voidReason: t.voidReason || t.void_reason || null,
             voidedBy: t.voidedBy || t.voided_by || null,
             status: t.status || (isVoided ? 'VOIDED' : 'COMPLETED')
           };
-        } 
-        grouped[key].items.push({ name: t.name || '', quantity: t.quantity || 1, price: t.price || 0 }); 
-        grouped[key].total += (t.price || 0) * (t.quantity || 1); 
+        }
+        grouped[key].items.push({ name: t.name || '', quantity: t.quantity || 1, price: t.price || 0 });
+        grouped[key].total += (t.price || 0) * (t.quantity || 1);
       });
       return Object.values(grouped).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     };
@@ -368,7 +368,7 @@ class UniversalPrinter {
           </div>
           <div style="font-size:11px;color:#6B7280;margin:4px 0;">${sale.date ? this.formatDateTime(sale.date) : ''}</div>
           ${sale.voidReason ? `<div style="font-size:12px;color:#DC2626;margin:4px 0;"><strong>Void Reason:</strong> ${sale.voidReason}</div>` : ''}
-          ${sale.voidedBy ? `<div style="font-size:12px;color:#4B5563;margin:2px 0;"><strong>Voided By:</strong> ${sale.voidedBy}</div>` : ''}
+          ${sale.voidedBy && !/^\d+$/.test(String(sale.voidedBy)) && sale.voidedBy !== 'N/A' ? `<div style="font-size:12px;color:#4B5563;margin:2px 0;"><strong>Voided By:</strong> ${sale.voidedBy}</div>` : `<div style="font-size:12px;color:#4B5563;margin:2px 0;"><strong>Voided By:</strong> Staff</div>`}
           <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #ddd;">
             ${sale.items.map((item: any) => `<div>• ${item.name} x${item.quantity} - ${symbol}${(item.price * item.quantity).toFixed(2)}</div>`).join('')}
           </div>
@@ -523,16 +523,16 @@ class UniversalPrinter {
     const strokeWidth = 10;
     let accumulatedPercentage = 0;
     let svgCircles = '';
-    
+
     paymentList.forEach((p, idx) => {
       const percentage = p.percentage;
       if (percentage > 0) {
         const color = colors[idx % colors.length];
         const dashArray = `${(percentage * circumference / 100).toFixed(2)} ${circumference.toFixed(2)}`;
         const dashOffset = (-((accumulatedPercentage * circumference / 100))).toFixed(2);
-        
+
         svgCircles += `<circle cx="25" cy="25" r="${radius}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 25 25)" />`;
-        
+
         accumulatedPercentage += percentage;
       }
     });
@@ -1427,9 +1427,9 @@ class UniversalPrinter {
           <tr>
             <td>${idx + 1}</td>
             <td style="font-weight: 600; color: #DC2626;">#${vSale.invoiceNumber || vSale.id}</td>
-            <td>${this.formatDateTime(vSale.date || vSale.voidedAt)}</td>
+            <td>${this.formatDateTime(vSale.voidedAt || vSale.date)}</td>
             <td style="color: #4B5563;">${vSale.voidReason || 'N/A'}</td>
-            <td>${vSale.voidedBy || 'Staff'}</td>
+            <td>${(vSale.voidedByName || (vSale.voidedBy && !/^\d+$/.test(String(vSale.voidedBy)) ? vSale.voidedBy : 'Staff'))}</td>
             <td class="text-right" style="font-weight: 700; color: #DC2626;">${symbol}${(vSale.total || 0).toFixed(2)}</td>
           </tr>
         `).join('') : `
@@ -1928,9 +1928,10 @@ class UniversalPrinter {
           const vAmt = (vSale.total || 0);
           totalVoidedAmt += vAmt;
           const inv = vSale.invoiceNumber || vSale.id || '';
-          const timeStr = this.formatDateTime(vSale.date || vSale.voidedAt);
+          const timeStr = this.formatDateTime(vSale.voidedAt || vSale.date);
           const reason = vSale.voidReason || 'N/A';
-          const by = vSale.voidedBy || 'Staff';
+          const rawBy = String(vSale.voidedByName || vSale.voidedBy || vSale.VoidedByName || vSale.VoidedBy || '').trim();
+          const by = (!rawBy || rawBy === 'N/A' || /^\d+$/.test(rawBy)) ? 'Staff' : rawBy;
 
           text += `#${inv} - ${symbol}${vAmt.toFixed(2)}\n`;
           text += ` Time: ${timeStr}\n`;
@@ -1945,7 +1946,7 @@ class UniversalPrinter {
       text += this.centerText('END OF REPORT', width) + '\n';
       text += '='.repeat(width) + '\n\n';
       text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
-      text += '\n\n';
+      text += '\n\n\n';
 
 
       // ✅ Try network printer ONLY if enabled
@@ -1958,12 +1959,15 @@ class UniversalPrinter {
 
           if (ThermalPrinterModule && hasNativeModule) {
             console.log('📡 Sales Report routing to Network Printer IP:', company.networkPrinterIP);
+            const formattedPayload = text.split('\n').map(l => (!l ? '[L] ' : (l.startsWith('[L]') || l.startsWith('[C]') || l.startsWith('[R]')) ? l : `[L]${l}`)).join('\n') + '\n[L] \n[L] \n[L] \n';
             await ThermalPrinterModule.printTcp({
               ip: company.networkPrinterIP,
               port: 9100,
-              payload: text,
+              payload: formattedPayload,
               autoCut: true,
               openCashbox: false,
+              mmFeedPaper: 20,
+              printerNbrCharactersPerLine: width,
             });
             return true;
           }
@@ -2140,9 +2144,10 @@ class UniversalPrinter {
             const vAmt = (vSale.total || 0);
             totalVoidedAmt += vAmt;
             const inv = vSale.invoiceNumber || vSale.id || '';
-            const timeStr = this.formatDateTime(vSale.date || vSale.voidedAt);
+            const timeStr = this.formatDateTime(vSale.voidedAt || vSale.date);
             const reason = vSale.voidReason || 'N/A';
-            const by = vSale.voidedBy || 'Staff';
+            const rawBy = String(vSale.voidedByName || vSale.voidedBy || vSale.VoidedByName || vSale.VoidedBy || '').trim();
+            const by = (!rawBy || rawBy === 'N/A' || /^\d+$/.test(rawBy)) ? 'Staff' : rawBy;
 
             text += `#${inv} - ${symbol}${vAmt.toFixed(2)}\n`;
             text += ` Time: ${timeStr}\n`;
@@ -2160,6 +2165,7 @@ class UniversalPrinter {
       text += this.centerText('END OF REPORT', width) + '\n';
       text += '='.repeat(width) + '\n\n';
       text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
+      text += '\n\n\n';
 
       // ✅ Try network printer ONLY if enabled
       if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
@@ -2171,12 +2177,15 @@ class UniversalPrinter {
 
           if (ThermalPrinterModule && hasNativeModule) {
             console.log('📡 Category Report routing to Network Printer IP:', company.networkPrinterIP);
+            const formattedPayload = text.split('\n').map(l => (!l ? '[L] ' : (l.startsWith('[L]') || l.startsWith('[C]') || l.startsWith('[R]')) ? l : `[L]${l}`)).join('\n') + '\n[L] \n[L] \n[L] \n';
             await ThermalPrinterModule.printTcp({
               ip: company.networkPrinterIP,
               port: 9100,
-              payload: text,
+              payload: formattedPayload,
               autoCut: true,
               openCashbox: false,
+              mmFeedPaper: 20,
+              printerNbrCharactersPerLine: width,
             });
             return true;
           }
