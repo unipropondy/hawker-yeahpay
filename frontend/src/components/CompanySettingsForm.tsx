@@ -761,10 +761,34 @@ const CompanySettingsForm: React.FC<Props> = ({
                         Alert.alert('Bluetooth Connected', `Selected ${device.name}`);
                       }
                     } else {
-                      Alert.alert(
-                        'Bluetooth Thermal Printer',
-                        'Ensure your thermal printer is turned on and paired in system Bluetooth settings.'
-                      );
+                      try {
+                        const devices = await BluetoothPrinterService.getPairedDevices();
+                        if (devices && devices.length > 0) {
+                          const buttons: any[] = devices.map(d => ({
+                            text: `${d.deviceName || 'Printer'} (${d.macAddress})`,
+                            onPress: () => {
+                              setSettings(prev => ({
+                                ...prev,
+                                bluetoothPrinterName: d.deviceName || d.macAddress,
+                                bluetoothPrinterAddress: d.macAddress
+                              }));
+                              Alert.alert('Selected Printer', `Set to ${d.deviceName || d.macAddress}`);
+                            }
+                          }));
+                          buttons.push({ text: 'Cancel', style: 'cancel' });
+                          Alert.alert('Select Paired Printer', 'Choose your Bluetooth thermal printer:', buttons);
+                        } else {
+                          Alert.alert(
+                            'No Paired Printers Found',
+                            'Ensure your Bluetooth thermal printer is turned on and paired in system Bluetooth settings.'
+                          );
+                        }
+                      } catch (err) {
+                        Alert.alert(
+                          'Bluetooth Thermal Printer',
+                          'Ensure your thermal printer is turned on and paired in system Bluetooth settings.'
+                        );
+                      }
                     }
                   }}
                 >

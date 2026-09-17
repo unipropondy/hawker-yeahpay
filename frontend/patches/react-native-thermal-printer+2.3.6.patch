@@ -1,0 +1,72 @@
+diff --git a/node_modules/react-native-thermal-printer/android/src/main/java/com/reactnativethermalprinter/ThermalPrinterModule.java b/node_modules/react-native-thermal-printer/android/src/main/java/com/reactnativethermalprinter/ThermalPrinterModule.java
+index 335a6d6..91622a3 100644
+--- a/node_modules/react-native-thermal-printer/android/src/main/java/com/reactnativethermalprinter/ThermalPrinterModule.java
++++ b/node_modules/react-native-thermal-printer/android/src/main/java/com/reactnativethermalprinter/ThermalPrinterModule.java
+@@ -90,12 +90,27 @@ public class ThermalPrinterModule extends ReactContextBaseJavaModule {
+ 
+     if (TextUtils.isEmpty(macAddress)) {
+       btPrinter = BluetoothPrintersConnections.selectFirstPaired();
++      if (btPrinter == null) {
++        try {
++          BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
++          if (bluetoothAdapter != null) {
++            Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
++            if (pairedDevices != null && pairedDevices.size() > 0) {
++              BluetoothDevice firstDev = pairedDevices.iterator().next();
++              btPrinter = new BluetoothConnection(firstDev);
++            }
++          }
++        } catch (Exception e) {
++          e.printStackTrace();
++        }
++      }
+     } else {
+       btPrinter = getBluetoothConnectionWithMacAddress(macAddress);
+     }
+ 
+     if (btPrinter == null) {
+-      this.jsPromise.reject("Connection Error", "Bluetooth Device Not Found");
++      this.jsPromise.reject("Connection Error", "Bluetooth Device Not Found. Please ensure printer is paired in phone Bluetooth settings.");
++      return;
+     }
+ 
+     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S && ContextCompat.checkSelfPermission(getCurrentActivity(), Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+@@ -216,9 +231,35 @@ public class ThermalPrinterModule extends ReactContextBaseJavaModule {
+   }
+ 
+   private BluetoothConnection getBluetoothConnectionWithMacAddress(String macAddress) {
+-    for (BluetoothConnection device : btDevicesList) {
+-      if (device.getDevice().getAddress().contentEquals(macAddress))
+-        return device;
++    if (btDevicesList != null && btDevicesList.size() > 0) {
++      for (BluetoothConnection device : btDevicesList) {
++        if (device != null && device.getDevice() != null && device.getDevice().getAddress() != null) {
++          if (device.getDevice().getAddress().equalsIgnoreCase(macAddress))
++            return device;
++        }
++      }
++    }
++    // Direct lookup from bonded Bluetooth devices if btDevicesList was not populated yet!
++    try {
++      BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
++      if (bluetoothAdapter != null) {
++        Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
++        if (pairedDevices != null) {
++          for (BluetoothDevice device : pairedDevices) {
++            if (device != null) {
++              String dAddress = device.getAddress();
++              String dName = device.getName();
++              if ((dAddress != null && dAddress.equalsIgnoreCase(macAddress)) ||
++                  (dName != null && dName.equalsIgnoreCase(macAddress)) ||
++                  (dAddress != null && macAddress != null && dAddress.replace(":", "").equalsIgnoreCase(macAddress.replace(":", "")))) {
++                return new BluetoothConnection(device);
++              }
++            }
++          }
++        }
++      }
++    } catch (Exception e) {
++      e.printStackTrace();
+     }
+     return null;
+   }
