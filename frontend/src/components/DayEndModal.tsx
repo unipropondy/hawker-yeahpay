@@ -13,6 +13,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import API from '../api';
 import SunmiPrinterService from './SunmiPrinterService';
 import BillPDFGenerator from './BillPDFGenerator';
+import BluetoothPrinterService from './BluetoothPrinterService';
 
 interface DayEndModalProps {
     visible: boolean;
@@ -461,8 +462,8 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
 
         text += centerText('VOID SUMMARY', 32) + '\n';
         text += dash + '\n';
-        text += twoColumns('Total Voided Count:', `${voidedCount}`, 32) + '\n';
-        text += twoColumns('Total Voided Amount:', `${symbol}${totalVoidedAmount.toFixed(2)}`, 32) + '\n';
+        text += twoColumns('Total Void Qty:', `${voidedCount}`, 32) + '\n';
+        text += twoColumns('Total Void Amount:', `${symbol}${totalVoidedAmount.toFixed(2)}`, 32) + '\n';
         text += dash + '\n\n';
 
         if (voidedSales.length > 0) {
@@ -1706,9 +1707,22 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
 
             const reportText = buildDayEndReportText(reportData, outletName);
 
-            // 1. Try Network Printer first if enabled
+            // 1. Try Network Printer / Bluetooth Printer first if enabled
             try {
                 const company = await BillPDFGenerator.loadSettings(outletId);
+                if (company && company.bluetoothPrinterEnabled) {
+                    console.log('📡 Route DayEnd report to Bluetooth Printer');
+                    const printed = await BluetoothPrinterService.printReceipt(reportText, {
+                        address: company.bluetoothPrinterAddress,
+                        name: company.bluetoothPrinterName,
+                        charactersPerLine: 32
+                    });
+                    if (printed) {
+                        console.log('✅ Day End Report printed on Bluetooth Printer');
+                        return;
+                    }
+                }
+
                 if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
                     console.log('📡 Route DayEnd report to Network Printer IP:', company.networkPrinterIP);
                     try {
@@ -1744,7 +1758,7 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
                     return;
                 }
             } catch (loadErr) {
-                console.log('⚠️ Error loading settings for network printer check:', loadErr);
+                console.log('⚠️ Error loading settings for printer check:', loadErr);
             }
 
             // 2. Try Sunmi printer if network is disabled
@@ -1841,9 +1855,23 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
                 '='.repeat(32) + '\n\n' +
                 reportText;
 
-            // 1. Try Network Printer first if enabled
+            // 1. Try Network / Bluetooth Printer first if enabled
             try {
                 const company = await BillPDFGenerator.loadSettings(outletId);
+                if (company && company.bluetoothPrinterEnabled) {
+                    console.log('📡 Route DayEnd reprint to Bluetooth Printer');
+                    const printed = await BluetoothPrinterService.printReceipt(reprintText, {
+                        address: company.bluetoothPrinterAddress,
+                        name: company.bluetoothPrinterName,
+                        charactersPerLine: 32
+                    });
+                    if (printed) {
+                        console.log('✅ Day End Report reprinted on Bluetooth Printer');
+                        Alert.alert('🖨️ Success', 'Report reprinted successfully!');
+                        return;
+                    }
+                }
+
                 if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
                     console.log('📡 Route DayEnd reprint to Network Printer IP:', company.networkPrinterIP);
                     try {
@@ -1884,7 +1912,7 @@ const DayEndModal: React.FC<DayEndModalProps> = ({
                     return;
                 }
             } catch (loadErr) {
-                console.log('⚠️ Error loading settings for network printer reprint check:', loadErr);
+                console.log('⚠️ Error loading settings for printer reprint check:', loadErr);
             }
 
             // 2. Try Sunmi printer if network is disabled

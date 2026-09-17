@@ -22,6 +22,9 @@ interface CompanySettings {
   showHalalLogo?: boolean;
   networkPrinterIP?: string;
   networkPrinterEnabled?: boolean;
+  bluetoothPrinterName?: string;
+  bluetoothPrinterAddress?: string;
+  bluetoothPrinterEnabled?: boolean;
 }
 
 // ✅ DISCOUNT INFO INTERFACE
@@ -95,6 +98,9 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
                 showHalalLogo: showHalalLogo,
                 networkPrinterIP: settings.NetworkPrinterIP || '',
                 networkPrinterEnabled: settings.NetworkPrinterEnabled === true || settings.NetworkPrinterEnabled === 1,
+                bluetoothPrinterName: settings.BluetoothPrinterName || '',
+                bluetoothPrinterAddress: settings.BluetoothPrinterAddress || '',
+                bluetoothPrinterEnabled: settings.BluetoothPrinterEnabled === true || settings.BluetoothPrinterEnabled === 1,
             };
         }
         return this.getDefaultSettings();
@@ -117,6 +123,9 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
       currencySymbol: '$',
       networkPrinterIP: '',
       networkPrinterEnabled: false,
+      bluetoothPrinterName: '',
+      bluetoothPrinterAddress: '',
+      bluetoothPrinterEnabled: false,
     };
   }
   
@@ -150,7 +159,10 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
             ShowCompanyLogo: settings.showCompanyLogo ? 1 : 0,  // ✅ Simplified
             ShowHalalLogo: settings.showHalalLogo ? 1 : 0,      // ✅ Simplified
             NetworkPrinterIP: settings.networkPrinterIP || '',
-            NetworkPrinterEnabled: settings.networkPrinterEnabled ? 1 : 0
+            NetworkPrinterEnabled: settings.networkPrinterEnabled ? 1 : 0,
+            BluetoothPrinterName: settings.bluetoothPrinterName || '',
+            BluetoothPrinterAddress: settings.bluetoothPrinterAddress || '',
+            BluetoothPrinterEnabled: settings.bluetoothPrinterEnabled ? 1 : 0
         };
         
         // ✅ Add timestamp to prevent caching

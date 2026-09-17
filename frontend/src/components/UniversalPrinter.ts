@@ -6,6 +6,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import SunmiPrinterService from './SunmiPrinterService';
 import BillPDFGenerator from './BillPDFGenerator';
+import BluetoothPrinterService from './BluetoothPrinterService';
 
 import { PrinterDetector } from './PrinterDetector';
 // Printer types
@@ -71,10 +72,20 @@ class UniversalPrinter {
 
   static async openCashDrawer(outletId?: string | number): Promise<boolean> {
     try {
-      // ✅ STEP 1: Try Network Printer cash drawer (if configured)
       if (outletId) {
         try {
           const company = await BillPDFGenerator.loadSettings(outletId);
+          // ✅ STEP 0: Try Bluetooth Printer cash drawer (if configured)
+          if (company && company.bluetoothPrinterEnabled) {
+            console.log('📡 Opening cash drawer via Bluetooth Printer');
+            const opened = await BluetoothPrinterService.openCashDrawer({
+              address: company.bluetoothPrinterAddress,
+              name: company.bluetoothPrinterName
+            });
+            if (opened) return true;
+          }
+
+          // ✅ STEP 1: Try Network Printer cash drawer (if configured)
           if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
             console.log('📡 Opening cash drawer via Network Printer IP:', company.networkPrinterIP);
             const ThermalPrinter = require('react-native-thermal-printer');
@@ -1493,15 +1504,29 @@ class UniversalPrinter {
       const company = await BillPDFGenerator.loadSettings(outletId);
 
       if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
-        // Print ONLY to network printer
+        // 1. Wi-Fi / Network Printer (80mm)
         const printed = await this.printNetwork(saleData, outletId, discountInfo);
         if (printed) {
           return true;
         }
-        // Fail -> Fallback to PDF directly
+        return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
+      } else if (company && company.bluetoothPrinterEnabled) {
+        // 2. Bluetooth Thermal Printer (58mm Posiflow/Mobile layout)
+        const printed = await this.printBluetooth(saleData, outletId, undefined, discountInfo);
+        if (printed) {
+          return true;
+        }
+        // If Bluetooth fails, try Sunmi printer if available before PDF fallback
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+          const sunmiPrinted = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
+          if (sunmiPrinted) {
+            return true;
+          }
+        }
         return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
       } else {
-        // Print ONLY to Sunmi printer
+        // 3. Sunmi Built-in Thermal Printer (58mm)
         const sunmiReady = await SunmiPrinterService.init();
         if (sunmiReady) {
           const printed = await this.printThermalReceipt(saleData, outletId, undefined, discountInfo);
@@ -1509,7 +1534,7 @@ class UniversalPrinter {
             return true;
           }
         }
-        // Fail -> Fallback to PDF directly
+        // 4. PDF Fallback
         return await this.offerPDFFallback(saleData, outletId, t, discountInfo);
       }
     } catch (error) {
@@ -1734,12 +1759,18 @@ class UniversalPrinter {
   // ==================== BLUETOOTH PRINTING ====================
   private static async printBluetooth(saleData: any, userId?: string | number, printer?: PrinterInfo, discountInfo?: DiscountInfo): Promise<boolean> {
     try {
-      const BluetoothPrinter = require('react-native-bluetooth-printer');
-      if (printer?.address) await BluetoothPrinter.connect(printer.address);
       const company = await BillPDFGenerator.loadSettings(userId);
-      await BluetoothPrinter.print(this.formatThermalText58mm(saleData, company, discountInfo));
-      return true;
-    } catch (error) { return false; }
+      const receiptText = this.formatThermalText58mm(saleData, company, discountInfo);
+      console.log('📡 Route print job to Bluetooth Printer:', company.bluetoothPrinterName || company.bluetoothPrinterAddress || 'paired device');
+      return await BluetoothPrinterService.printReceipt(receiptText, {
+        address: company.bluetoothPrinterAddress || printer?.address,
+        name: company.bluetoothPrinterName || printer?.name,
+        charactersPerLine: 32
+      });
+    } catch (error) {
+      console.log('Bluetooth print error:', error);
+      return false;
+    }
   }
 
   // ==================== NETWORK PRINTING ====================
@@ -1949,7 +1980,7 @@ class UniversalPrinter {
       text += '\n\n\n';
 
 
-      // ✅ Try network printer ONLY if enabled
+      // ✅ Priority: 1. Wi-Fi Network -> 2. Bluetooth 58mm -> 3. Sunmi -> 4. PDF
       if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
         try {
           const ThermalPrinter = require('react-native-thermal-printer');
@@ -1974,7 +2005,23 @@ class UniversalPrinter {
         } catch (netError) {
           console.log('❌ Sales Report Network Print error:', netError);
         }
-        return false; // Network failed -> PDF fallback directly
+        return false;
+      } else if (company && company.bluetoothPrinterEnabled) {
+        console.log('📡 Sales Report routing to 58mm Bluetooth Thermal Printer');
+        const printed = await BluetoothPrinterService.printReceipt(text, {
+          address: company.bluetoothPrinterAddress,
+          name: company.bluetoothPrinterName,
+          charactersPerLine: 32
+        });
+        if (printed) return true;
+        // Fallback to Sunmi if Bluetooth fails
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+          await SunmiPrinterService.printRawText(text);
+          await SunmiPrinterService.cutPaper();
+          return true;
+        }
+        return false;
       } else {
         // Sunmi ONLY
         const sunmiReady = await SunmiPrinterService.init();
@@ -1984,7 +2031,7 @@ class UniversalPrinter {
           return true;
         }
         console.log('Sunmi printer not available, using PDF fallback');
-        return false; // Sunmi failed -> PDF fallback directly
+        return false;
       }
 
     } catch (error) {
@@ -2167,7 +2214,7 @@ class UniversalPrinter {
       text += this.centerText('SMARTHAWKER BY UNIPROSG', width) + '\n';
       text += '\n\n\n';
 
-      // ✅ Try network printer ONLY if enabled
+      // ✅ Priority: 1. Wi-Fi Network -> 2. Bluetooth 58mm -> 3. Sunmi -> 4. PDF
       if (company && company.networkPrinterEnabled && company.networkPrinterIP) {
         try {
           const ThermalPrinter = require('react-native-thermal-printer');
@@ -2192,7 +2239,23 @@ class UniversalPrinter {
         } catch (netError) {
           console.log('❌ Category Report Network Print error:', netError);
         }
-        return false; // Network failed -> PDF fallback directly
+        return false;
+      } else if (company && company.bluetoothPrinterEnabled) {
+        console.log('📡 Category Report routing to 58mm Bluetooth Thermal Printer');
+        const printed = await BluetoothPrinterService.printReceipt(text, {
+          address: company.bluetoothPrinterAddress,
+          name: company.bluetoothPrinterName,
+          charactersPerLine: 32
+        });
+        if (printed) return true;
+        // Fallback to Sunmi if Bluetooth fails
+        const sunmiReady = await SunmiPrinterService.init();
+        if (sunmiReady) {
+          await SunmiPrinterService.printRawText(text);
+          await SunmiPrinterService.cutPaper();
+          return true;
+        }
+        return false;
       } else {
         // Sunmi ONLY
         const sunmiReady = await SunmiPrinterService.init();
@@ -2202,7 +2265,7 @@ class UniversalPrinter {
           return true;
         }
         console.log('Sunmi printer not available, using PDF fallback');
-        return false; // Sunmi failed -> PDF fallback directly
+        return false;
       }
 
     } catch (error) {

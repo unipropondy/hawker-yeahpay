@@ -3,7 +3,7 @@ const router = express.Router();
 const { getPool, sql } = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 
-// ✅ DB SCHEMA VALIDATION: Auto-add network printer columns if missing
+// ✅ DB SCHEMA VALIDATION: Auto-add printer columns if missing
 const ensurePrinterColumnsExist = async () => {
     try {
         const pool = getPool();
@@ -21,10 +21,20 @@ const ensurePrinterColumnsExist = async () => {
                 ALTER TABLE CompanySettings ADD NetworkPrinterIP NVARCHAR(255) NULL;
                 ALTER TABLE CompanySettings ADD NetworkPrinterEnabled BIT NULL DEFAULT 0;
             END
+
+            IF NOT EXISTS (
+                SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = 'CompanySettings' AND COLUMN_NAME = 'BluetoothPrinterAddress'
+            )
+            BEGIN
+                ALTER TABLE CompanySettings ADD BluetoothPrinterName NVARCHAR(255) NULL;
+                ALTER TABLE CompanySettings ADD BluetoothPrinterAddress NVARCHAR(255) NULL;
+                ALTER TABLE CompanySettings ADD BluetoothPrinterEnabled BIT NULL DEFAULT 0;
+            END
         `);
-        console.log('✅ Verified NetworkPrinter columns in database table CompanySettings');
+        console.log('✅ Verified NetworkPrinter and BluetoothPrinter columns in database table CompanySettings');
     } catch (err) {
-        console.log('⚠️ Network printer columns validation skipped/failed:', err.message);
+        console.log('⚠️ Printer columns validation skipped/failed:', err.message);
     }
 };
 // Check/Alter table 3 seconds after routes load
@@ -144,7 +154,10 @@ router.get('/:targetId', async (req, res) => {
                     ISNULL(c.ShowCompanyLogo, 0) as ShowCompanyLogo,
                     ISNULL(c.ShowHalalLogo, 0) as ShowHalalLogo,
                     c.NetworkPrinterIP,
-                    ISNULL(c.NetworkPrinterEnabled, 0) as NetworkPrinterEnabled
+                    ISNULL(c.NetworkPrinterEnabled, 0) as NetworkPrinterEnabled,
+                    c.BluetoothPrinterName,
+                    c.BluetoothPrinterAddress,
+                    ISNULL(c.BluetoothPrinterEnabled, 0) as BluetoothPrinterEnabled
                 FROM Outlets o
                 LEFT JOIN CompanySettings c ON o.Id = c.OutletId
                 WHERE o.Id = @outletId
@@ -182,7 +195,10 @@ router.get('/:targetId', async (req, res) => {
             ShowCompanyLogo: showCompanyLogo,
             ShowHalalLogo: showHalalLogo,
             NetworkPrinterIP: row.NetworkPrinterIP || '',
-            NetworkPrinterEnabled: row.NetworkPrinterEnabled === true || row.NetworkPrinterEnabled === 1 || row.NetworkPrinterEnabled === '1'
+            NetworkPrinterEnabled: row.NetworkPrinterEnabled === true || row.NetworkPrinterEnabled === 1 || row.NetworkPrinterEnabled === '1',
+            BluetoothPrinterName: row.BluetoothPrinterName || '',
+            BluetoothPrinterAddress: row.BluetoothPrinterAddress || '',
+            BluetoothPrinterEnabled: row.BluetoothPrinterEnabled === true || row.BluetoothPrinterEnabled === 1 || row.BluetoothPrinterEnabled === '1'
         };
         
         res.json({
@@ -228,12 +244,16 @@ router.post('/:targetId', async (req, res) => {
             ShowCompanyLogo,
             ShowHalalLogo,
             NetworkPrinterIP,
-            NetworkPrinterEnabled
+            NetworkPrinterEnabled,
+            BluetoothPrinterName,
+            BluetoothPrinterAddress,
+            BluetoothPrinterEnabled
         } = req.body;
         
         let companyLogoValue = ShowCompanyLogo ? 1 : 0;
         let halalLogoValue = ShowHalalLogo ? 1 : 0;
         let networkPrinterEnabledValue = NetworkPrinterEnabled ? 1 : 0;
+        let bluetoothPrinterEnabledValue = BluetoothPrinterEnabled ? 1 : 0;
         
         console.log('📥 SAVING TO DATABASE for outlet:', outletId);
         console.log('📥 Logo values:', { companyLogoValue, halalLogoValue });
@@ -251,7 +271,7 @@ router.post('/:targetId', async (req, res) => {
             .input('companyName', sql.NVarChar, CompanyName || '')
             .input('address', sql.NVarChar, Address || '')
             .input('gstNo', sql.NVarChar, GSTNo || '')
-           .input('gstPercentage', sql.Decimal(5,2), GSTPercentage !== undefined ? GSTPercentage : 9)
+            .input('gstPercentage', sql.Decimal(5,2), GSTPercentage !== undefined ? GSTPercentage : 9)
             .input('phone', sql.NVarChar, Phone || '')
             .input('email', sql.NVarChar, Email || '')
             .input('cashierName', sql.NVarChar, CashierName || '')
@@ -263,17 +283,22 @@ router.post('/:targetId', async (req, res) => {
             .input('showHalalLogo', sql.Bit, halalLogoValue)
             .input('networkPrinterIP', sql.NVarChar, NetworkPrinterIP || null)
             .input('networkPrinterEnabled', sql.Bit, networkPrinterEnabledValue)
+            .input('bluetoothPrinterName', sql.NVarChar, BluetoothPrinterName || null)
+            .input('bluetoothPrinterAddress', sql.NVarChar, BluetoothPrinterAddress || null)
+            .input('bluetoothPrinterEnabled', sql.Bit, bluetoothPrinterEnabledValue)
             .query(`
                 INSERT INTO CompanySettings (
                     OutletId, CompanyName, Address, GSTNo, GSTPercentage, 
                     Phone, Email, CashierName, Currency, CurrencySymbol,
                     CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo,
-                    NetworkPrinterIP, NetworkPrinterEnabled
+                    NetworkPrinterIP, NetworkPrinterEnabled,
+                    BluetoothPrinterName, BluetoothPrinterAddress, BluetoothPrinterEnabled
                 ) VALUES (
                     @outletId, @companyName, @address, @gstNo, @gstPercentage,
                     @phone, @email, @cashierName, @currency, @currencySymbol,
                     @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo,
-                    @networkPrinterIP, @networkPrinterEnabled
+                    @networkPrinterIP, @networkPrinterEnabled,
+                    @bluetoothPrinterName, @bluetoothPrinterAddress, @bluetoothPrinterEnabled
                 )
             `);
         

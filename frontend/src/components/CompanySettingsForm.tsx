@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import BillPDFGenerator from './BillPDFGenerator';
+import BluetoothPrinterService from './BluetoothPrinterService';
 import { useCurrency } from '../context/CurrencyContext';
 import API, { uploadAPI } from '../api';
 declare global {
@@ -41,6 +42,9 @@ interface CompanySettings {
   showHalalLogo?: boolean;
   networkPrinterIP?: string;
   networkPrinterEnabled?: boolean;
+  bluetoothPrinterName?: string;
+  bluetoothPrinterAddress?: string;
+  bluetoothPrinterEnabled?: boolean;
 }
 
 interface Props {
@@ -82,6 +86,9 @@ const CompanySettingsForm: React.FC<Props> = ({
     showHalalLogo: true,
     networkPrinterIP: '',
     networkPrinterEnabled: false,
+    bluetoothPrinterName: '',
+    bluetoothPrinterAddress: '',
+    bluetoothPrinterEnabled: false,
   });
 
   const [enableGST, setEnableGST] = useState(true);
@@ -139,6 +146,9 @@ const CompanySettingsForm: React.FC<Props> = ({
           showHalalLogo: savedSettings.showHalalLogo,
           networkPrinterIP: savedSettings.networkPrinterIP || '',
           networkPrinterEnabled: savedSettings.networkPrinterEnabled === true,
+          bluetoothPrinterName: savedSettings.bluetoothPrinterName || '',
+          bluetoothPrinterAddress: savedSettings.bluetoothPrinterAddress || '',
+          bluetoothPrinterEnabled: savedSettings.bluetoothPrinterEnabled === true,
         });
 
         setEnableGST(savedSettings.gstPercentage > 0);
@@ -255,7 +265,10 @@ const CompanySettingsForm: React.FC<Props> = ({
       companyLogo: settings.companyLogo,
       halalLogo: settings.halalLogo,
       networkPrinterIP: settings.networkPrinterIP || '',
-      networkPrinterEnabled: settings.networkPrinterEnabled || false
+      networkPrinterEnabled: settings.networkPrinterEnabled || false,
+      bluetoothPrinterName: settings.bluetoothPrinterName || '',
+      bluetoothPrinterAddress: settings.bluetoothPrinterAddress || '',
+      bluetoothPrinterEnabled: settings.bluetoothPrinterEnabled || false
     };
 
     // ✅ ADD DEBUG LOG with GST
@@ -300,6 +313,9 @@ const CompanySettingsForm: React.FC<Props> = ({
           halalLogo: freshSettings.halalLogo,
           networkPrinterIP: freshSettings.networkPrinterIP || '',
           networkPrinterEnabled: freshSettings.networkPrinterEnabled === true,
+          bluetoothPrinterName: freshSettings.bluetoothPrinterName || '',
+          bluetoothPrinterAddress: freshSettings.bluetoothPrinterAddress || '',
+          bluetoothPrinterEnabled: freshSettings.bluetoothPrinterEnabled === true,
         });
 
         // ✅ STEP 5: Update enableGST based on fresh value
@@ -691,6 +707,70 @@ const CompanySettingsForm: React.FC<Props> = ({
                   keyboardType="numeric"
                   editable={!saving}
                 />
+              </>
+            )}
+
+            {/* Bluetooth Thermal Printer Configuration */}
+            <View style={[styles.switchRow, { marginTop: 15 }]}>
+              <Text style={[styles.switchLabel, { color: theme.text }]}>Setup Printer (Bluetooth)</Text>
+              <Switch
+                value={settings.bluetoothPrinterEnabled}
+                onValueChange={(val) => setSettings({ ...settings, bluetoothPrinterEnabled: val })}
+                trackColor={{ false: theme.inactive, true: theme.primary }}
+                thumbColor="#fff"
+                disabled={saving}
+              />
+            </View>
+
+            {settings.bluetoothPrinterEnabled && (
+              <>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Bluetooth Device Name / MAC Address</Text>
+                <TextInput
+                  style={[styles.input, {
+                    backgroundColor: theme.surface,
+                    color: theme.text,
+                    borderColor: theme.border
+                  }]}
+                  value={settings.bluetoothPrinterAddress || settings.bluetoothPrinterName}
+                  onChangeText={(text) => setSettings({ ...settings, bluetoothPrinterAddress: text, bluetoothPrinterName: text })}
+                  placeholder="e.g. 00:11:22:33:44:55 or Thermal Printer"
+                  placeholderTextColor={theme.textSecondary}
+                  editable={!saving}
+                />
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.primary,
+                    paddingVertical: 10,
+                    paddingHorizontal: 15,
+                    borderRadius: 8,
+                    marginTop: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  onPress={async () => {
+                    if (Platform.OS === 'web') {
+                      const device = await BluetoothPrinterService.requestWebBluetoothDevice();
+                      if (device) {
+                        setSettings(prev => ({
+                          ...prev,
+                          bluetoothPrinterName: device.name,
+                          bluetoothPrinterAddress: device.id
+                        }));
+                        Alert.alert('Bluetooth Connected', `Selected ${device.name}`);
+                      }
+                    } else {
+                      Alert.alert(
+                        'Bluetooth Thermal Printer',
+                        'Ensure your thermal printer is turned on and paired in system Bluetooth settings.'
+                      );
+                    }
+                  }}
+                >
+                  <Ionicons name="bluetooth" size={18} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Scan / Select Bluetooth Device</Text>
+                </TouchableOpacity>
               </>
             )}
 
