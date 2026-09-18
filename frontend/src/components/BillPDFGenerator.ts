@@ -11,6 +11,7 @@ interface CompanySettings {
   address: string;
   gstNo: string;
   gstPercentage: number;
+  gstType?: 'inclusive' | 'exclusive';
   phone: string;
   email: string;
   cashierName: string;
@@ -87,6 +88,7 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
                 address: settings.Address || '',
                 gstNo: settings.GSTNo || '',
                 gstPercentage: gstPercentage,  // ✅ Now 0 will stay 0
+                gstType: settings.GSTType || 'inclusive',
                 phone: settings.Phone || '',
                 email: settings.Email || '',
                 cashierName: settings.CashierName || '',
@@ -116,6 +118,7 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
       address: '',
       gstNo: '',
       gstPercentage: 0,
+      gstType: 'inclusive',
       phone: '',
       email: '',
       cashierName: '',
@@ -149,6 +152,7 @@ static async loadSettings(userId?: string | number): Promise<CompanySettings> {
             Address: settings.address,
             GSTNo: settings.gstNo,
             GSTPercentage: settings.gstPercentage,
+            GSTType: settings.gstType || 'inclusive',
             Phone: settings.phone,
             Email: settings.email,
             CashierName: settings.cashierName,
@@ -272,8 +276,16 @@ private static escapeHtml(str: string): string {
     const hasDiscount = finalDiscountInfo?.applied && finalDiscountInfo.amount > 0;
     const originalTotal = hasDiscount ? finalTotal + finalDiscountInfo.amount : finalTotal;
     
-    const gstAmount = hasGST ? finalTotal * (gstRate / (100 + gstRate)) : 0;
-    const amountWithoutGST = hasGST ? finalTotal - gstAmount : finalTotal;
+    const isExclusive = company.gstType === 'exclusive';
+    const gstAmount = hasGST 
+        ? (isExclusive ? finalTotal * (gstRate / 100) : finalTotal * (gstRate / (100 + gstRate))) 
+        : 0;
+    const amountWithoutGST = hasGST 
+        ? (isExclusive ? finalTotal : finalTotal - gstAmount) 
+        : finalTotal;
+    const grandTotal = hasGST 
+        ? (isExclusive ? finalTotal + gstAmount : finalTotal) 
+        : finalTotal;
     const currencySymbol = company.currencySymbol || '$';
     
     const companyLogoUrl = company.companyLogo || '';
@@ -563,8 +575,8 @@ private static escapeHtml(str: string): string {
           <!-- Totals -->
           <div class="totals">
             <div class="total-row">
-              <span>${hasGST ? 'Sub Total (without GST):' : 'Sub Total:'}</span>
-              <span>${currencySymbol}${hasGST ? amountWithoutGST.toFixed(2) : finalTotal.toFixed(2)}</span>
+              <span>${hasGST ? (isExclusive ? 'Sub Total:' : 'Sub Total (without GST):') : 'Sub Total:'}</span>
+              <span>${currencySymbol}${amountWithoutGST.toFixed(2)}</span>
             </div>
             ${hasGST ? `
             <div class="total-row">
@@ -573,8 +585,8 @@ private static escapeHtml(str: string): string {
             </div>
             ` : ''}
             <div class="grand-total">
-              <span>${hasGST ? 'GRAND TOTAL (incl GST):' : 'GRAND TOTAL:'}</span>
-              <span>${currencySymbol}${finalTotal.toFixed(2)}</span>
+              <span>${hasGST ? (isExclusive ? 'GRAND TOTAL:' : 'GRAND TOTAL (incl GST):') : 'GRAND TOTAL:'}</span>
+              <span>${currencySymbol}${grandTotal.toFixed(2)}</span>
             </div>
           </div>
           

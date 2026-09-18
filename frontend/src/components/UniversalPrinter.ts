@@ -1645,13 +1645,20 @@ class UniversalPrinter {
     }
 
     if (company.gstPercentage > 0) {
-      const gstAmount = subtotal * (company.gstPercentage / (100 + company.gstPercentage));
-      p += `[L]${twoCols('Sub Total (before GST):', `${symbol}${(subtotal - gstAmount).toFixed(2)}`)}\n`;
+      const isExclusive = company.gstType === 'exclusive';
+      const gstAmount = isExclusive 
+        ? subtotal * (company.gstPercentage / 100) 
+        : subtotal * (company.gstPercentage / (100 + company.gstPercentage));
+      const beforeGst = isExclusive ? subtotal : subtotal - gstAmount;
+      const grandTotal = isExclusive ? subtotal + gstAmount : subtotal;
+
+      p += `[L]${twoCols(isExclusive ? 'Sub Total:' : 'Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`)}\n`;
       p += `[L]${twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`)}\n`;
       p += '[L]' + '-'.repeat(32) + '\n';
+      p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${grandTotal.toFixed(2)}`)}</b></font>\n`;
+    } else {
+      p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
     }
-
-    p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
     p += '[L]' + '='.repeat(32) + '\n';
     p += `[L]${twoCols('PAYMENT:', saleData.paymentMethod || 'Cash')}\n`;
 
@@ -1661,7 +1668,11 @@ class UniversalPrinter {
     }
 
     p += '[L]\n[C]THANK YOU! COME AGAIN!\n[C]SMARTHAWKER BY UNIPROSG\n';
-    if (company.gstPercentage > 0) p += `[C]* Prices include ${company.gstPercentage}% GST\n`;
+    if (company.gstPercentage > 0) {
+      p += company.gstType === 'exclusive' 
+        ? `[C]* GST of ${company.gstPercentage}% added\n`
+        : `[C]* Prices include ${company.gstPercentage}% GST\n`;
+    }
     p += '[L]\n\n';
     return p;
   }
@@ -1723,13 +1734,20 @@ class UniversalPrinter {
     }
 
     if (company.gstPercentage > 0) {
-      const gstAmount = subtotal * (company.gstPercentage / (100 + company.gstPercentage));
-      p += `[L]${twoCols('Sub Total (before GST):', `${symbol}${(subtotal - gstAmount).toFixed(2)}`)}\n`;
+      const isExclusive = company.gstType === 'exclusive';
+      const gstAmount = isExclusive 
+        ? subtotal * (company.gstPercentage / 100) 
+        : subtotal * (company.gstPercentage / (100 + company.gstPercentage));
+      const beforeGst = isExclusive ? subtotal : subtotal - gstAmount;
+      const grandTotal = isExclusive ? subtotal + gstAmount : subtotal;
+
+      p += `[L]${twoCols(isExclusive ? 'Sub Total:' : 'Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`)}\n`;
       p += `[L]${twoCols(`GST (${company.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`)}\n`;
       p += '[L]' + '-'.repeat(48) + '\n';
+      p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${grandTotal.toFixed(2)}`)}</b></font>\n`;
+    } else {
+      p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
     }
-
-    p += `[L]<font size='tall'><b>${twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`)}</b></font>\n`;
     p += '[L]' + '='.repeat(48) + '\n';
     p += `[L]${twoCols('PAYMENT:', saleData.paymentMethod || 'Cash')}\n`;
 
@@ -1739,7 +1757,11 @@ class UniversalPrinter {
     }
 
     p += '[L]\n[C]THANK YOU! COME AGAIN!\n[C]SMARTHAWKER BY UNIPROSG\n';
-    if (company.gstPercentage > 0) p += `[C]* Prices include ${company.gstPercentage}% GST\n`;
+    if (company.gstPercentage > 0) {
+      p += company.gstType === 'exclusive' 
+        ? `[C]* GST of ${company.gstPercentage}% added\n`
+        : `[C]* Prices include ${company.gstPercentage}% GST\n`;
+    }
     p += '[L]\n\n';
     return p;
   }

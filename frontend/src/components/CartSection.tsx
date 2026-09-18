@@ -1,9 +1,11 @@
 // src/components/CartSection.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Platform, StatusBar, Alert } from 'react-native';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CartItem } from '../types';
+import BillPDFGenerator from './BillPDFGenerator';
 
 interface CartSectionProps {
   cart: CartItem[];
@@ -63,10 +65,40 @@ export const CartSection: React.FC<CartSectionProps> = ({
     }
   };
 
+  const [gstInfo, setGstInfo] = useState<{ percentage: number; type: string }>({ percentage: 0, type: 'inclusive' });
+
+  useEffect(() => {
+    const fetchGstSettings = async () => {
+      try {
+        const outletId = await AsyncStorage.getItem('selectedOutletId');
+        const settings = await BillPDFGenerator.loadSettings(outletId || undefined);
+        setGstInfo({
+          percentage: settings.gstPercentage || 0,
+          type: settings.gstType || 'inclusive'
+        });
+      } catch (e) {
+        console.log('Error fetching GST in CartSection:', e);
+      }
+    };
+    fetchGstSettings();
+  }, [cart.length]);
+
+  const baseNum = discountedTotal !== undefined && discountApplied
+    ? discountedTotal
+    : parseFloat(total) || 0;
+
+  const isExclusiveGST = gstInfo.type === 'exclusive';
+  const hasGST = gstInfo.percentage > 0;
+
+  const gstAmount = hasGST
+    ? (isExclusiveGST ? baseNum * (gstInfo.percentage / 100) : baseNum * (gstInfo.percentage / (100 + gstInfo.percentage)))
+    : 0;
+
+  const finalGrandTotalNum = isExclusiveGST ? baseNum + gstAmount : baseNum;
+
   // ✅ Calculate which total to display
-  const displayTotal = discountedTotal !== undefined && discountApplied
-    ? formatPrice(discountedTotal)
-    : formatPrice(parseFloat(total));
+  const displayTotal = formatPrice(finalGrandTotalNum);
+  const displayGst = formatPrice(gstAmount);
     
   const originalTotalDisplay = discountApplied && originalTotal > 0
     ? formatPrice(originalTotal)
@@ -261,6 +293,17 @@ export const CartSection: React.FC<CartSectionProps> = ({
                   -{formatPrice(discountAmount)}
                 </Text>
               </View>
+            </View>
+          )}
+
+          {hasGST && (
+            <View style={[styles.discountRow, { marginTop: 4, marginBottom: 4 }]}>
+              <Text style={[styles.originalPriceLabel, { color: theme.textSecondary, fontSize: 13 }]}>
+                GST ({gstInfo.percentage}%{isExclusiveGST ? '' : ' incl'}):
+              </Text>
+              <Text style={[styles.originalPriceValue, { color: theme.textSecondary, fontSize: 13, textDecorationLine: 'none' }]}>
+                {displayGst}
+              </Text>
             </View>
           )}
 
@@ -468,6 +511,17 @@ export const CartSection: React.FC<CartSectionProps> = ({
                 -{formatPrice(discountAmount)}
               </Text>
             </View>
+          </View>
+        )}
+
+        {hasGST && (
+          <View style={[styles.discountRow, { marginTop: 4, marginBottom: 4 }]}>
+            <Text style={[styles.originalPriceLabel, { color: theme.textSecondary, fontSize: 13 }]}>
+              GST ({gstInfo.percentage}%{isExclusiveGST ? '' : ' incl'}):
+            </Text>
+            <Text style={[styles.originalPriceValue, { color: theme.textSecondary, fontSize: 13, textDecorationLine: 'none' }]}>
+              {displayGst}
+            </Text>
           </View>
         )}
 

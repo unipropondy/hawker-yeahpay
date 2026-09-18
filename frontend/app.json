@@ -30,7 +30,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.unipro.pos",
-      "versionCode": 34,
+      "versionCode": 35,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",

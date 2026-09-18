@@ -6,6 +6,7 @@ interface CompanySettings {
   currencyCode: string;
   currencySymbol: string;
   shopName: string;
+  gstType?: string;
 }
 
 interface SettingsContextType {

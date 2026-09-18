@@ -31,10 +31,17 @@ const ensurePrinterColumnsExist = async () => {
                 ALTER TABLE CompanySettings ADD BluetoothPrinterAddress NVARCHAR(255) NULL;
                 ALTER TABLE CompanySettings ADD BluetoothPrinterEnabled BIT NULL DEFAULT 0;
             END
+            IF NOT EXISTS (
+                SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = 'CompanySettings' AND COLUMN_NAME = 'GSTType'
+            )
+            BEGIN
+                ALTER TABLE CompanySettings ADD GSTType NVARCHAR(20) NULL DEFAULT 'inclusive';
+            END
         `);
-        console.log('✅ Verified NetworkPrinter and BluetoothPrinter columns in database table CompanySettings');
+        console.log('✅ Verified Printer and GSTType columns in database table CompanySettings');
     } catch (err) {
-        console.log('⚠️ Printer columns validation skipped/failed:', err.message);
+        console.log('⚠️ Printer/GSTType columns validation skipped/failed:', err.message);
     }
 };
 // Check/Alter table 3 seconds after routes load
@@ -144,6 +151,7 @@ router.get('/:targetId', async (req, res) => {
                     c.Address,
                     c.GSTNo,
                     c.GSTPercentage,
+                    c.GSTType,
                     c.Phone,
                     c.Email,
                     c.CashierName,
@@ -185,6 +193,7 @@ router.get('/:targetId', async (req, res) => {
             Address: row.Address || '',
             GSTNo: row.GSTNo || '',
             GSTPercentage: row.GSTPercentage !== undefined && row.GSTPercentage !== null ? row.GSTPercentage : 9,
+            GSTType: row.GSTType || 'inclusive',
             Phone: row.Phone || '',
             Email: row.Email || '',
             CashierName: row.CashierName || '',
@@ -234,6 +243,7 @@ router.post('/:targetId', async (req, res) => {
             Address, 
             GSTNo, 
             GSTPercentage, 
+            GSTType,
             Phone, 
             Email, 
             CashierName,
@@ -272,6 +282,7 @@ router.post('/:targetId', async (req, res) => {
             .input('address', sql.NVarChar, Address || '')
             .input('gstNo', sql.NVarChar, GSTNo || '')
             .input('gstPercentage', sql.Decimal(5,2), GSTPercentage !== undefined ? GSTPercentage : 9)
+            .input('gstType', sql.NVarChar, GSTType || 'inclusive')
             .input('phone', sql.NVarChar, Phone || '')
             .input('email', sql.NVarChar, Email || '')
             .input('cashierName', sql.NVarChar, CashierName || '')
@@ -288,13 +299,13 @@ router.post('/:targetId', async (req, res) => {
             .input('bluetoothPrinterEnabled', sql.Bit, bluetoothPrinterEnabledValue)
             .query(`
                 INSERT INTO CompanySettings (
-                    OutletId, CompanyName, Address, GSTNo, GSTPercentage, 
+                    OutletId, CompanyName, Address, GSTNo, GSTPercentage, GSTType,
                     Phone, Email, CashierName, Currency, CurrencySymbol,
                     CompanyLogoUrl, HalalLogoUrl, ShowCompanyLogo, ShowHalalLogo,
                     NetworkPrinterIP, NetworkPrinterEnabled,
                     BluetoothPrinterName, BluetoothPrinterAddress, BluetoothPrinterEnabled
                 ) VALUES (
-                    @outletId, @companyName, @address, @gstNo, @gstPercentage,
+                    @outletId, @companyName, @address, @gstNo, @gstPercentage, @gstType,
                     @phone, @email, @cashierName, @currency, @currencySymbol,
                     @companyLogoUrl, @halalLogoUrl, @showCompanyLogo, @showHalalLogo,
                     @networkPrinterIP, @networkPrinterEnabled,

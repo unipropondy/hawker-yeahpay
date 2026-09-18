@@ -339,17 +339,23 @@ class SunmiPrinterService {
         await this.divider('-');
       }
 
-      // ============ GST ============
+      // ============ GST & GRAND TOTAL ============
+      let grandTotal = subtotal;
       if (companySettings.gstPercentage > 0) {
-        const gstAmount = subtotal * (companySettings.gstPercentage / (100 + companySettings.gstPercentage));
-        const beforeGst = subtotal - gstAmount;
-        await this.twoCols('Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`);
+        const isExclusive = companySettings.gstType === 'exclusive';
+        const gstAmount = isExclusive
+          ? subtotal * (companySettings.gstPercentage / 100)
+          : subtotal * (companySettings.gstPercentage / (100 + companySettings.gstPercentage));
+        const beforeGst = isExclusive ? subtotal : subtotal - gstAmount;
+        grandTotal = isExclusive ? subtotal + gstAmount : subtotal;
+
+        await this.twoCols(isExclusive ? 'Sub Total:' : 'Sub Total (before GST):', `${symbol}${beforeGst.toFixed(2)}`);
         await this.twoCols(`GST (${companySettings.gstPercentage}%):`, `${symbol}${gstAmount.toFixed(2)}`);
         await this.divider('-');
       }
 
       // ============ GRAND TOTAL ============
-      await this.twoCols('GRAND TOTAL:', `${symbol}${subtotal.toFixed(2)}`);
+      await this.twoCols('GRAND TOTAL:', `${symbol}${grandTotal.toFixed(2)}`);
       await this.doubleDivider('=');
 
       // ============ PAYMENT ============
@@ -370,7 +376,11 @@ class SunmiPrinterService {
       await this.center('SMARTHAWKER BY UNIPROSG');
 
       if (companySettings.gstPercentage > 0) {
-        await this.center(`* Prices include ${companySettings.gstPercentage}% GST`);
+        if (companySettings.gstType === 'exclusive') {
+          await this.center(`* GST of ${companySettings.gstPercentage}% added`);
+        } else {
+          await this.center(`* Prices include ${companySettings.gstPercentage}% GST`);
+        }
       }
 
       await lineWrap(3);

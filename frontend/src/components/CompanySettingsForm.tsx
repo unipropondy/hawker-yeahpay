@@ -31,6 +31,7 @@ interface CompanySettings {
   address: string;
   gstNo: string;
   gstPercentage: number;
+  gstType?: 'inclusive' | 'exclusive';
   phone: string;
   email: string;
   cashierName: string;
@@ -75,6 +76,7 @@ const CompanySettingsForm: React.FC<Props> = ({
     address: '',
     gstNo: '',
     gstPercentage: 9,
+    gstType: 'inclusive',
     phone: '',
     email: '',
     cashierName: defaultCashier || '',
@@ -135,6 +137,7 @@ const CompanySettingsForm: React.FC<Props> = ({
           address: savedSettings.address || '',
           gstNo: savedSettings.gstNo || '',
           gstPercentage: savedSettings.gstPercentage || 0,
+          gstType: savedSettings.gstType || 'inclusive',
           phone: savedSettings.phone || '',
           email: savedSettings.email || '',
           cashierName: savedSettings.cashierName || defaultCashier || '',
@@ -260,6 +263,7 @@ const CompanySettingsForm: React.FC<Props> = ({
     const finalSettings = {
       ...settings,
       gstPercentage: enableGST ? settings.gstPercentage : 0,
+      gstType: settings.gstType || 'inclusive',
       showCompanyLogo: settings.showCompanyLogo,
       showHalalLogo: settings.showHalalLogo,
       companyLogo: settings.companyLogo,
@@ -307,6 +311,7 @@ const CompanySettingsForm: React.FC<Props> = ({
         setSettings({
           ...settings,
           gstPercentage: freshSettings.gstPercentage,
+          gstType: freshSettings.gstType || 'inclusive',
           showCompanyLogo: freshSettings.showCompanyLogo,
           showHalalLogo: freshSettings.showHalalLogo,
           companyLogo: freshSettings.companyLogo,
@@ -676,6 +681,61 @@ const CompanySettingsForm: React.FC<Props> = ({
                   keyboardType="numeric"
                   editable={!saving && enableGST}  // ✅ Only editable when GST enabled
                 />
+
+                <Text style={[styles.label, { color: theme.textSecondary, marginTop: 10 }]}>GST Format</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 5, marginBottom: 10 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: (settings.gstType || 'inclusive') === 'inclusive' ? theme.primary : theme.border,
+                      backgroundColor: (settings.gstType || 'inclusive') === 'inclusive' ? `${theme.primary}15` : theme.surface,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setSettings({ ...settings, gstType: 'inclusive' })}
+                    disabled={saving}
+                  >
+                    <Text style={{
+                      fontWeight: '700',
+                      fontSize: 14,
+                      color: (settings.gstType || 'inclusive') === 'inclusive' ? theme.primary : theme.text,
+                    }}>
+                      Inclusive
+                    </Text>
+                    <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>
+                      (Prices include GST)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: settings.gstType === 'exclusive' ? theme.primary : theme.border,
+                      backgroundColor: settings.gstType === 'exclusive' ? `${theme.primary}15` : theme.surface,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setSettings({ ...settings, gstType: 'exclusive' })}
+                    disabled={saving}
+                  >
+                    <Text style={{
+                      fontWeight: '700',
+                      fontSize: 14,
+                      color: settings.gstType === 'exclusive' ? theme.primary : theme.text,
+                    }}>
+                      Exclusive
+                    </Text>
+                    <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>
+                      (Add GST on top)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
